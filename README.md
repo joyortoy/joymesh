@@ -14,8 +14,8 @@ mission decomposition, private workflows, or proprietary data.
 ## Architecture
 
 The core is Python 3.12 with Pydantic v2, FastAPI, SQLAlchemy 2, SQLite, Alembic,
-Typer, and asyncio. A static reference dashboard is served by the API and adds
-no frontend build requirement.
+Typer, and asyncio. JoyMesh is backend infrastructure and does not include an
+end-user frontend.
 
 See [ADR 0001](docs/adr/0001-initial-architecture.md) for the decision record,
 tradeoffs, and current limitations.
@@ -66,15 +66,13 @@ uv run joymesh run cancel <run-id>
 
 Manual subscription profiles can be added with `joymesh subscription add`.
 
-## Local API and dashboard
+## Local API
 
 Start the service:
 
 ```sh
 uv run joymesh api
 ```
-
-Open `http://127.0.0.1:8787` for the reference dashboard or use:
 
 ```text
 GET  /api/v1/harnesses

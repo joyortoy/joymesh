@@ -41,9 +41,6 @@ joymesh = "joymesh.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["src/joymesh"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/joymesh/static/index.html" = "joymesh/static/index.html"
-
 [tool.pytest.ini_options]
 addopts = "-q"
 asyncio_mode = "auto"

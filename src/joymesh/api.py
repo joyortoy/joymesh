@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from importlib.resources import files
 
 from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from joymesh.models import (
     HarnessDescriptor,
@@ -43,11 +42,6 @@ def create_app(mesh: JoyMesh | None = None) -> FastAPI:
     @app.exception_handler(InvalidWorkspaceError)
     async def invalid_workspace(_request: Request, exc: InvalidWorkspaceError) -> JSONResponse:
         return _problem(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-
-    @app.get("/", include_in_schema=False)
-    async def dashboard() -> FileResponse:
-        dashboard_file = files("joymesh.static").joinpath("index.html")
-        return FileResponse(str(dashboard_file))
 
     @app.get("/api/v1/harnesses", response_model=list[HarnessDescriptor])
     async def harnesses() -> tuple[HarnessDescriptor, ...]:

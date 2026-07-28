@@ -26,19 +26,18 @@ Use Python 3.12 for the core runtime and public SDK.
 - Routing is a pure, deterministic function over capabilities, availability,
   subscription policy, quota, concurrency, cost weight, and user preference.
 - A bundled fake adapter is the first complete integration and test fixture.
-- The reference dashboard is static HTML and JavaScript served by FastAPI, so
-  the Python package remains the only required build artifact.
+- JoyMesh has no frontend; the Python package is the only build artifact.
 
 The SDK, CLI, and API call one application service. They do not parse native
 harness output or duplicate native command construction.
 
 ## Alternatives considered
 
-### TypeScript core
+### TypeScript core or bundled frontend
 
-TypeScript would simplify a richer dashboard, but Python is a better fit for
-the requested SDK contract and agent ecosystem. A separate frontend can be
-introduced later without moving the runtime.
+Python is a better fit for the requested SDK contract and agent ecosystem.
+JoyMesh remains backend infrastructure; consuming applications may provide
+their own user experience through the SDK or API.
 
 ### One process per API request
 

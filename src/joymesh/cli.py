@@ -161,7 +161,7 @@ def api_server(
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8787, "--port", min=1, max=65535),
 ) -> None:
-    """Run the local REST API and dashboard."""
+    """Run the local REST API."""
 
     import uvicorn
 

@@ -43,8 +43,4 @@ async def test_api_vertical_slice_and_sse(tmp_path: Path) -> None:
             inspected = await client.get(f"/api/v1/runs/{run_id}")
             assert inspected.json()["status"] == "succeeded"
 
-            dashboard = await client.get("/")
-            assert dashboard.status_code == 200
-            assert "JoyMesh Console" in dashboard.text
-
     await mesh.close()
