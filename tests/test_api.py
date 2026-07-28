@@ -15,7 +15,7 @@ async def test_api_vertical_slice_and_sse(tmp_path: Path) -> None:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             harnesses = await client.get("/api/v1/harnesses")
             assert harnesses.status_code == 200
-            assert harnesses.json()[0]["manifest"]["harness_id"] == "fake"
+            assert any(item["manifest"]["harness_id"] == "fake" for item in harnesses.json())
 
             preview = await client.post(
                 "/api/v1/routes/preview",
@@ -38,9 +38,9 @@ async def test_api_vertical_slice_and_sse(tmp_path: Path) -> None:
             stream = await client.get(f"/api/v1/runs/{run_id}/events")
             assert stream.status_code == 200
             assert stream.headers["content-type"].startswith("text/event-stream")
-            assert "event: run.succeeded" in stream.text
+            assert "event: run.completed" in stream.text
 
             inspected = await client.get(f"/api/v1/runs/{run_id}")
-            assert inspected.json()["status"] == "succeeded"
+            assert inspected.json()["status"] == "completed"
 
     await mesh.close()

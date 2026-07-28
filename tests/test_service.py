@@ -14,11 +14,11 @@ async def test_fake_run_is_persisted_and_normalized(tmp_path: Path) -> None:
         completed = await mesh.wait(run.id)
         events = await mesh.events(run.id)
 
-        assert completed.status is RunStatus.SUCCEEDED
+        assert completed.status is RunStatus.COMPLETED
         assert completed.exit_code == 0
         assert [event.sequence for event in events] == list(range(1, len(events) + 1))
         assert events[0].type is EventType.RUN_QUEUED
-        assert events[-1].type is EventType.RUN_SUCCEEDED
+        assert events[-1].type is EventType.RUN_COMPLETED
         assert any(event.type is EventType.HARNESS_PROGRESS for event in events)
     finally:
         await mesh.close()

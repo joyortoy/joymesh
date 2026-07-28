@@ -9,6 +9,7 @@ from joymesh.models import (
     RoutePreview,
     RoutePreviewRequest,
     SubscriptionProfile,
+    SubscriptionState,
 )
 from joymesh.persistence import Database
 from joymesh.registry import AdapterRegistry
@@ -95,14 +96,24 @@ class Router:
             if not profile.enabled:
                 eligible = False
                 reasons.append("subscription disabled")
+            if profile.state is SubscriptionState.RATE_LIMITED:
+                eligible = False
+                reasons.append("subscription rate limited")
+            if profile.state is SubscriptionState.EXHAUSTED:
+                eligible = False
+                reasons.append("subscription exhausted")
             remaining = profile.remaining_fraction
-            if remaining is not None:
-                score += remaining * 10
-                if remaining <= 0:
+            if profile.quota_known and profile.monthly_limit is not None:
+                score += (remaining or 0) * 10
+                remaining_amount = max(0.0, profile.monthly_limit - profile.used_amount)
+                if remaining_amount <= profile.quota_reserve:
                     eligible = False
-                    reasons.append("manual quota exhausted")
+                    reasons.append("configured quota reserve reached")
                 else:
-                    reasons.append(f"manual quota {remaining:.0%} remaining")
+                    reasons.append(f"manual quota {(remaining or 0):.0%} remaining")
+            elif not profile.quota_known:
+                score -= 15
+                reasons.append("unknown quota uncertainty penalty")
             score -= profile.cost_weight
             reasons.append(f"cost weight {profile.cost_weight:g}")
         else:

@@ -14,11 +14,11 @@ def test_cli_detect_and_run(monkeypatch, tmp_path: Path) -> None:
 
     detected = runner.invoke(app, ["harness", "detect"])
     assert detected.exit_code == 0, detected.output
-    assert json.loads(detected.output)[0]["manifest"]["harness_id"] == "fake"
+    assert any(item["manifest"]["harness_id"] == "fake" for item in json.loads(detected.output))
 
     completed = runner.invoke(
         app,
         ["run", "--workspace", str(tmp_path), "--task", "CLI demo"],
     )
     assert completed.exit_code == 0, completed.output
-    assert json.loads(completed.output)["status"] == "succeeded"
+    assert json.loads(completed.output)["status"] == "completed"

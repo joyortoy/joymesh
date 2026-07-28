@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from joymesh.models import (
+    FallbackProposal,
     HarnessDescriptor,
     RoutePreview,
     RoutePreviewRequest,
@@ -18,11 +19,17 @@ from joymesh.models import (
     RunStatus,
     SubscriptionCreate,
     SubscriptionProfile,
+    UsageRecord,
 )
 from joymesh.service import JoyMesh, NoRouteError
 from joymesh.workspace import InvalidWorkspaceError
 
-TERMINAL_STATUSES = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
+TERMINAL_STATUSES = {
+    RunStatus.COMPLETED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+    RunStatus.TIMED_OUT,
+}
 
 
 def create_app(mesh: JoyMesh | None = None) -> FastAPI:
@@ -74,11 +81,8 @@ def create_app(mesh: JoyMesh | None = None) -> FastAPI:
     @app.post("/api/v1/runs", response_model=Run, status_code=status.HTTP_202_ACCEPTED)
     async def create_run(request: RunRequest) -> Run:
         try:
-            return await service.run(
-                task=request.task,
-                workspace=request.workspace,
-                route=request.route,
-            )
+            route = request.route or await service.resolve_route(request=request)
+            return await service.start_run(request=request, route=route)
         except NoRouteError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -123,6 +127,26 @@ def create_app(mesh: JoyMesh | None = None) -> FastAPI:
             return await service.cancel(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Run not found") from exc
+
+    @app.get("/api/v1/runs/{run_id}/usage", response_model=list[UsageRecord])
+    async def run_usage(run_id: str) -> tuple[UsageRecord, ...]:
+        if await service.inspect_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return await service.usage(run_id=run_id)
+
+    @app.get(
+        "/api/v1/runs/{run_id}/fallback",
+        response_model=FallbackProposal | None,
+    )
+    async def run_fallback(run_id: str) -> FallbackProposal | None:
+        return await service.fallback_for_run(run_id)
+
+    @app.post("/api/v1/fallbacks/{proposal_id}/approve", response_model=Run)
+    async def approve_fallback(proposal_id: str) -> Run:
+        try:
+            return await service.approve_fallback(proposal_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Fallback not found") from exc
 
     return app
 

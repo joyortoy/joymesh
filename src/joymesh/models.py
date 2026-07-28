@@ -30,9 +30,10 @@ class HarnessAvailability(StrEnum):
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
-    SUCCEEDED = "succeeded"
+    COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class EventType(StrEnum):
@@ -40,15 +41,44 @@ class EventType(StrEnum):
     RUN_STARTED = "run.started"
     HARNESS_OUTPUT = "harness.output"
     HARNESS_PROGRESS = "harness.progress"
-    RUN_SUCCEEDED = "run.succeeded"
+    RUN_COMPLETED = "run.completed"
     RUN_FAILED = "run.failed"
     RUN_CANCELLED = "run.cancelled"
+    RUN_TIMED_OUT = "run.timed_out"
+    SESSION_IDENTIFIED = "session.identified"
+    USAGE_RECORDED = "usage.recorded"
+    RATE_LIMIT_ENCOUNTERED = "rate_limit.encountered"
+    FALLBACK_PROPOSED = "fallback.proposed"
+    APPROVAL_REQUESTED = "approval.requested"
 
 
 class BillingRoute(StrEnum):
     SUBSCRIPTION = "subscription"
     API = "api"
     LOCAL = "local"
+    UNKNOWN = "unknown"
+
+
+class SupportStatus(StrEnum):
+    SUPPORTED = "supported"
+    EXPERIMENTAL = "experimental"
+    UNAVAILABLE = "unavailable"
+
+
+class SubscriptionState(StrEnum):
+    HEALTHY = "healthy"
+    RATE_LIMITED = "rate_limited"
+    EXHAUSTED = "exhausted"
+    DISABLED = "disabled"
+
+
+class FailureKind(StrEnum):
+    RATE_LIMIT = "rate_limit"
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    AUTHENTICATION = "authentication"
+    UNSUPPORTED = "unsupported"
+    PROCESS = "process"
+    TIMEOUT = "timeout"
     UNKNOWN = "unknown"
 
 
@@ -74,6 +104,8 @@ class HarnessDescriptor(BaseModel):
     manifest: CapabilityManifest
     availability: HarnessAvailability
     executable: str | None = None
+    version: str | None = None
+    support_status: SupportStatus = SupportStatus.EXPERIMENTAL
     detail: str | None = None
 
 
@@ -89,6 +121,10 @@ class SubscriptionProfile(BaseModel):
     used_amount: float = Field(default=0, ge=0)
     max_concurrency: int = Field(default=1, ge=1)
     cost_weight: float = Field(default=1, ge=0)
+    quota_reserve: float = Field(default=0, ge=0)
+    quota_known: bool = False
+    state: SubscriptionState = SubscriptionState.HEALTHY
+    requires_paid_approval: bool = False
 
     @property
     def remaining_fraction(self) -> float | None:
@@ -142,6 +178,10 @@ class Run(BaseModel):
     finished_at: datetime | None = None
     exit_code: int | None = None
     error: str | None = None
+    task_context_id: str
+    continuation_of_run_id: str | None = None
+    native_session_id: str | None = None
+    process_id: int | None = None
 
 
 class RoutePreviewRequest(BaseModel):
@@ -155,6 +195,9 @@ class RunRequest(BaseModel):
     task: str = Field(min_length=1)
     workspace: str
     route: RouteCandidate | None = None
+    required_capabilities: frozenset[Capability] = Field(default_factory=frozenset)
+    timeout_seconds: float | None = Field(default=300, gt=0)
+    resume_session_id: str | None = None
 
 
 class SubscriptionCreate(BaseModel):
@@ -165,3 +208,59 @@ class SubscriptionCreate(BaseModel):
     used_amount: float = Field(default=0, ge=0)
     max_concurrency: int = Field(default=1, ge=1)
     cost_weight: float = Field(default=1, ge=0)
+    quota_reserve: float = Field(default=0, ge=0)
+    quota_known: bool = False
+    requires_paid_approval: bool = False
+
+
+class LaunchSpec(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    argv: tuple[str, ...]
+    cwd: str
+    env: dict[str, str]
+    timeout_seconds: float | None = Field(default=300, gt=0)
+
+
+class UsageDelta(BaseModel):
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cost: float | None = Field(default=None, ge=0)
+
+
+class AdapterObservation(BaseModel):
+    event: NormalizedEvent
+    native_session_id: str | None = None
+    usage: UsageDelta | None = None
+
+
+class HarnessFailure(BaseModel):
+    kind: FailureKind
+    message: str
+    retryable: bool = False
+
+
+class UsageRecord(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    subscription_id: str
+    run_id: str | None
+    input_tokens: int
+    output_tokens: int
+    amount: float
+    source: str
+    recorded_at: datetime
+
+
+class FallbackProposal(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    original_run_id: str
+    route: RouteCandidate
+    requires_approval: bool
+    approved: bool = False
+    continuation_run_id: str | None = None
+    reason: str
+    created_at: datetime

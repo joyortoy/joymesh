@@ -1,5 +1,8 @@
+import pytest
+
+from joymesh.adapters.base import UnsupportedFeatureError
 from joymesh.adapters.fake import FakeHarnessAdapter
-from joymesh.models import EventType, HarnessAvailability
+from joymesh.models import Capability, EventType, HarnessAvailability
 from joymesh.registry import AdapterRegistry
 
 
@@ -8,9 +11,13 @@ async def test_registry_detects_bundled_fake_harness() -> None:
 
     detected = await registry.detect()
 
-    assert len(detected) == 1
-    assert detected[0].manifest.harness_id == "fake"
-    assert detected[0].availability is HarnessAvailability.AVAILABLE
+    assert {item.manifest.harness_id for item in detected} == {
+        "codex",
+        "fake",
+        "opencode",
+    }
+    fake = next(item for item in detected if item.manifest.harness_id == "fake")
+    assert fake.availability is HarnessAvailability.AVAILABLE
 
 
 def test_fake_adapter_normalizes_native_progress() -> None:
@@ -23,9 +30,9 @@ def test_fake_adapter_normalizes_native_progress() -> None:
         line='{"type":"progress","message":"50%"}',
     )
 
-    assert event.type is EventType.HARNESS_PROGRESS
-    assert event.message == "50%"
-    assert event.payload["native_type"] == "progress"
+    assert event.event.type is EventType.HARNESS_PROGRESS
+    assert event.event.message == "50%"
+    assert event.event.payload["native_type"] == "progress"
 
 
 def test_capabilities_serialize_in_stable_order() -> None:
@@ -34,6 +41,12 @@ def test_capabilities_serialize_in_stable_order() -> None:
     assert manifest.model_dump(mode="json")["capabilities"] == [
         "file.read",
         "file.write",
+        "session.resume",
         "shell",
         "streaming",
     ]
+
+
+def test_unsupported_feature_is_reported() -> None:
+    with pytest.raises(UnsupportedFeatureError, match=r"tool\.use"):
+        FakeHarnessAdapter().require_feature(Capability.TOOL_USE)

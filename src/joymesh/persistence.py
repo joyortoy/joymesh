@@ -1,8 +1,9 @@
-"""Async SQLAlchemy persistence for runs, events, subscriptions, and usage."""
+"""Async SQLAlchemy persistence for the JoyMesh service layer."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -15,11 +16,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from joymesh.models import (
     BillingRoute,
     EventType,
+    FallbackProposal,
     NormalizedEvent,
+    RouteCandidate,
     Run,
     RunStatus,
     SubscriptionCreate,
     SubscriptionProfile,
+    SubscriptionState,
+    UsageRecord,
     utc_now,
 )
 
@@ -28,39 +33,8 @@ class Base(DeclarativeBase):
     pass
 
 
-class RunRow(Base):
-    __tablename__ = "runs"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    task: Mapped[str] = mapped_column(Text)
-    workspace: Mapped[str] = mapped_column(Text)
-    harness_id: Mapped[str] = mapped_column(String(100), index=True)
-    subscription_id: Mapped[str | None] = mapped_column(
-        ForeignKey("subscriptions.id"), nullable=True
-    )
-    status: Mapped[str] = mapped_column(String(30), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class EventRow(Base):
-    __tablename__ = "events"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
-    sequence: Mapped[int] = mapped_column(Integer)
-    type: Mapped[str] = mapped_column(String(50))
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    payload_json: Mapped[str] = mapped_column(Text, default="{}")
-
-
 class SubscriptionRow(Base):
     __tablename__ = "subscriptions"
-
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     harness_id: Mapped[str] = mapped_column(String(100), index=True)
     name: Mapped[str] = mapped_column(String(200))
@@ -70,22 +44,68 @@ class SubscriptionRow(Base):
     used_amount: Mapped[float] = mapped_column(Float, default=0)
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     cost_weight: Mapped[float] = mapped_column(Float, default=1)
+    quota_reserve: Mapped[float] = mapped_column(Float, default=0)
+    quota_known: Mapped[bool] = mapped_column(default=False)
+    state: Mapped[str] = mapped_column(String(30))
+    requires_paid_approval: Mapped[bool] = mapped_column(default=False)
+
+
+class RunRow(Base):
+    __tablename__ = "runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task: Mapped[str] = mapped_column(Text)
+    workspace: Mapped[str] = mapped_column(Text)
+    harness_id: Mapped[str] = mapped_column(String(100), index=True)
+    subscription_id: Mapped[str | None] = mapped_column(ForeignKey("subscriptions.id"))
+    status: Mapped[str] = mapped_column(String(30), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    exit_code: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+    task_context_id: Mapped[str] = mapped_column(String(36), index=True)
+    continuation_of_run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.id"))
+    native_session_id: Mapped[str | None] = mapped_column(String(200))
+    process_id: Mapped[int | None] = mapped_column(Integer)
+
+
+class EventRow(Base):
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    type: Mapped[str] = mapped_column(String(50))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    message: Mapped[str | None] = mapped_column(Text)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class UsageRow(Base):
     __tablename__ = "usage_ledger"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     subscription_id: Mapped[str] = mapped_column(ForeignKey("subscriptions.id"), index=True)
-    run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.id"), nullable=True)
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.id"))
     amount: Mapped[float] = mapped_column(Float)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     source: Mapped[str] = mapped_column(String(50))
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class FallbackProposalRow(Base):
+    __tablename__ = "fallback_proposals"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    original_run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    route_json: Mapped[str] = mapped_column(Text)
+    requires_approval: Mapped[bool]
+    approved: Mapped[bool] = mapped_column(default=False)
+    continuation_run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.id"))
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 def default_database_url() -> str:
-    configured = os.environ.get("JOYMESH_DATABASE_URL")
-    if configured:
+    if configured := os.environ.get("JOYMESH_DATABASE_URL"):
         return configured
     data_dir = Path.home() / ".local" / "share" / "joymesh"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +129,7 @@ class Database:
 
     async def ensure_default_subscription(self) -> None:
         async with self.sessions() as session:
-            if await session.get(SubscriptionRow, "fake-local") is not None:
+            if await session.get(SubscriptionRow, "fake-local"):
                 return
             session.add(
                 SubscriptionRow(
@@ -122,6 +142,10 @@ class Database:
                     used_amount=0,
                     max_concurrency=8,
                     cost_weight=0,
+                    quota_reserve=0,
+                    quota_known=True,
+                    state=SubscriptionState.HEALTHY.value,
+                    requires_paid_approval=False,
                 )
             )
             await session.commit()
@@ -137,6 +161,10 @@ class Database:
             used_amount=data.used_amount,
             max_concurrency=data.max_concurrency,
             cost_weight=data.cost_weight,
+            quota_reserve=data.quota_reserve,
+            quota_known=data.quota_known,
+            state=SubscriptionState.HEALTHY.value,
+            requires_paid_approval=data.requires_paid_approval,
         )
         async with self.sessions() as session:
             session.add(row)
@@ -152,20 +180,16 @@ class Database:
             ).all()
         return tuple(self._subscription_model(row) for row in rows)
 
+    async def set_subscription_state(self, subscription_id: str, state: SubscriptionState) -> None:
+        async with self.sessions() as session:
+            row = await session.get(SubscriptionRow, subscription_id)
+            if row is None:
+                raise KeyError(f"unknown subscription: {subscription_id}")
+            row.state = state.value
+            await session.commit()
+
     async def create_run(self, run: Run) -> Run:
-        row = RunRow(
-            id=run.id,
-            task=run.task,
-            workspace=run.workspace,
-            harness_id=run.harness_id,
-            subscription_id=run.subscription_id,
-            status=run.status.value,
-            created_at=run.created_at,
-            started_at=run.started_at,
-            finished_at=run.finished_at,
-            exit_code=run.exit_code,
-            error=run.error,
-        )
+        row = RunRow(**run.model_dump(mode="python", exclude={"status"}), status=run.status.value)
         async with self.sessions() as session:
             session.add(row)
             await session.commit()
@@ -177,42 +201,28 @@ class Database:
         return None if row is None else self._run_model(row)
 
     async def update_run(
-        self,
-        run_id: str,
-        *,
-        status: RunStatus,
-        started_at: datetime | None = None,
-        finished_at: datetime | None = None,
-        exit_code: int | None = None,
-        error: str | None = None,
+        self, run_id: str, *, status: RunStatus | None = None, **values: object
     ) -> Run:
         async with self.sessions() as session:
             row = await session.get(RunRow, run_id)
             if row is None:
                 raise KeyError(f"unknown run: {run_id}")
-            row.status = status.value
-            if started_at is not None:
-                row.started_at = started_at
-            if finished_at is not None:
-                row.finished_at = finished_at
-            if exit_code is not None:
-                row.exit_code = exit_code
-            if error is not None:
-                row.error = error
+            if status is not None:
+                row.status = status.value
+            for key, value in values.items():
+                if value is not None:
+                    setattr(row, key, value)
             await session.commit()
         return self._run_model(row)
 
     async def append_event(self, event: NormalizedEvent) -> NormalizedEvent:
-        import json
-
         async with self._event_lock, self.sessions() as session:
-            max_sequence = await session.scalar(
+            maximum = await session.scalar(
                 select(func.max(EventRow.sequence)).where(EventRow.run_id == event.run_id)
             )
-            sequence = (max_sequence or 0) + 1
             row = EventRow(
                 run_id=event.run_id,
-                sequence=sequence,
+                sequence=(maximum or 0) + 1,
                 type=event.type.value,
                 timestamp=event.timestamp,
                 message=event.message,
@@ -243,7 +253,7 @@ class Database:
                 RunRow.status.in_([RunStatus.QUEUED.value, RunStatus.RUNNING.value]),
             )
         )
-        if subscription_id is not None:
+        if subscription_id:
             query = query.where(RunRow.subscription_id == subscription_id)
         async with self.sessions() as session:
             return int(await session.scalar(query) or 0)
@@ -252,9 +262,11 @@ class Database:
         self,
         *,
         subscription_id: str,
-        amount: float,
-        run_id: str | None = None,
-        source: str = "manual",
+        run_id: str | None,
+        input_tokens: int,
+        output_tokens: int,
+        amount: float = 0,
+        source: str = "observed",
     ) -> None:
         async with self.sessions() as session:
             subscription = await session.get(SubscriptionRow, subscription_id)
@@ -266,11 +278,56 @@ class Database:
                     subscription_id=subscription_id,
                     run_id=run_id,
                     amount=amount,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     source=source,
                     recorded_at=utc_now(),
                 )
             )
             await session.commit()
+
+    async def list_usage(self, *, run_id: str | None = None) -> tuple[UsageRecord, ...]:
+        query = select(UsageRow).order_by(UsageRow.id)
+        if run_id:
+            query = query.where(UsageRow.run_id == run_id)
+        async with self.sessions() as session:
+            rows = (await session.scalars(query)).all()
+        return tuple(UsageRecord.model_validate(row) for row in rows)
+
+    async def create_fallback(self, proposal: FallbackProposal) -> FallbackProposal:
+        row = FallbackProposalRow(
+            id=proposal.id,
+            original_run_id=proposal.original_run_id,
+            route_json=proposal.route.model_dump_json(),
+            requires_approval=proposal.requires_approval,
+            approved=proposal.approved,
+            continuation_run_id=proposal.continuation_run_id,
+            reason=proposal.reason,
+            created_at=proposal.created_at,
+        )
+        async with self.sessions() as session:
+            session.add(row)
+            await session.commit()
+        return self._fallback_model(row)
+
+    async def get_fallback_for_run(self, run_id: str) -> FallbackProposal | None:
+        async with self.sessions() as session:
+            row = await session.scalar(
+                select(FallbackProposalRow).where(FallbackProposalRow.original_run_id == run_id)
+            )
+        return None if row is None else self._fallback_model(row)
+
+    async def approve_fallback(
+        self, proposal_id: str, continuation_run_id: str
+    ) -> FallbackProposal:
+        async with self.sessions() as session:
+            row = await session.get(FallbackProposalRow, proposal_id)
+            if row is None:
+                raise KeyError(f"unknown fallback proposal: {proposal_id}")
+            row.approved = True
+            row.continuation_run_id = continuation_run_id
+            await session.commit()
+        return self._fallback_model(row)
 
     @staticmethod
     def _subscription_model(row: SubscriptionRow) -> SubscriptionProfile:
@@ -284,6 +341,10 @@ class Database:
             used_amount=row.used_amount,
             max_concurrency=row.max_concurrency,
             cost_weight=row.cost_weight,
+            quota_reserve=row.quota_reserve,
+            quota_known=row.quota_known,
+            state=SubscriptionState(row.state),
+            requires_paid_approval=row.requires_paid_approval,
         )
 
     @staticmethod
@@ -300,12 +361,14 @@ class Database:
             finished_at=row.finished_at,
             exit_code=row.exit_code,
             error=row.error,
+            task_context_id=row.task_context_id,
+            continuation_of_run_id=row.continuation_of_run_id,
+            native_session_id=row.native_session_id,
+            process_id=row.process_id,
         )
 
     @staticmethod
     def _event_model(row: EventRow) -> NormalizedEvent:
-        import json
-
         return NormalizedEvent(
             id=row.id,
             run_id=row.run_id,
@@ -314,4 +377,17 @@ class Database:
             timestamp=row.timestamp,
             message=row.message,
             payload=json.loads(row.payload_json),
+        )
+
+    @staticmethod
+    def _fallback_model(row: FallbackProposalRow) -> FallbackProposal:
+        return FallbackProposal(
+            id=row.id,
+            original_run_id=row.original_run_id,
+            route=RouteCandidate.model_validate_json(row.route_json),
+            requires_approval=row.requires_approval,
+            approved=row.approved,
+            continuation_run_id=row.continuation_run_id,
+            reason=row.reason,
+            created_at=row.created_at,
         )

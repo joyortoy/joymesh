@@ -32,6 +32,7 @@ async def test_route_excludes_exhausted_subscription(mesh: JoyMesh, tmp_path: Pa
             billing_route=BillingRoute.API,
             monthly_limit=10,
             used_amount=10,
+            quota_known=True,
             cost_weight=0,
         )
     )
@@ -41,7 +42,7 @@ async def test_route_excludes_exhausted_subscription(mesh: JoyMesh, tmp_path: Pa
     exhausted = [
         candidate
         for candidate in preview.candidates
-        if "manual quota exhausted" in candidate.reasons
+        if "configured quota reserve reached" in candidate.reasons
     ]
     assert len(exhausted) == 1
     assert not exhausted[0].eligible

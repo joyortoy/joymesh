@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from joymesh.adapters import FakeHarnessAdapter, HarnessAdapter
+from joymesh.adapters import CodexAdapter, FakeHarnessAdapter, HarnessAdapter, OpenCodeAdapter
 from joymesh.models import HarnessDescriptor
 
 
 class AdapterRegistry:
     def __init__(self, adapters: Iterable[HarnessAdapter] | None = None) -> None:
         self._adapters: dict[str, HarnessAdapter] = {}
-        for adapter in adapters or (FakeHarnessAdapter(),):
+        for adapter in adapters or (
+            FakeHarnessAdapter(),
+            CodexAdapter(),
+            OpenCodeAdapter(),
+        ):
             self.register(adapter)
 
     def register(self, adapter: HarnessAdapter) -> None:
