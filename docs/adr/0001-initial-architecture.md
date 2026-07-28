@@ -1,0 +1,70 @@
+# ADR 0001: Initial JoyMesh architecture
+
+- Status: Accepted
+- Date: 2026-07-28
+
+## Context
+
+JoyMesh needs to expose a stable harness-neutral interface through a Python SDK,
+CLI, and local API. Native harness processes differ in installation detection,
+capabilities, command syntax, output, sessions, billing, and failure behavior.
+The first slice must prove the boundary without coupling the project to JoyCLI
+or prematurely implementing every target harness.
+
+## Decision
+
+Use Python 3.12 for the core runtime and public SDK.
+
+- Pydantic v2 defines the public protocol and validates API boundaries.
+- Harnesses implement a small `HarnessAdapter` interface and register by stable
+  harness identifier.
+- `asyncio` owns subprocess supervision and streaming I/O.
+- SQLAlchemy 2 with SQLite persists runs, normalized events, subscriptions, and
+  usage data; Alembic owns schema evolution.
+- FastAPI exposes versioned REST endpoints and server-sent events.
+- Typer exposes the same service layer as a local developer CLI.
+- Routing is a pure, deterministic function over capabilities, availability,
+  subscription policy, quota, concurrency, cost weight, and user preference.
+- A bundled fake adapter is the first complete integration and test fixture.
+- The reference dashboard is static HTML and JavaScript served by FastAPI, so
+  the Python package remains the only required build artifact.
+
+The SDK, CLI, and API call one application service. They do not parse native
+harness output or duplicate native command construction.
+
+## Alternatives considered
+
+### TypeScript core
+
+TypeScript would simplify a richer dashboard, but Python is a better fit for
+the requested SDK contract and agent ecosystem. A separate frontend can be
+introduced later without moving the runtime.
+
+### One process per API request
+
+This would simplify implementation but lose supervision, cancellation, and
+streaming. A long-lived local service owns active child processes instead.
+
+### Native output as the public protocol
+
+Passing through terminal output would leak harness-specific semantics to every
+consumer. Adapters normalize output into versioned events instead.
+
+### PTY-first execution
+
+PTYs are necessary for interactive harnesses, but the fake adapter is
+non-interactive. The shared runtime starts with pipe-based execution and keeps
+the adapter/runtime boundary suitable for a PTY transport in the Codex adapter
+increment.
+
+## Consequences
+
+- Consumers can integrate through the SDK, CLI, or API without native harness
+  knowledge.
+- SQLite supports a single local service well; multi-host operation is outside
+  the initial scope.
+- Active process handles are in memory, while run and event history survives
+  restarts.
+- A service restart marks no process as active; reconciliation is a follow-up.
+- Interactive PTY sessions, resume semantics, observed provider usage, and real
+  harness adapters remain deliberate later increments.
