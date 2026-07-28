@@ -26,3 +26,14 @@ def test_fake_adapter_normalizes_native_progress() -> None:
     assert event.type is EventType.HARNESS_PROGRESS
     assert event.message == "50%"
     assert event.payload["native_type"] == "progress"
+
+
+def test_capabilities_serialize_in_stable_order() -> None:
+    manifest = FakeHarnessAdapter().manifest
+
+    assert manifest.model_dump(mode="json")["capabilities"] == [
+        "file.read",
+        "file.write",
+        "shell",
+        "streaming",
+    ]

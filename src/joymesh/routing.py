@@ -30,9 +30,7 @@ class Router:
         for adapter in self.registry.list():
             harness_id = adapter.manifest.harness_id
             descriptor = detected[harness_id]
-            profiles: list[SubscriptionProfile | None] = list(
-                by_harness.get(harness_id, [])
-            )
+            profiles: list[SubscriptionProfile | None] = list(by_harness.get(harness_id, []))
             if not profiles:
                 profiles.append(None)
             for profile in profiles:
@@ -77,8 +75,7 @@ class Router:
             reasons.append("harness unavailable")
 
         missing = sorted(
-            capability.value
-            for capability in request.required_capabilities - capabilities
+            capability.value for capability in request.required_capabilities - capabilities
         )
         if missing:
             eligible = False

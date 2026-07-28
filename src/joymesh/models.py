@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 def utc_now() -> datetime:
@@ -62,6 +62,10 @@ class CapabilityManifest(BaseModel):
     supports_interactive: bool = False
     supports_resume: bool = False
     max_concurrency: int = Field(default=1, ge=1)
+
+    @field_serializer("capabilities")
+    def serialize_capabilities(self, capabilities: frozenset[Capability]) -> list[Capability]:
+        return sorted(capabilities, key=lambda capability: capability.value)
 
 
 class HarnessDescriptor(BaseModel):

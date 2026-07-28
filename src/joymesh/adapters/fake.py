@@ -82,9 +82,7 @@ class FakeHarnessAdapter(HarnessAdapter):
 
         native_type = native.get("type")
         event_type = (
-            EventType.HARNESS_PROGRESS
-            if native_type == "progress"
-            else EventType.HARNESS_OUTPUT
+            EventType.HARNESS_PROGRESS if native_type == "progress" else EventType.HARNESS_OUTPUT
         )
         return NormalizedEvent(
             run_id=run_id,

@@ -147,9 +147,7 @@ class Database:
         async with self.sessions() as session:
             rows = (
                 await session.scalars(
-                    select(SubscriptionRow).order_by(
-                        SubscriptionRow.harness_id, SubscriptionRow.id
-                    )
+                    select(SubscriptionRow).order_by(SubscriptionRow.harness_id, SubscriptionRow.id)
                 )
             ).all()
         return tuple(self._subscription_model(row) for row in rows)
@@ -237,9 +235,13 @@ class Database:
         return tuple(self._event_model(row) for row in rows)
 
     async def active_count(self, *, harness_id: str, subscription_id: str | None) -> int:
-        query = select(func.count()).select_from(RunRow).where(
-            RunRow.harness_id == harness_id,
-            RunRow.status.in_([RunStatus.QUEUED.value, RunStatus.RUNNING.value]),
+        query = (
+            select(func.count())
+            .select_from(RunRow)
+            .where(
+                RunRow.harness_id == harness_id,
+                RunRow.status.in_([RunStatus.QUEUED.value, RunStatus.RUNNING.value]),
+            )
         )
         if subscription_id is not None:
             query = query.where(RunRow.subscription_id == subscription_id)

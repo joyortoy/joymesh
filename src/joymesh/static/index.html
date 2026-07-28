@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>JoyMesh Console</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #f4f6f8;
+        color: #15202b;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; }
+      header {
+        background: #12212d;
+        color: #f8fbfd;
+        padding: 20px 28px;
+        border-bottom: 4px solid #18a57a;
+      }
+      header h1 { margin: 0; font-size: 22px; letter-spacing: 0; }
+      header p { margin: 6px 0 0; color: #b9cad4; font-size: 14px; }
+      main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      section {
+        background: #fff;
+        border: 1px solid #d7e0e5;
+        border-radius: 6px;
+        min-width: 0;
+        padding: 18px;
+      }
+      .wide { grid-column: 1 / -1; }
+      h2 { margin: 0 0 14px; font-size: 16px; }
+      label { display: block; margin: 12px 0 5px; font-size: 13px; font-weight: 650; }
+      input, textarea {
+        width: 100%;
+        border: 1px solid #afbec7;
+        border-radius: 4px;
+        padding: 9px 10px;
+        font: inherit;
+      }
+      textarea { min-height: 82px; resize: vertical; }
+      button {
+        margin-top: 12px;
+        border: 0;
+        border-radius: 4px;
+        background: #087d5c;
+        color: white;
+        padding: 9px 14px;
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      button.secondary { background: #344b5c; margin-left: 8px; }
+      pre {
+        margin: 0;
+        min-height: 120px;
+        overflow: auto;
+        background: #0d1820;
+        color: #d7e7ef;
+        border-radius: 4px;
+        padding: 12px;
+        max-width: 100%;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+      .status { min-height: 20px; margin: 10px 0 0; color: #4d626f; font-size: 13px; }
+      @media (max-width: 760px) {
+        .grid { grid-template-columns: 1fr; }
+        .wide { grid-column: auto; }
+        main { padding: 14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>JoyMesh Console</h1>
+      <p>Local harness discovery, deterministic routing, and normalized run events</p>
+    </header>
+    <main>
+      <div class="grid">
+        <section>
+          <h2>Harnesses</h2>
+          <button id="refresh">Refresh</button>
+          <pre id="harnesses">Loading...</pre>
+        </section>
+        <section>
+          <h2>Subscriptions</h2>
+          <button id="refresh-subscriptions">Refresh</button>
+          <pre id="subscriptions">Loading...</pre>
+        </section>
+        <section class="wide">
+          <h2>Route and run</h2>
+          <label for="task">Task</label>
+          <textarea id="task">Demonstrate the fake harness</textarea>
+          <label for="workspace">Workspace</label>
+          <input id="workspace" value=".">
+          <button id="preview">Preview route</button>
+          <button id="run" class="secondary">Run selected route</button>
+          <p class="status" id="status"></p>
+          <pre id="output">No route preview yet.</pre>
+        </section>
+      </div>
+    </main>
+    <script>
+      const api = "/api/v1";
+      let selectedRoute = null;
+
+      const show = (id, value) => {
+        document.getElementById(id).textContent = JSON.stringify(value, null, 2);
+      };
+
+      async function request(path, options) {
+        const response = await fetch(api + path, options);
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.detail || response.statusText);
+        return body;
+      }
+
+      async function loadHarnesses() {
+        show("harnesses", await request("/harnesses"));
+      }
+
+      async function loadSubscriptions() {
+        show("subscriptions", await request("/subscriptions"));
+      }
+
+      async function preview() {
+        const payload = {
+          task: document.getElementById("task").value,
+          workspace: document.getElementById("workspace").value
+        };
+        const result = await request("/routes/preview", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        selectedRoute = result.selected;
+        show("output", result);
+        document.getElementById("status").textContent =
+          selectedRoute ? `Selected ${selectedRoute.harness_id}` : "No eligible route";
+      }
+
+      async function run() {
+        if (!selectedRoute) await preview();
+        if (!selectedRoute) return;
+        const payload = {
+          task: document.getElementById("task").value,
+          workspace: document.getElementById("workspace").value,
+          route: selectedRoute
+        };
+        const created = await request("/runs", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        const output = document.getElementById("output");
+        output.textContent = "";
+        document.getElementById("status").textContent = `Run ${created.id}`;
+        const stream = new EventSource(`${api}/runs/${created.id}/events`);
+        stream.onmessage = event => {
+          const normalized = JSON.parse(event.data);
+          output.textContent += `${normalized.sequence} ${normalized.type}: ${normalized.message || ""}\n`;
+        };
+        const eventTypes = [
+          "run.queued", "run.started", "harness.output", "harness.progress",
+          "run.succeeded", "run.failed", "run.cancelled"
+        ];
+        eventTypes.forEach(type => stream.addEventListener(type, event => {
+          const normalized = JSON.parse(event.data);
+          output.textContent += `${normalized.sequence} ${normalized.type}: ${normalized.message || ""}\n`;
+          if (["run.succeeded", "run.failed", "run.cancelled"].includes(type)) {
+            document.getElementById("status").textContent = type;
+            stream.close();
+          }
+        }));
+      }
+
+      document.getElementById("refresh").addEventListener("click", () => loadHarnesses().catch(report));
+      document.getElementById("refresh-subscriptions").addEventListener("click", () => loadSubscriptions().catch(report));
+      document.getElementById("preview").addEventListener("click", () => preview().catch(report));
+      document.getElementById("run").addEventListener("click", () => run().catch(report));
+
+      function report(error) {
+        document.getElementById("status").textContent = error.message;
+      }
+
+      loadHarnesses().catch(report);
+      loadSubscriptions().catch(report);
+    </script>
+  </body>
+</html>
