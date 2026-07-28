@@ -8,8 +8,9 @@ tracking subscriptions and quota, and selecting deterministic routes.
 JoyMesh is independent of JoyCLI and contains no application-specific planning,
 mission decomposition, private workflows, or proprietary data.
 
-> **Status:** initial vertical slice under active development. The fake harness
-> is the only adapter in the first release.
+> **Status:** initial vertical slice under active development. The bundled fake
+> adapter is supported. Codex and OpenCode adapters are implemented but remain
+> experimental by default until release conformance is certified.
 
 ## Architecture
 
@@ -18,7 +19,8 @@ Typer, and asyncio. JoyMesh is backend infrastructure and does not include an
 end-user frontend.
 
 See [ADR 0001](docs/adr/0001-initial-architecture.md) for the decision record,
-tradeoffs, and current limitations.
+tradeoffs, and current limitations. See
+[Adapter conformance](docs/adapter-conformance.md) for the support gate.
 
 ## Development
 
@@ -34,20 +36,18 @@ uv run mypy src
 ## Python SDK
 
 ```python
-from joymesh import JoyMesh
+from joymesh import JoyMesh, RunRequest
 
 mesh = JoyMesh()
 
-routes = await mesh.preview_routes(
+request = RunRequest(
     task="Implement authentication tests",
     workspace="/path/to/repository",
 )
 
-run = await mesh.run(
-    task="Implement authentication tests",
-    workspace="/path/to/repository",
-    route=routes.selected,
-)
+route = await mesh.resolve_route(request=request, preferred_harness="codex")
+run = await mesh.start_run(request=request, route=route)
+result = await mesh.wait_for_run(run.id)
 ```
 
 Call `await mesh.close()` during application shutdown.
@@ -82,6 +82,9 @@ POST /api/v1/runs
 GET  /api/v1/runs/{id}
 GET  /api/v1/runs/{id}/events
 POST /api/v1/runs/{id}/cancel
+GET  /api/v1/runs/{id}/usage
+GET  /api/v1/runs/{id}/fallback
+POST /api/v1/fallbacks/{id}/approve
 ```
 
 The events endpoint uses server-sent events and emits only normalized JoyMesh
@@ -89,9 +92,9 @@ protocol objects.
 
 ## Current limitations
 
-- Only the deterministic fake adapter is implemented.
-- Subprocess streaming uses stdout/stderr pipes; interactive PTY sessions and
-  session resume are deferred to the first real harness adapter.
+- Codex and OpenCode use non-interactive JSONL modes; interactive PTY sessions
+  are not exposed.
 - Quotas are manually configured, not observed from providers.
 - SQLite targets one local JoyMesh service; distributed supervision is out of
   scope for the initial slice.
+- FireConnect detection is not implemented yet.

@@ -25,7 +25,9 @@ Use Python 3.12 for the core runtime and public SDK.
 - Typer exposes the same service layer as a local developer CLI.
 - Routing is a pure, deterministic function over capabilities, availability,
   subscription policy, quota, concurrency, cost weight, and user preference.
-- A bundled fake adapter is the first complete integration and test fixture.
+- A bundled fake adapter, Codex adapter, and OpenCode adapter all implement one
+  launch/normalization contract.
+- A reusable conformance suite gates the `supported` status for every adapter.
 - JoyMesh has no frontend; the Python package is the only build artifact.
 
 The SDK, CLI, and API call one application service. They do not parse native
@@ -65,5 +67,7 @@ increment.
 - Active process handles are in memory, while run and event history survives
   restarts.
 - A service restart marks no process as active; reconciliation is a follow-up.
-- Interactive PTY sessions, resume semantics, observed provider usage, and real
-  harness adapters remain deliberate later increments.
+- Non-interactive Codex and OpenCode sessions support native identity, resume,
+  normalized usage, cancellation, timeout, and process-tree cleanup.
+- Interactive PTY sessions and observed provider quota APIs remain later
+  increments.
