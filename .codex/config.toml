@@ -1,0 +1,6 @@
+# Shared defaults for trusted JoyMesh checkouts.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
