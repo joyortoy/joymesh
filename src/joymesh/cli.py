@@ -149,6 +149,37 @@ def connector_verify_auth(
     _print(_run(operate))
 
 
+@connector_app.command("live-test")
+def connector_live_test(
+    connector_id: str,
+    profile: str = typer.Option("read-only", "--profile"),
+    control_plane_url: str = typer.Option("http://127.0.0.1:8787", "--control-plane-url"),
+    node_id: str = typer.Option(..., "--node-id"),
+    enable_routing: bool = typer.Option(
+        False, "--enable-routing", help="Require explicit confirmation to enable routing"
+    ),
+) -> None:
+    """Guide a production live Cursor acceptance run without mocking evidence."""
+
+    from joymesh.connectors.live_test import run_cursor_live_test
+    from joymesh.control_plane.security import assert_live_production_config
+
+    if connector_id != "cursor":
+        raise typer.BadParameter("live-test currently supports only cursor")
+    if profile != "read-only":
+        raise typer.BadParameter("only --profile read-only is supported")
+    config = assert_live_production_config()
+    typer.echo(json.dumps({"runtime": config}, indent=2, sort_keys=True))
+    result = run_cursor_live_test(
+        control_plane_url=control_plane_url,
+        node_id=node_id,
+        enable_routing=enable_routing,
+    )
+    _print(result)
+    if result.get("status") != "ready" and result.get("status") != "routing_disabled":
+        raise typer.Exit(2)
+
+
 def _run[T](operation: Callable[[JoyMesh], Awaitable[T]]) -> T:
     async def execute() -> T:
         mesh = JoyMesh()
