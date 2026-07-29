@@ -58,6 +58,8 @@ from joymesh.persistence import Database
 from joymesh.registry import AdapterRegistry
 from joymesh.routing import Router
 from joymesh.runtime import HarnessRuntime, HarnessTimeoutError
+from joymesh.runtime_v1.service import RuntimeService
+from joymesh.runtime_v1.store import RuntimeStore
 from joymesh.workspace import resolve_workspace
 
 TERMINAL_STATUSES = {
@@ -84,6 +86,7 @@ class JoyMesh:
         self.connector_catalogue = ConnectorCatalogue.builtins()
         self.connector_planner = ConnectorPlanner(self.connector_catalogue)
         self._connector_lifecycle: ConnectorLifecycleCoordinator | None = None
+        self._runtime_service: RuntimeService | None = None
         self.registry = registry or AdapterRegistry()
         self.runtime = runtime or HarnessRuntime()
         self.router = Router(self.registry, self.database)
@@ -103,6 +106,9 @@ class JoyMesh:
             if not self._initialized:
                 await self.database.initialize()
                 self._connector_lifecycle = build_coordinator(self.database, self.connector_planner)
+                self._runtime_service = RuntimeService(
+                    store=RuntimeStore(self.database),
+                )
                 self._initialized = True
 
     @property
@@ -110,6 +116,12 @@ class JoyMesh:
         if self._connector_lifecycle is None:
             raise RuntimeError("JoyMesh is not initialized")
         return self._connector_lifecycle
+
+    @property
+    def runtime_service(self) -> RuntimeService:
+        if self._runtime_service is None:
+            raise RuntimeError("JoyMesh is not initialized")
+        return self._runtime_service
 
     async def close(self) -> None:
         for run_id in await self.runtime.active_run_ids():

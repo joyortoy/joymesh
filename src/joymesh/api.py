@@ -973,6 +973,169 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Fallback not found") from exc
 
+    # --- JoyMesh Runtime v1 (capability-first) ---
+
+    @app.post("/runtime/tasks")
+    async def create_runtime_task(body: dict[str, object]) -> dict[str, object]:
+        from joymesh.runtime_v1.models import CreateRuntimeTaskBody
+
+        try:
+            request = CreateRuntimeTaskBody.model_validate(body)
+            task = await service.runtime_service.create_task(request, user_id="browser")
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return task.model_dump(mode="json")
+
+    @app.get("/runtime/tasks/{task_id}")
+    async def get_runtime_task(task_id: str) -> dict[str, object]:
+        try:
+            task = await service.runtime_service.store.get_task(task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="runtime task not found") from exc
+        return task.model_dump(mode="json")
+
+    @app.get("/runtime/tasks/{task_id}/events")
+    async def runtime_task_events(task_id: str) -> list[dict[str, object]]:
+        return list(service.runtime_service.store.events.get(task_id, []))
+
+    @app.post("/runtime/tasks/{task_id}/approve")
+    async def approve_runtime_task(task_id: str) -> dict[str, object]:
+        try:
+            task = await service.runtime_service.approve_task(task_id)
+        except (KeyError, PermissionError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return task.model_dump(mode="json")
+
+    @app.post("/runtime/tasks/{task_id}/cancel")
+    async def cancel_runtime_task(task_id: str) -> dict[str, object]:
+        try:
+            task = await service.runtime_service.cancel_task(task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return task.model_dump(mode="json")
+
+    @app.post("/runtime/tasks/{task_id}/retry")
+    async def retry_runtime_task(task_id: str) -> dict[str, object]:
+        from joymesh.runtime_v1.models import FailureClass
+
+        try:
+            task = await service.runtime_service.retry_task(
+                task_id, failure_class=FailureClass.OFFER_TIMEOUT
+            )
+        except (KeyError, PermissionError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return task.model_dump(mode="json")
+
+    @app.get("/runtime/tasks/{task_id}/candidates")
+    async def runtime_task_candidates(task_id: str) -> list[dict[str, object]]:
+        candidates = service.runtime_service.store.candidates.get(task_id, [])
+        return [
+            {
+                "node_id": item.node_id,
+                "connector_id": item.connector_id,
+                "policy_profile": item.policy_profile,
+                "certified_capabilities": sorted(item.certified_capabilities),
+                "score": item.score,
+                "eligible": item.eligible,
+                "rejection_reasons": list(item.rejection_reasons),
+                "scoring_factors": dict(item.scoring_factors),
+            }
+            for item in candidates
+        ]
+
+    @app.get("/runtime/tasks/{task_id}/attempts")
+    async def runtime_task_attempts(task_id: str) -> list[dict[str, object]]:
+        attempts = service.runtime_service.store.attempts.get(task_id, [])
+        return [
+            {
+                "attempt_id": item.attempt_id,
+                "attempt_number": item.attempt_number,
+                "node_id": item.node_id,
+                "connector_id": item.connector_id,
+                "lease_id": item.lease_id,
+                "execution_origin": item.execution_origin.value,
+                "status": item.status,
+                "failure_class": item.failure_class.value if item.failure_class else None,
+                "retry_safe": item.retry_safe,
+            }
+            for item in attempts
+        ]
+
+    @app.get("/runtime/tasks/{task_id}/lease")
+    async def runtime_task_lease(task_id: str) -> dict[str, object] | None:
+        lease = service.runtime_service.leases.active_lease(task_id)
+        if lease is None:
+            return None
+        return {
+            "lease_id": lease.lease_id,
+            "task_id": lease.task_id,
+            "node_id": lease.node_id,
+            "connector_id": lease.connector_id,
+            "attempt_id": lease.attempt_id,
+            "fencing_token": lease.fencing_token,
+            "status": lease.status.value,
+            "expires_at": lease.expires_at.isoformat(),
+        }
+
+    @app.get("/runtime/tasks/{task_id}/audit")
+    async def runtime_task_audit(task_id: str) -> list[dict[str, object]]:
+        return [
+            {
+                "event_id": item.event_id,
+                "event_type": item.event_type,
+                "payload": dict(item.payload),
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in service.runtime_service.store.audits
+            if item.task_id == task_id
+        ]
+
+    @app.get("/runtime/capabilities")
+    async def runtime_capabilities() -> list[dict[str, object]]:
+        return service.runtime_service.list_capabilities()
+
+    @app.get("/runtime/policies")
+    async def runtime_policies() -> list[dict[str, object]]:
+        return service.runtime_service.list_policies()
+
+    @app.get("/runtime/policies/{policy_id}")
+    async def runtime_policy(policy_id: str) -> dict[str, object]:
+        try:
+            profile = service.runtime_service.policy.get(policy_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "profile_id": profile.profile_id,
+            "description": profile.description,
+            "allowed": sorted(profile.allowed),
+            "denied": sorted(profile.denied),
+            "require_node_attested": profile.require_node_attested,
+            "enabled": profile.enabled,
+        }
+
+    @app.get("/runtime/health")
+    async def runtime_health() -> dict[str, object]:
+        return service.runtime_service.health()
+
+    @app.get("/runtime/metrics")
+    async def runtime_metrics() -> dict[str, int]:
+        return service.runtime_service.metrics.snapshot()
+
+    @app.get("/workspaces/{workspace_id}/placements")
+    async def workspace_placements(workspace_id: str) -> list[dict[str, object]]:
+        placements = service.runtime_service.store.placements.get(workspace_id, [])
+        return [
+            {
+                "workspace_id": item.workspace_id,
+                "node_id": item.node_id,
+                "local_path": item.local_path if item.expose_path else None,
+                "fingerprint": item.fingerprint,
+                "writable": item.writable,
+                "last_verified_at": item.last_verified_at.isoformat(),
+            }
+            for item in placements
+        ]
+
     return app
 
 

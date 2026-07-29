@@ -10,6 +10,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import joymesh.control_plane.persistence  # noqa: F401
+import joymesh.runtime_v1.store  # noqa: F401
 from joymesh.persistence import Base
 
 config = context.config
