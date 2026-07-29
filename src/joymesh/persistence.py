@@ -147,6 +147,11 @@ class Database:
         self._event_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
+        # Import model declarations before materialising metadata. The import is
+        # intentionally local to avoid coupling legacy SDK consumers to the
+        # browser control-plane package at module import time.
+        import joymesh.control_plane.persistence  # noqa: F401
+
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
             await connection.run_sync(_upgrade_legacy_sqlite_schema)

@@ -132,6 +132,25 @@ class AuthenticationMethod(BaseModel):
     interactive: bool = True
 
 
+class OnboardingMetadata(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    description: str = ""
+    recommended_for: tuple[str, ...] = ()
+    setup_difficulty: str = "moderate"
+    installation_methods: tuple[str, ...] = ()
+    authentication_modes: tuple[str, ...] = ()
+    subscription_or_funding_modes: tuple[str, ...] = ()
+    can_install_automatically: bool = False
+    can_verify_subscription: bool = False
+    certification_cost: str = "unknown"
+    requires_paid_inference: bool = False
+    default_paid_route_policy: str = "ask"
+    fireconnect_compatible: bool = False
+    supported_platforms: tuple[str, ...] = ()
+    known_limitations: tuple[str, ...] = ()
+
+
 class HarnessDefinition(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -163,6 +182,7 @@ class HarnessDefinition(BaseModel):
     maturity: AdapterMaturity = AdapterMaturity.EXPERIMENTAL
     adapter_certification: CertificationState = CertificationState.UNCERTIFIED_ADAPTER
     unsupported_reason: str | None = None
+    onboarding: OnboardingMetadata = Field(default_factory=OnboardingMetadata)
 
 
 class DiscoveryEvidence(BaseModel):
