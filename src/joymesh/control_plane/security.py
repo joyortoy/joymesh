@@ -191,6 +191,40 @@ def inline_connector_node_enabled() -> bool:
     return enabled
 
 
+def mock_certify_enabled() -> bool:
+    return os.environ.get("JOYMESH_MOCK_CERTIFY", "0") == "1"
+
+
+def assert_live_production_config() -> dict[str, object]:
+    """Fail clearly when the live Cursor acceptance run is misconfigured."""
+
+    env = os.environ.get("JOYMESH_ENV", "development")
+    inline_raw = os.environ.get("JOYMESH_INLINE_CONNECTOR_NODE")
+    mock_raw = os.environ.get("JOYMESH_MOCK_CERTIFY")
+    if not production_mode():
+        raise RuntimeError(f"live acceptance requires JOYMESH_ENV=production (got {env!r})")
+    if inline_raw is None or inline_raw != "0":
+        raise RuntimeError(
+            f"live acceptance requires JOYMESH_INLINE_CONNECTOR_NODE=0 (got {inline_raw!r})"
+        )
+    if mock_raw is not None and mock_raw != "":
+        raise RuntimeError(
+            f"live acceptance requires JOYMESH_MOCK_CERTIFY to be unset (got {mock_raw!r})"
+        )
+    if inline_connector_node_enabled():
+        raise RuntimeError("inline connector node execution must be disabled")
+    if mock_certify_enabled():
+        raise RuntimeError("mock certification must be disabled")
+    return {
+        "JOYMESH_ENV": env,
+        "JOYMESH_INLINE_CONNECTOR_NODE": inline_raw,
+        "JOYMESH_MOCK_CERTIFY": None,
+        "production_mode": True,
+        "inline_enabled": False,
+        "mock_certify_enabled": False,
+    }
+
+
 def _encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 
