@@ -228,6 +228,10 @@ class ConnectorTaskEventIngestor:
             )
         )
         if message.type is NodeProtocolMessageType.TASK_ACCEPTED:
+            if task.status is ConnectorTaskStatus.ACCEPTED_BY_NODE:
+                return task
+            if task.status is ConnectorTaskStatus.RUNNING:
+                return task
             return await self.store.transition_task(
                 task_id,
                 expected_version=task.version,
@@ -235,6 +239,8 @@ class ConnectorTaskEventIngestor:
                 started_at=utc_now(),
             )
         if message.type is NodeProtocolMessageType.TASK_STARTED:
+            if task.status is ConnectorTaskStatus.RUNNING:
+                return task
             return await self.store.transition_task(
                 task_id,
                 expected_version=task.version,
@@ -249,6 +255,29 @@ class ConnectorTaskEventIngestor:
         if message.type is NodeProtocolMessageType.TASK_EVIDENCE:
             evidence_payload = payload.get("evidence", {})
             if isinstance(evidence_payload, dict):
+                from joymesh.connectors.lifecycle_models import (
+                    ConnectorExecutionOrigin,
+                    EvidenceTrustLevel,
+                )
+
+                trust_raw = str(
+                    evidence_payload.get("trust_level")
+                    or (evidence_payload.get("details") or {}).get("trust_level")
+                    or EvidenceTrustLevel.NODE_ATTESTED.value
+                )
+                origin_raw = str(
+                    evidence_payload.get("execution_origin")
+                    or (evidence_payload.get("details") or {}).get("execution_origin")
+                    or ConnectorExecutionOrigin.REMOTE_NODE.value
+                )
+                try:
+                    trust = EvidenceTrustLevel(trust_raw)
+                except ValueError:
+                    trust = EvidenceTrustLevel.NODE_ATTESTED
+                try:
+                    origin = ConnectorExecutionOrigin(origin_raw)
+                except ValueError:
+                    origin = ConnectorExecutionOrigin.REMOTE_NODE
                 await self.store.record_evidence(
                     ConnectorEvidence(
                         evidence_id=str(evidence_payload.get("evidence_id", uuid4())),
@@ -269,6 +298,8 @@ class ConnectorTaskEventIngestor:
                         details=dict(evidence_payload.get("details") or {}),
                         created_at=utc_now(),
                         expires_at=None,
+                        trust_level=trust,
+                        execution_origin=origin,
                     )
                 )
             return task

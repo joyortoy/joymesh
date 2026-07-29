@@ -84,6 +84,18 @@ class RecommendedConnectorAction(StrEnum):
     NONE = "none"
 
 
+class ConnectorExecutionOrigin(StrEnum):
+    REMOTE_NODE = "remote_node"
+    INLINE_DEVELOPMENT = "inline_development"
+    MOCK_TEST = "mock_test"
+
+
+class EvidenceTrustLevel(StrEnum):
+    MOCK = "mock"
+    DEVELOPMENT = "development"
+    NODE_ATTESTED = "node_attested"
+
+
 TERMINAL_TASK_STATUSES = frozenset(
     {
         ConnectorTaskStatus.SUCCEEDED,
@@ -108,6 +120,20 @@ ACTIVE_TASK_STATUSES = frozenset(
 
 
 @dataclass(frozen=True)
+class CertificationScope:
+    profile: str
+    structured_execution: bool
+    repository_read: bool
+    repository_write: bool
+    shell_commands: bool
+    session_resume: bool
+    network_access: bool
+    event_streaming: bool = True
+    workspace_containment: bool = True
+    cancellation: bool = True
+
+
+@dataclass(frozen=True)
 class ConnectorEvidence:
     evidence_id: str
     node_id: str
@@ -123,6 +149,8 @@ class ConnectorEvidence:
     details: Mapping[str, Any]
     created_at: datetime
     expires_at: datetime | None
+    trust_level: EvidenceTrustLevel = EvidenceTrustLevel.DEVELOPMENT
+    execution_origin: ConnectorExecutionOrigin = ConnectorExecutionOrigin.INLINE_DEVELOPMENT
 
 
 class ConnectorReadiness(BaseModel):
@@ -139,6 +167,9 @@ class ConnectorReadiness(BaseModel):
     catalogue_maturity: str
     installed_version: str | None = None
     executable_path: str | None = None
+    routing_profile: str | None = None
+    evidence_trust_level: EvidenceTrustLevel | None = None
+    execution_origin: ConnectorExecutionOrigin | None = None
     updated_at: datetime = Field(default_factory=utc_now)
 
 

@@ -259,6 +259,8 @@ class ConnectorEvidenceRow(Base):
     harness_version: Mapped[str | None] = mapped_column(String(300))
     provider_mode: Mapped[str | None] = mapped_column(String(100))
     details_json: Mapped[str] = mapped_column(Text, default="{}")
+    trust_level: Mapped[str] = mapped_column(String(40), default="development")
+    execution_origin: Mapped[str] = mapped_column(String(40), default="inline_development")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

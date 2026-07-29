@@ -220,6 +220,8 @@ class ConnectorLifecycleStore:
             harness_version=evidence.harness_version,
             provider_mode=evidence.provider_mode,
             details_json=json.dumps(dict(evidence.details), sort_keys=True),
+            trust_level=evidence.trust_level.value,
+            execution_origin=evidence.execution_origin.value,
             created_at=evidence.created_at,
             expires_at=evidence.expires_at,
         )
@@ -252,6 +254,15 @@ class ConnectorLifecycleStore:
                     "catalogue_maturity": readiness.catalogue_maturity,
                     "installed_version": readiness.installed_version,
                     "executable_path": readiness.executable_path,
+                    "routing_profile": readiness.routing_profile,
+                    "evidence_trust_level": (
+                        readiness.evidence_trust_level.value
+                        if readiness.evidence_trust_level
+                        else None
+                    ),
+                    "execution_origin": (
+                        readiness.execution_origin.value if readiness.execution_origin else None
+                    ),
                 },
                 sort_keys=True,
             ),
@@ -365,6 +376,10 @@ class ConnectorLifecycleStore:
                     "connector_revision": row.connector_revision,
                     "harness_version": row.harness_version,
                     "detail": details.get("detail"),
+                    "trust_level": row.trust_level,
+                    "execution_origin": row.execution_origin,
+                    "evidence_id": row.id,
+                    "executable_fingerprint": row.executable_fingerprint,
                 }
             if row.executable_fingerprint and executable_fingerprint is None:
                 executable_fingerprint = row.executable_fingerprint
