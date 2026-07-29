@@ -1,0 +1,13 @@
+{
+  "revision":"2026-07-29.1","harness_id":"amp","display_name":"Amp","vendor":"Sourcegraph",
+  "description":"Terminal coding agent with execute mode and streaming JSON.","homepage_domain":"ampcode.com","category":"terminal","maturity":"authenticatable",
+  "executable_names":["amp"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux"],
+  "installation_options":[{"id":"homebrew","mechanism":"homebrew","platforms":["darwin","linux"],"argv":["brew","install","ampcode/tap/ampcode"],"package_source":"homebrew:ampcode/tap/ampcode"}],
+  "upgrade_options":[{"id":"native","mechanism":"native","platforms":["darwin","linux"],"argv":["amp","update"],"package_source":"amp-updater"}],
+  "authentication_methods":[{"id":"amp-account","kind":"browser_oauth","interactive":true},{"id":"api-key","kind":"environment_variable","environment_variables":["AMP_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"amp","display_name":"Amp account","funding_source":"subscription","authentication_method":"browser_oauth","usage_reporting_supported":true,"separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["amp","--execute","--stream-json","{task}"],"protocol":"stream_json"},
+  "adapter_id":"amp","certification_profile_id":"amp-v1",
+  "official_source":{"documentation_source":"https://ampcode.com/manual","package_source":"homebrew:ampcode/tap/ampcode","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"amp-homebrew-execute-stream-json-v1"}
+}

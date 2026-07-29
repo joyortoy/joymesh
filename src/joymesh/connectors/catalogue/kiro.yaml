@@ -1,0 +1,12 @@
+{
+  "revision":"2026-07-29.1","harness_id":"kiro","display_name":"Kiro CLI","vendor":"Amazon Web Services",
+  "description":"Kiro terminal coding agent with documented headless mode.","homepage_domain":"kiro.dev","category":"enterprise","maturity":"authenticatable",
+  "executable_names":["kiro-cli"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":false,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"official-script-review","mechanism":"official_script","platforms":["darwin","linux"],"package_source":"cli.kiro.dev","official_origin":"https://cli.kiro.dev/install","digest_required":true,"executable":false}],
+  "authentication_methods":[{"id":"kiro","kind":"browser_oauth","login_argv":["kiro-cli","login"]},{"id":"api-key","kind":"environment_variable","environment_variables":["KIRO_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"kiro","display_name":"Kiro subscription","funding_source":"subscription","authentication_method":"browser_oauth_or_api_key","separately_billed":false}],
+  "execution":{"mode":"text_headless","argv":["kiro-cli","chat","--no-interactive","{task}"],"resume_argv":["kiro-cli","chat","--no-interactive","--resume-id","{session_id}","{task}"],"protocol":"text"},
+  "adapter_id":"kiro","certification_profile_id":"kiro-v2","experimental":true,
+  "official_source":{"documentation_source":"https://kiro.dev/docs/cli/reference/cli-commands/","verified_at":"2026-07-29T00:00:00Z","verified_version":"2.x","installation_method_fingerprint":"kiro-cli-official-script-headless-v2"}
+}

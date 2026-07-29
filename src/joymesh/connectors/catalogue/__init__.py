@@ -1,0 +1,1 @@
+"""Packaged connector catalogue resources."""

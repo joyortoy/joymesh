@@ -1,0 +1,15 @@
+{
+  "revision":"2026-07-29.1","harness_id":"openhands","display_name":"OpenHands CLI","vendor":"OpenHands",
+  "description":"Open-source coding agent CLI with headless JSONL and ACP modes.","homepage_domain":"openhands.dev","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["openhands"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","wsl"],
+  "installation_options":[{"id":"uv","mechanism":"uv","platforms":["darwin","linux","wsl"],"argv":["uv","tool","install","openhands","--python","3.12"],"package_source":"pypi:openhands"}],
+  "upgrade_options":[{"id":"uv","mechanism":"uv","platforms":["darwin","linux","wsl"],"argv":["uv","tool","upgrade","openhands"],"package_source":"pypi:openhands"}],
+  "uninstall_options":[{"id":"uv","mechanism":"uv","platforms":["darwin","linux","wsl"],"argv":["uv","tool","uninstall","openhands"],"package_source":"pypi:openhands"}],
+  "prerequisites":[{"kind":"runtime","name":"Python","minimum_version":"3.12"},{"kind":"package_manager","name":"uv"}],
+  "authentication_methods":[{"id":"openhands-cloud","kind":"browser_oauth","login_argv":["openhands","login"]},{"id":"provider","kind":"environment_variable","environment_variables":["LLM_API_KEY","LLM_MODEL","LLM_BASE_URL"],"interactive":false}],
+  "provider_modes":[{"provider_id":"openhands","display_name":"OpenHands Cloud","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false},{"provider_id":"configured","display_name":"Configured LLM provider","funding_source":"api","authentication_method":"api_key","separately_billed":true},{"provider_id":"local","display_name":"Local model","funding_source":"local","authentication_method":"endpoint","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["openhands","--headless","--json","--task","{task}"],"resume_argv":["openhands","--headless","--json","--resume","{session_id}","--task","{task}"],"protocol":"jsonl"},
+  "adapter_id":"openhands","certification_profile_id":"openhands-v1",
+  "official_source":{"documentation_source":"https://docs.openhands.dev/openhands/usage/cli/command-reference","source_repository":"https://github.com/OpenHands/OpenHands","package_source":"pypi:openhands","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"openhands-uv-python312-headless-v1"}
+}

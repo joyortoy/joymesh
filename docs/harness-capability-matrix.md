@@ -1,20 +1,27 @@
 # Generated harness capability matrix
 
-This file is generated from `builtin_catalogue()`; edit the catalogue, not this table.
+This file is generated from the versioned connector catalogue; edit its YAML, not this table.
 
 | Harness | Headless | Protocol | Sessions | Usage | Sandbox | Maturity |
 | --- | --- | --- | --- | --- | --- | --- |
-| `aider` | supported | text | unsupported | unknown | unsupported | experimental |
-| `amazon-q` | unsupported | none | unknown | unknown | unknown | discovery_only |
-| `claude-code` | supported | stream_json | supported | supported | supported | beta |
-| `cline` | supported | json | unknown | unknown | supported | experimental |
-| `codex` | supported | jsonl | supported | supported | supported | beta |
-| `continue` | supported | text | supported | unknown | supported | experimental |
+| `aider` | supported | text | unsupported | unknown | unknown | experimental |
+| `amazon-q` | unsupported | none | unsupported | unknown | unknown | discovery_only |
+| `amp` | supported | stream_json | supported | unknown | unknown | experimental |
+| `claude-code` | supported | stream_json | supported | unknown | unknown | experimental |
+| `cline` | supported | jsonl | supported | unknown | unknown | experimental |
+| `codex` | supported | jsonl | supported | unknown | supported | beta |
+| `continue` | supported | text | supported | unknown | unknown | experimental |
+| `cursor` | supported | stream_json | unsupported | unknown | unknown | discovery_only |
+| `factory-droid` | supported | jsonl | supported | unknown | unknown | experimental |
 | `fake` | supported | jsonl | supported | supported | unknown | stable |
-| `gemini-cli` | supported | stream_json | supported | supported | supported | beta |
-| `github-copilot` | supported | jsonl | supported | unknown | supported | experimental |
-| `goose` | supported | text | unknown | unknown | unknown | experimental |
-| `opencode` | supported | jsonl | supported | supported | unknown | beta |
-| `pi` | supported | jsonl | supported | supported | unknown | experimental |
-| `qwen-code` | supported | stream_json | supported | supported | supported | experimental |
-| `roo-code` | experimental | jsonl | experimental | unknown | unknown | experimental |
+| `gemini-cli` | supported | stream_json | supported | unknown | unknown | experimental |
+| `github-copilot` | supported | json | supported | unknown | unknown | experimental |
+| `goose` | supported | text | unsupported | unknown | unknown | discovery_only |
+| `kiro` | supported | text | supported | unknown | unknown | experimental |
+| `opencode` | supported | jsonl | supported | unknown | unknown | beta |
+| `openhands` | supported | jsonl | supported | unknown | unknown | experimental |
+| `pi` | supported | jsonl | supported | unknown | unknown | experimental |
+| `qwen-code` | supported | stream_json | supported | unknown | unknown | experimental |
+| `roo-code` | unsupported | none | unsupported | unknown | unknown | discovery_only |
+| `warp` | supported | jsonl | unsupported | unknown | unknown | experimental |
+| `windsurf` | unsupported | none | unsupported | unknown | unknown | discovery_only |

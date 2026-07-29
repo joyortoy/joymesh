@@ -1,0 +1,24 @@
+{
+  "revision": "2026-07-29.1", "harness_id": "codex", "display_name": "OpenAI Codex CLI",
+  "vendor": "OpenAI", "description": "OpenAI coding agent CLI with structured non-interactive execution.",
+  "homepage_domain": "openai.com", "category": "terminal", "maturity": "adapter_conformant",
+  "executable_names": ["codex"], "remote_execution_supported": true, "interactive_execution_supported": true,
+  "non_interactive_execution_supported": true, "structured_output_supported": true, "streaming_output_supported": true,
+  "session_resume_supported": true, "supported_platforms": ["darwin", "linux", "win32"],
+  "installation_options": [{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","@openai/codex"],"package_source":"npm:@openai/codex"}],
+  "upgrade_options": [{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","update","--global","@openai/codex"],"package_source":"npm:@openai/codex"}],
+  "uninstall_options": [{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@openai/codex"],"package_source":"npm:@openai/codex"}],
+  "prerequisites": [{"kind":"runtime","name":"Node.js","required":true}],
+  "authentication_methods": [
+    {"id":"chatgpt","kind":"browser_oauth","login_argv":["codex","login"],"status_argv":["codex","login","status"]},
+    {"id":"api-key","kind":"environment_variable","environment_variables":["OPENAI_API_KEY"],"interactive":false}
+  ],
+  "provider_modes": [
+    {"provider_id":"openai-subscription","display_name":"ChatGPT subscription","funding_source":"subscription","authentication_method":"browser_oauth","usage_reporting_supported":true,"separately_billed":false},
+    {"provider_id":"openai-api","display_name":"OpenAI API","funding_source":"api","authentication_method":"api_key","usage_reporting_supported":true,"separately_billed":true}
+  ],
+  "capabilities": {"read_files":{"declared":true,"observed":true},"write_files":{"declared":true,"observed":true},"structured_output":{"declared":true,"observed":true},"session_resume":{"declared":true,"observed":true},"sandbox_mode":{"declared":true,"observed":true}},
+  "execution": {"mode":"structured_headless","argv":["codex","exec","--json","{task}"],"resume_argv":["codex","exec","resume","{session_id}","{task}"],"protocol":"jsonl"},
+  "adapter_id": "codex", "certification_profile_id": "codex-v1", "experimental": true,
+  "official_source": {"documentation_source":"https://developers.openai.com/codex/cli/reference/","source_repository":"https://github.com/openai/codex","package_source":"npm:@openai/codex","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"npm-global-openai-codex-v1"}
+}

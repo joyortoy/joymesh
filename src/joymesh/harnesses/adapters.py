@@ -6,6 +6,8 @@ from collections.abc import Callable
 from typing import Any
 
 from joymesh.adapters.base import HarnessAdapter
+from joymesh.connectors import ConnectorCatalogue
+from joymesh.connectors.models import ConnectorDefinition
 from joymesh.harnesses.contracts import CapabilityState, HarnessDefinition
 from joymesh.harnesses.protocols import decode_record_lenient
 from joymesh.models import (
@@ -134,9 +136,39 @@ def builtin_documented_adapters(
         "qwen-code": _qwen_argv,
         "cline": _cline_argv,
     }
+    connectors = ConnectorCatalogue.builtins()
+    for connector in connectors.all():
+        if (
+            connector.remote_execution_supported
+            and connector.adapter_id
+            and connector.harness_id not in {"codex", "opencode"}
+            and connector.harness_id not in builders
+        ):
+            builders[connector.harness_id] = _catalogue_builder(connector)
     return tuple(
-        DocumentedCLIAdapter(by_id[harness_id], builder) for harness_id, builder in builders.items()
+        DocumentedCLIAdapter(by_id[harness_id], builder)
+        for harness_id, builder in builders.items()
+        if harness_id in by_id
     )
+
+
+def _catalogue_builder(connector: ConnectorDefinition) -> ArgvBuilder:
+    def build(executable: str, request: RunRequest) -> tuple[str, ...]:
+        template = (
+            connector.execution.resume_argv
+            if request.resume_session_id and connector.execution.resume_argv
+            else connector.execution.argv
+        )
+        values = {
+            "{task}": request.task,
+            "{session_id}": request.resume_session_id or "",
+        }
+        argv = tuple(values.get(item, item) for item in template)
+        if not argv:
+            raise ValueError(f"{connector.harness_id} has no executable task contract")
+        return (executable, *argv[1:])
+
+    return build
 
 
 def _claude_argv(executable: str, request: RunRequest) -> tuple[str, ...]:
