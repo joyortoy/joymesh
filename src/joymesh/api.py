@@ -3,13 +3,35 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from joymesh.control_plane.contracts import (
+    NodeProtocolMessageType,
+    OnboardingProgress,
+    OnboardingState,
+    ProtocolMessage,
+    RemoteTaskEnvelope,
+    WorkspaceGrant,
+)
+from joymesh.control_plane.security import generate_node_keypair
 from joymesh.fireconnect import FireConnectClient, FireConnectError
 from joymesh.harnesses.contracts import (
     ApprovalToken,
@@ -57,6 +79,65 @@ class LifecycleExecutionRequest(BaseModel):
     approval: ApprovalToken
 
 
+class BrowserIdentity(BaseModel):
+    user_id: str
+    organisation_id: str
+    workspace_id: str
+    browser_session_id: str
+
+
+class OnboardingUpdateRequest(BaseModel):
+    state: OnboardingState
+    node_id: str | None = None
+    selected_harnesses: tuple[str, ...] | None = None
+    limited_mode_reason: str | None = None
+
+
+class PairingStartRequest(BaseModel):
+    code_challenge: str = Field(min_length=43, max_length=128)
+
+
+class PairingApprovalRequest(BaseModel):
+    user_code: str
+
+
+class NodeRegistrationRequest(BaseModel):
+    pairing_id: str
+    device_code: str
+    name: str
+    public_key: str
+    key_id: str
+    platform: str
+    version: str
+
+
+class RemoteTaskRequest(BaseModel):
+    node_id: str
+    harness_id: str
+    task: str = Field(min_length=1, max_length=100_000)
+    required_capabilities: tuple[str, ...] = ()
+    key_id: str
+
+
+async def browser_identity(
+    x_joymesh_user_id: str = Header(...),
+    x_joymesh_organisation_id: str = Header(...),
+    x_joymesh_workspace_id: str = Header(...),
+    x_joymesh_browser_session_id: str = Header(...),
+) -> BrowserIdentity:
+    """Resolve identity injected by the deployment's OIDC/session middleware."""
+
+    return BrowserIdentity(
+        user_id=x_joymesh_user_id,
+        organisation_id=x_joymesh_organisation_id,
+        workspace_id=x_joymesh_workspace_id,
+        browser_session_id=x_joymesh_browser_session_id,
+    )
+
+
+BrowserIdentityDependency = Annotated[BrowserIdentity, Depends(browser_identity)]
+
+
 def create_app(
     mesh: JoyMesh | None = None,
     fireconnect: FireConnectClient | None = None,
@@ -64,6 +145,8 @@ def create_app(
     owns_mesh = mesh is None
     service = mesh or JoyMesh()
     fireconnect_client = fireconnect or FireConnectClient()
+    signing_private_key, signing_public_key = generate_node_keypair()
+    node_connections: dict[str, WebSocket] = {}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -172,6 +255,168 @@ def create_app(
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "joymesh", "version": "0.1.0"}
+
+    @app.get("/api/v1/control-plane/public-key")
+    async def control_plane_public_key() -> dict[str, str]:
+        return {
+            "algorithm": "Ed25519",
+            "key_id": "ephemeral-reference",
+            "public_key": signing_public_key,
+        }
+
+    @app.get("/api/v1/onboarding", response_model=OnboardingProgress)
+    async def onboarding(
+        identity: BrowserIdentityDependency,
+    ) -> OnboardingProgress:
+        return await service.control_plane.onboarding_progress(
+            user_id=identity.user_id,
+            organisation_id=identity.organisation_id,
+            workspace_id=identity.workspace_id,
+        )
+
+    @app.put("/api/v1/onboarding", response_model=OnboardingProgress)
+    async def update_onboarding(
+        request: OnboardingUpdateRequest,
+        identity: BrowserIdentityDependency,
+    ) -> OnboardingProgress:
+        return await service.control_plane.set_onboarding_state(
+            user_id=identity.user_id,
+            organisation_id=identity.organisation_id,
+            workspace_id=identity.workspace_id,
+            state=request.state,
+            node_id=request.node_id,
+            selected_harnesses=request.selected_harnesses,
+            limited_mode_reason=request.limited_mode_reason,
+        )
+
+    @app.post("/api/v1/nodes/pairing/start")
+    async def start_pairing(
+        request: PairingStartRequest,
+        identity: BrowserIdentityDependency,
+    ) -> dict[str, object]:
+        pairing, device_code = await service.control_plane.begin_pairing(
+            organisation_id=identity.organisation_id,
+            workspace_id=identity.workspace_id,
+            code_challenge=request.code_challenge,
+        )
+        return {"pairing": pairing.model_dump(mode="json"), "device_code": device_code}
+
+    @app.post("/api/v1/nodes/pairing/{pairing_id}/approve")
+    async def approve_pairing(
+        pairing_id: str,
+        request: PairingApprovalRequest,
+        identity: BrowserIdentityDependency,
+    ) -> dict[str, object]:
+        pairing = service.control_plane.store.pairings.get(pairing_id)
+        if pairing is None or not hmac.compare_digest(pairing.user_code, request.user_code):
+            raise HTTPException(status_code=404, detail="pairing session not found")
+        if pairing.organisation_id != identity.organisation_id:
+            raise HTTPException(status_code=403, detail="pairing belongs to another organisation")
+        result = await service.control_plane.approve_pairing(pairing_id, user_id=identity.user_id)
+        return result.model_dump(mode="json")
+
+    @app.post("/api/v1/nodes/register", status_code=status.HTTP_201_CREATED)
+    async def register_node(request: NodeRegistrationRequest) -> dict[str, object]:
+        try:
+            node = await service.control_plane.register_node(
+                request.pairing_id,
+                device_code=request.device_code,
+                name=request.name,
+                public_key=request.public_key,
+                key_id=request.key_id,
+                platform=request.platform,
+                version=request.version,
+            )
+        except (KeyError, PermissionError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return node.model_dump(mode="json")
+
+    @app.post("/api/v1/workspaces/grants", status_code=status.HTTP_201_CREATED)
+    async def create_workspace_grant(
+        grant: WorkspaceGrant,
+        identity: BrowserIdentityDependency,
+    ) -> WorkspaceGrant:
+        node = service.control_plane.store.nodes.get(grant.node_id)
+        if node is None or node.organisation_id != identity.organisation_id:
+            raise HTTPException(status_code=404, detail="node not found")
+        if grant.workspace_id != identity.workspace_id:
+            raise HTTPException(status_code=403, detail="cross-workspace grant rejected")
+        return await service.control_plane.grant_workspace(grant, actor_id=identity.user_id)
+
+    @app.post("/api/v1/remote-tasks", status_code=status.HTTP_202_ACCEPTED)
+    async def create_remote_task(
+        request: RemoteTaskRequest,
+        identity: BrowserIdentityDependency,
+    ) -> RemoteTaskEnvelope:
+        envelope = RemoteTaskEnvelope(
+            organisation_id=identity.organisation_id,
+            workspace_id=identity.workspace_id,
+            node_id=request.node_id,
+            user_id=identity.user_id,
+            browser_session_id=identity.browser_session_id,
+            harness_id=request.harness_id,
+            task=request.task,
+            required_capabilities=request.required_capabilities,
+            key_id=request.key_id,
+        )
+        try:
+            signed = await service.control_plane.create_remote_task(
+                envelope,
+                signing_private_key=signing_private_key,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        socket = node_connections.get(request.node_id)
+        if socket is not None:
+            await socket.send_json(
+                ProtocolMessage(
+                    type=NodeProtocolMessageType.TASK_OFFER,
+                    node_id=request.node_id,
+                    sequence=0,
+                    payload=signed.model_dump(mode="json"),
+                ).model_dump(mode="json")
+            )
+        return signed
+
+    @app.websocket("/api/v1/node-gateway")
+    async def node_gateway(websocket: WebSocket) -> None:
+        configured_token = os.environ.get("JOYMESH_NODE_GATEWAY_TOKEN")
+        supplied = websocket.headers.get("authorization", "").removeprefix("Bearer ")
+        if configured_token is None or not hmac.compare_digest(supplied, configured_token):
+            await websocket.close(code=4401, reason="unauthorized")
+            return
+        await websocket.accept()
+        node_id: str | None = None
+        try:
+            raw = await websocket.receive_text()
+            hello = ProtocolMessage.model_validate_json(raw)
+            if hello.type is not NodeProtocolMessageType.HELLO:
+                raise ValueError("first message must be hello")
+            node = service.control_plane.store.nodes.get(hello.node_id)
+            if node is None or node.revoked_at is not None:
+                await websocket.close(code=4403, reason="node revoked or unknown")
+                return
+            node_id = hello.node_id
+            node_connections[node_id] = websocket
+            await websocket.send_json(
+                ProtocolMessage(
+                    type=NodeProtocolMessageType.WELCOME,
+                    node_id=node_id,
+                    sequence=0,
+                    reply_to=hello.message_id,
+                    payload={"heartbeat_seconds": 20},
+                ).model_dump(mode="json")
+            )
+            while True:
+                message = ProtocolMessage.model_validate_json(await websocket.receive_text())
+                if message.node_id != node_id:
+                    await websocket.close(code=4403, reason="node identity changed")
+                    return
+        except (WebSocketDisconnect, ValueError):
+            pass
+        finally:
+            if node_id is not None and node_connections.get(node_id) is websocket:
+                node_connections.pop(node_id, None)
 
     @app.get("/api/v1/fireconnect", response_model=FireConnectStatus)
     async def fireconnect_status() -> FireConnectStatus:

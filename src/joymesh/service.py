@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
+from joymesh.control_plane.service import ControlPlane
 from joymesh.harnesses.certification import CertificationService
 from joymesh.harnesses.contracts import (
     ApprovalToken,
@@ -76,6 +77,7 @@ class JoyMesh:
             self.registry.discovery,
         )
         self.certification = CertificationService(self.registry, self.database)
+        self.control_plane = ControlPlane()
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
         self._tasks: dict[str, asyncio.Task[None]] = {}

@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import typer
 
 from joymesh.api import create_app
+from joymesh.control_plane.node import JoyMeshNode
+from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
 from joymesh.models import BillingRoute, Run, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
@@ -20,10 +24,69 @@ harness_app = typer.Typer(help="Discover and inspect harnesses.")
 subscription_app = typer.Typer(help="Manage subscription and quota profiles.")
 route_app = typer.Typer(help="Preview deterministic routes.")
 run_app = typer.Typer(help="Launch and inspect harness runs.", invoke_without_command=True)
+node_app = typer.Typer(help="Pair and run an outbound-only JoyMesh Node.")
 app.add_typer(harness_app, name="harness")
 app.add_typer(subscription_app, name="subscription")
 app.add_typer(route_app, name="route")
 app.add_typer(run_app, name="run")
+app.add_typer(node_app, name="node")
+
+
+@node_app.command("init")
+def node_init(
+    private_key_path: Path | None = typer.Option(None, "--private-key-path"),  # noqa: B008
+) -> None:
+    """Create a local Ed25519 node key; prints only the public registration value."""
+
+    private_key_path = (
+        private_key_path.expanduser()
+        if private_key_path is not None
+        else Path("~/.config/joymesh/node.ed25519").expanduser()
+    )
+    if private_key_path.exists():
+        raise typer.BadParameter("private key already exists; use key rotation instead")
+    private_key, public_key = generate_node_keypair()
+    store_private_key(private_key_path, private_key)
+    _print(
+        {
+            "private_key_path": str(private_key_path),
+            "public_key": public_key,
+            "algorithm": "Ed25519",
+        }
+    )
+
+
+@node_app.command("serve")
+def node_serve(
+    node_id: str = typer.Option(..., "--node-id"),
+    gateway_url: str = typer.Option(..., "--gateway-url"),
+    token: str | None = typer.Option(None, "--token", envvar="JOYMESH_NODE_GATEWAY_TOKEN"),
+) -> None:
+    """Maintain the node's outbound TLS WebSocket until interrupted."""
+
+    gateway_token = token or os.environ.get("JOYMESH_NODE_GATEWAY_TOKEN")
+    if not gateway_token:
+        raise typer.BadParameter("set JOYMESH_NODE_GATEWAY_TOKEN or pass --token")
+
+    async def serve() -> None:
+        node = JoyMeshNode(
+            node_id=node_id,
+            gateway_url=gateway_url,
+            bearer_token=gateway_token,
+        )
+
+        async def observe(message: Any) -> None:
+            _print(message)
+
+        try:
+            await node.run(observe)
+        finally:
+            await node.stop()
+
+    try:
+        asyncio.run(serve())
+    except KeyboardInterrupt:
+        typer.echo("JoyMesh Node stopped", err=True)
 
 
 def _run[T](operation: Callable[[JoyMesh], Awaitable[T]]) -> T:
