@@ -220,10 +220,62 @@ class ConnectorTaskRow(Base):
     plan_id: Mapped[str] = mapped_column(ForeignKey("connector_task_plans.id"), index=True)
     node_id: Mapped[str] = mapped_column(String(100), index=True)
     connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100), default="")
+    action: Mapped[str] = mapped_column(String(40), default="")
+    plan_hash: Mapped[str] = mapped_column(String(64), default="")
     status: Mapped[str] = mapped_column(String(40))
+    idempotency_key: Mapped[str] = mapped_column(String(200), index=True, default="")
+    previous_task_id: Mapped[str | None] = mapped_column(String(36))
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     detail: Mapped[str | None] = mapped_column(Text)
+
+
+class ConnectorTaskEventRow(Base):
+    __tablename__ = "connector_task_events"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("connector_tasks.id"), index=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    event_type: Mapped[str] = mapped_column(String(80))
+    sequence: Mapped[int] = mapped_column(Integer)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ConnectorEvidenceRow(Base):
+    __tablename__ = "connector_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100))
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    evidence_type: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(40))
+    executable_path: Mapped[str | None] = mapped_column(Text)
+    executable_fingerprint: Mapped[str | None] = mapped_column(String(128))
+    harness_version: Mapped[str | None] = mapped_column(String(300))
+    provider_mode: Mapped[str | None] = mapped_column(String(100))
+    details_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class NodeConnectorReadinessRow(Base):
+    __tablename__ = "node_connector_readiness"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    state: Mapped[str] = mapped_column(String(50))
+    recommended_action: Mapped[str | None] = mapped_column(String(40))
+    blocking_reason: Mapped[str | None] = mapped_column(Text)
+    active_task_id: Mapped[str | None] = mapped_column(String(36))
+    latest_evidence_id: Mapped[str | None] = mapped_column(String(36))
+    routing_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
+    snapshot_json: Mapped[str] = mapped_column(Text, default="{}")
+    recomputed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ConnectorCapabilityEvidenceRow(Base):
