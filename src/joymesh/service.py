@@ -168,6 +168,10 @@ class JoyMesh:
         await self.initialize()
         return await self.database.get_run(run_id)
 
+    async def list_runs(self, *, limit: int = 25) -> tuple[Run, ...]:
+        await self.initialize()
+        return await self.database.list_runs(limit=limit)
+
     async def events(self, run_id: str, *, after: int = 0) -> tuple[NormalizedEvent, ...]:
         await self.initialize()
         return await self.database.list_events(run_id, after=after)

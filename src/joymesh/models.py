@@ -264,3 +264,33 @@ class FallbackProposal(BaseModel):
     continuation_run_id: str | None = None
     reason: str
     created_at: datetime
+
+
+class FireConnectTarget(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    enabled: bool = False
+    model: str | None = None
+    reads_from: str | None = None
+    storage: str | None = None
+    joymesh_runnable: bool = False
+
+
+class FireConnectStatus(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    available: bool
+    signed_in: bool = False
+    version: str | None = None
+    backend: str | None = None
+    detail: str | None = None
+    targets: tuple[FireConnectTarget, ...] = ()
+
+
+class FireConnectConfigureRequest(BaseModel):
+    model: str = Field(
+        default="accounts/fireworks/models/kimi-k3",
+        min_length=1,
+        max_length=300,
+    )

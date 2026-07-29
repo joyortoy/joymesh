@@ -9,7 +9,19 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func, select
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+    inspect,
+    select,
+    text,
+)
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -122,6 +134,7 @@ class Database:
     async def initialize(self) -> None:
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(_upgrade_legacy_sqlite_schema)
         await self.ensure_default_subscription()
 
     async def close(self) -> None:
@@ -199,6 +212,15 @@ class Database:
         async with self.sessions() as session:
             row = await session.get(RunRow, run_id)
         return None if row is None else self._run_model(row)
+
+    async def list_runs(self, *, limit: int = 25) -> tuple[Run, ...]:
+        async with self.sessions() as session:
+            rows = (
+                await session.scalars(
+                    select(RunRow).order_by(RunRow.created_at.desc()).limit(limit)
+                )
+            ).all()
+        return tuple(self._run_model(row) for row in rows)
 
     async def update_run(
         self, run_id: str, *, status: RunStatus | None = None, **values: object
@@ -390,4 +412,43 @@ class Database:
             continuation_run_id=row.continuation_run_id,
             reason=row.reason,
             created_at=row.created_at,
+        )
+
+
+def _upgrade_legacy_sqlite_schema(connection: Connection) -> None:
+    """Bring pre-Alembic development databases up to the current initial schema."""
+    if connection.dialect.name != "sqlite":
+        return
+    inspector = inspect(connection)
+    additions = {
+        "subscriptions": {
+            "quota_reserve": "FLOAT NOT NULL DEFAULT 0",
+            "quota_known": "BOOLEAN NOT NULL DEFAULT 0",
+            "state": "VARCHAR(30) NOT NULL DEFAULT 'healthy'",
+            "requires_paid_approval": "BOOLEAN NOT NULL DEFAULT 0",
+        },
+        "runs": {
+            "task_context_id": "VARCHAR(36) NOT NULL DEFAULT ''",
+            "continuation_of_run_id": "VARCHAR(36)",
+            "native_session_id": "VARCHAR(200)",
+            "process_id": "INTEGER",
+        },
+        "usage_ledger": {
+            "input_tokens": "INTEGER NOT NULL DEFAULT 0",
+            "output_tokens": "INTEGER NOT NULL DEFAULT 0",
+        },
+    }
+    table_names = set(inspector.get_table_names())
+    for table_name, columns in additions.items():
+        if table_name not in table_names:
+            continue
+        existing = {column["name"] for column in inspector.get_columns(table_name)}
+        for column_name, definition in columns.items():
+            if column_name not in existing:
+                connection.execute(
+                    text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {definition}')
+                )
+    if "runs" in table_names:
+        connection.execute(
+            text("UPDATE runs SET task_context_id = id WHERE task_context_id = ''")
         )

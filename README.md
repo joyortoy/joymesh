@@ -75,12 +75,18 @@ uv run joymesh api
 ```
 
 ```text
+GET  /api/v1/health
 GET  /api/v1/harnesses
+GET  /api/v1/fireconnect
+POST /api/v1/fireconnect/{harness}/connect
+POST /api/v1/fireconnect/{harness}/disconnect
 GET  /api/v1/subscriptions
 POST /api/v1/routes/preview
 POST /api/v1/runs
+GET  /api/v1/runs
 GET  /api/v1/runs/{id}
 GET  /api/v1/runs/{id}/events
+GET  /api/v1/runs/{id}/event-log
 POST /api/v1/runs/{id}/cancel
 GET  /api/v1/runs/{id}/usage
 GET  /api/v1/runs/{id}/fallback
@@ -97,4 +103,6 @@ protocol objects.
 - Quotas are manually configured, not observed from providers.
 - SQLite targets one local JoyMesh service; distributed supervision is out of
   scope for the initial slice.
-- FireConnect detection is not implemented yet.
+- FireConnect can be detected and configured through the local API. Codex and
+  OpenCode are runnable JoyMesh adapters; the other FireConnect targets are
+  shown as provider integrations until native JoyMesh adapters are added.
