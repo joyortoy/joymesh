@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -129,6 +130,124 @@ class CertificationEvidenceRow(Base):
     detail: Mapped[str | None] = mapped_column(Text)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+
+
+class ConnectorDefinitionRevisionRow(Base):
+    __tablename__ = "connector_definition_revisions"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    revision: Mapped[str] = mapped_column(String(100))
+    definition_digest: Mapped[str] = mapped_column(String(64))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NodeConnectorDiscoveryRow(Base):
+    __tablename__ = "node_connector_discoveries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100))
+    executable: Mapped[str | None] = mapped_column(Text)
+    version: Mapped[str | None] = mapped_column(String(300))
+    execution_environment: Mapped[str] = mapped_column(String(30))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NodeConnectorInstallationRow(Base):
+    __tablename__ = "node_connector_installations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100))
+    method_id: Mapped[str] = mapped_column(String(100))
+    executable: Mapped[str] = mapped_column(Text)
+    version: Mapped[str | None] = mapped_column(String(300))
+    enabled_for_routing: Mapped[bool] = mapped_column(Boolean, default=False)
+    installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NodeConnectorAuthenticationRow(Base):
+    __tablename__ = "node_connector_authentication"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    method_id: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(40))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    detail: Mapped[str | None] = mapped_column(Text)
+
+
+class NodeConnectorProviderModeRow(Base):
+    __tablename__ = "node_connector_provider_modes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    provider_id: Mapped[str] = mapped_column(String(100))
+    funding_source: Mapped[str] = mapped_column(String(40))
+    separately_billed: Mapped[bool | None] = mapped_column(Boolean)
+    configuration_status: Mapped[str] = mapped_column(String(40))
+
+
+class NodeConnectorCertificationRow(Base):
+    __tablename__ = "node_connector_certifications"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100))
+    harness_version: Mapped[str] = mapped_column(String(300))
+    executable_fingerprint: Mapped[str] = mapped_column(String(128))
+    evidence_digest: Mapped[str] = mapped_column(String(64))
+    passed_levels_json: Mapped[str] = mapped_column(Text)
+    certified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ConnectorTaskPlanRow(Base):
+    __tablename__ = "connector_task_plans"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(40))
+    plan_hash: Mapped[str] = mapped_column(String(64))
+    plan_json: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ConnectorTaskRow(Base):
+    __tablename__ = "connector_tasks"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("connector_task_plans.id"), index=True)
+    node_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(40))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    detail: Mapped[str | None] = mapped_column(Text)
+
+
+class ConnectorCapabilityEvidenceRow(Base):
+    __tablename__ = "connector_capability_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    certification_id: Mapped[str] = mapped_column(
+        ForeignKey("node_connector_certifications.id"), index=True
+    )
+    capability: Mapped[str] = mapped_column(String(100))
+    declared: Mapped[bool] = mapped_column(Boolean)
+    observed: Mapped[bool] = mapped_column(Boolean)
+    certified: Mapped[bool] = mapped_column(Boolean)
+
+
+class ConnectorOfficialSourceRecordRow(Base):
+    __tablename__ = "connector_official_source_records"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connector_id: Mapped[str] = mapped_column(String(100), index=True)
+    connector_revision: Mapped[str] = mapped_column(String(100))
+    documentation_source: Mapped[str] = mapped_column(Text)
+    source_repository: Mapped[str | None] = mapped_column(Text)
+    package_source: Mapped[str | None] = mapped_column(Text)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    installation_method_fingerprint: Mapped[str] = mapped_column(String(200))
 
 
 def default_database_url() -> str:

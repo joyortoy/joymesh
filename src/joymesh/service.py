@@ -9,6 +9,12 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
+from joymesh.connectors import ConnectorCatalogue, ConnectorDefinition
+from joymesh.connectors.planning import (
+    ConnectorAction,
+    ConnectorPlanner,
+    ConnectorTaskPlan,
+)
 from joymesh.control_plane.service import ControlPlane
 from joymesh.harnesses.certification import CertificationService
 from joymesh.harnesses.contracts import (
@@ -69,6 +75,8 @@ class JoyMesh:
         runtime: HarnessRuntime | None = None,
     ) -> None:
         self.database = Database(database_url)
+        self.connector_catalogue = ConnectorCatalogue.builtins()
+        self.connector_planner = ConnectorPlanner(self.connector_catalogue)
         self.registry = registry or AdapterRegistry()
         self.runtime = runtime or HarnessRuntime()
         self.router = Router(self.registry, self.database)
@@ -103,6 +111,33 @@ class JoyMesh:
 
     def list_harnesses(self) -> tuple[HarnessDefinition, ...]:
         return self.registry.definitions()
+
+    def list_connectors(self) -> tuple[ConnectorDefinition, ...]:
+        """Return the same versioned catalogue consumed by API and CLI surfaces."""
+
+        return self.connector_catalogue.all()
+
+    def connector(self, connector_id: str) -> ConnectorDefinition:
+        return self.connector_catalogue.get(connector_id)
+
+    def plan_connector_task(
+        self,
+        *,
+        node_id: str,
+        connector_id: str,
+        action: ConnectorAction,
+        method_id: str | None = None,
+        platform: str | None = None,
+        download_digest: str | None = None,
+    ) -> ConnectorTaskPlan:
+        return self.connector_planner.plan(
+            node_id=node_id,
+            connector_id=connector_id,
+            action=action,
+            method_id=method_id,
+            platform=platform,
+            download_digest=download_digest,
+        )
 
     async def discover_harnesses(
         self,
@@ -383,6 +418,13 @@ class JoyMesh:
                 yield event
             run = await self.inspect_run(run_id)
             if run is None or (run.status in TERMINAL_STATUSES and not events):
+                task = self._tasks.get(run_id)
+                if run is not None and task is not None and not task.done():
+                    await asyncio.shield(task)
+                    final_events = await self.events(run_id, after=sequence)
+                    for event in final_events:
+                        sequence = event.sequence
+                        yield event
                 break
             await asyncio.sleep(0.02)
 

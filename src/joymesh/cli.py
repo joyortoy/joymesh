@@ -13,6 +13,7 @@ from uuid import uuid4
 import typer
 
 from joymesh.api import create_app
+from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
@@ -25,11 +26,13 @@ subscription_app = typer.Typer(help="Manage subscription and quota profiles.")
 route_app = typer.Typer(help="Preview deterministic routes.")
 run_app = typer.Typer(help="Launch and inspect harness runs.", invoke_without_command=True)
 node_app = typer.Typer(help="Pair and run an outbound-only JoyMesh Node.")
+connector_app = typer.Typer(help="Validate, inspect, and certify versioned connectors.")
 app.add_typer(harness_app, name="harness")
 app.add_typer(subscription_app, name="subscription")
 app.add_typer(route_app, name="route")
 app.add_typer(run_app, name="run")
 app.add_typer(node_app, name="node")
+app.add_typer(connector_app, name="connector")
 
 
 @node_app.command("init")
@@ -122,6 +125,97 @@ def harness_detect() -> None:
     """Show the compatibility adapter detection view."""
 
     _print(_run(lambda mesh: mesh.detect_harnesses()))
+
+
+@connector_app.command("catalogue")
+def connector_catalogue() -> None:
+    """Print the versioned connector catalogue used by every public surface."""
+
+    _print(_run_value(lambda mesh: mesh.list_connectors()))
+
+
+@connector_app.command("inspect")
+def connector_inspect(connector_id: str) -> None:
+    """Inspect a connector definition without reading credentials."""
+
+    _print(_run_value(lambda mesh: mesh.connector(connector_id)))
+
+
+@connector_app.command("validate")
+def connector_validate(
+    connector_id: str,
+    max_source_age_days: int = typer.Option(90, "--max-source-age-days", min=1),
+) -> None:
+    """Validate schema, source freshness, and routing invariants."""
+
+    def validate(mesh: JoyMesh) -> dict[str, object]:
+        connector = mesh.connector(connector_id)
+        return {
+            "connector_id": connector.harness_id,
+            "revision": connector.revision,
+            "schema_valid": True,
+            "source_review_age_days": connector.source_review_age_days,
+            "source_fresh": connector.source_review_age_days <= max_source_age_days,
+            "routable_by_maturity": connector.routable_by_maturity,
+            "remote_execution_supported": connector.remote_execution_supported,
+        }
+
+    _print(_run_value(validate))
+
+
+@connector_app.command("test")
+def connector_test(connector_id: str) -> None:
+    """Report adapter and executable readiness; this never certifies a real binary."""
+
+    async def test(mesh: JoyMesh) -> dict[str, object]:
+        mesh.connector(connector_id)
+        discovery = await mesh.discover_harnesses(connector_id, probe_versions=True)
+        try:
+            adapter = mesh.registry.get(connector_id)
+        except KeyError:
+            adapter = None
+        return {
+            "connector_id": connector_id,
+            "adapter_registered": adapter is not None,
+            "adapter_conformance_declared": (bool(adapter and adapter.conformance_passed)),
+            "installations": discovery[0].model_dump(mode="json")["installations"],
+            "real_binary_certified": False,
+        }
+
+    _print(_run(test))
+
+
+@connector_app.command("certify")
+def connector_certify(
+    connector_id: str,
+    node_id: str = typer.Option("local", "--node-id"),
+    approve: bool = typer.Option(False, "--approve"),
+) -> None:
+    """Plan certification, or run the existing bounded smoke profile with approval."""
+
+    if not approve:
+        _print(
+            _run_value(
+                lambda mesh: mesh.plan_connector_task(
+                    node_id=node_id,
+                    connector_id=connector_id,
+                    action=ConnectorAction.CERTIFY,
+                )
+            )
+        )
+        return
+
+    async def certify(mesh: JoyMesh) -> Any:
+        resolved = mesh.registry.resolve_id(connector_id)
+        token = ApprovalToken(
+            action=LifecycleAction.CERTIFY,
+            harness_id=resolved,
+            approved=True,
+            nonce=str(uuid4()),
+        )
+        return await mesh.certify_harness(resolved, approval=token)
+
+    _print(_run(certify))
 
 
 @harness_app.command("list")

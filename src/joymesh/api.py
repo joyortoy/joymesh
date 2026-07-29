@@ -23,6 +23,13 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from joymesh.connectors import ConnectorDefinition
+from joymesh.connectors.planning import (
+    ConnectorAction,
+    ConnectorPlanError,
+    ConnectorTask,
+    ConnectorTaskPlan,
+)
 from joymesh.control_plane.contracts import (
     NodeProtocolMessageType,
     OnboardingProgress,
@@ -72,6 +79,17 @@ class DiscoveryRequest(BaseModel):
     harness_id: str | None = None
     probe_versions: bool = False
     overrides: dict[str, str] = Field(default_factory=dict)
+
+
+class ConnectorPlanRequest(BaseModel):
+    method_id: str | None = None
+    platform: str | None = None
+    download_digest: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+
+
+class ConnectorTaskExecutionRequest(BaseModel):
+    plan_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    approved: bool
 
 
 class LifecycleExecutionRequest(BaseModel):
@@ -167,6 +185,154 @@ def create_app(
         """Compatibility adapter view."""
 
         return await service.detect_harnesses()
+
+    @app.get("/connector-catalogue", response_model=list[ConnectorDefinition])
+    @app.get("/api/v1/connector-catalogue", response_model=list[ConnectorDefinition])
+    async def connectors() -> tuple[ConnectorDefinition, ...]:
+        """Return the versioned backend catalogue; provider routes are intentionally absent."""
+
+        return service.list_connectors()
+
+    @app.get("/connector-catalogue/{connector_id}", response_model=ConnectorDefinition)
+    @app.get(
+        "/api/v1/connector-catalogue/{connector_id}",
+        response_model=ConnectorDefinition,
+    )
+    async def connector(connector_id: str) -> ConnectorDefinition:
+        try:
+            return service.connector(connector_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/nodes/{node_id}/connectors", response_model=list[DiscoveryResult])
+    @app.get("/api/v1/nodes/{node_id}/connectors", response_model=list[DiscoveryResult])
+    async def node_connectors(node_id: str) -> tuple[DiscoveryResult, ...]:
+        del node_id
+        return await service.discover_harnesses()
+
+    @app.post("/nodes/{node_id}/connectors/discover", response_model=list[DiscoveryResult])
+    @app.post(
+        "/api/v1/nodes/{node_id}/connectors/discover",
+        response_model=list[DiscoveryResult],
+    )
+    async def discover_node_connectors(node_id: str) -> tuple[DiscoveryResult, ...]:
+        del node_id
+        return await service.discover_harnesses(probe_versions=True)
+
+    def build_connector_plan(
+        node_id: str,
+        connector_id: str,
+        action: ConnectorAction,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorTaskPlan:
+        try:
+            return service.plan_connector_task(
+                node_id=node_id,
+                connector_id=connector_id,
+                action=action,
+                method_id=request.method_id,
+                platform=request.platform,
+                download_digest=request.download_digest,
+            )
+        except (KeyError, ConnectorPlanError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/install/plan",
+        response_model=ConnectorTaskPlan,
+    )
+    @app.post(
+        "/api/v1/nodes/{node_id}/connectors/{connector_id}/install/plan",
+        response_model=ConnectorTaskPlan,
+    )
+    async def connector_install_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorTaskPlan:
+        return build_connector_plan(node_id, connector_id, ConnectorAction.INSTALL, request)
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/upgrade/plan",
+        response_model=ConnectorTaskPlan,
+    )
+    async def connector_upgrade_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorTaskPlan:
+        return build_connector_plan(node_id, connector_id, ConnectorAction.UPGRADE, request)
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/uninstall/plan",
+        response_model=ConnectorTaskPlan,
+    )
+    async def connector_uninstall_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorTaskPlan:
+        return build_connector_plan(node_id, connector_id, ConnectorAction.UNINSTALL, request)
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/authenticate/plan",
+        response_model=ConnectorTaskPlan,
+    )
+    async def connector_authentication_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorTaskPlan:
+        return build_connector_plan(node_id, connector_id, ConnectorAction.AUTHENTICATE, request)
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/certify/plan",
+        response_model=ConnectorTaskPlan,
+    )
+    async def connector_certification_task_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorTaskPlan:
+        return build_connector_plan(node_id, connector_id, ConnectorAction.CERTIFY, request)
+
+    @app.post("/connector-tasks/{plan_id}/execute", response_model=ConnectorTask)
+    async def execute_connector_task(
+        plan_id: str,
+        request: ConnectorTaskExecutionRequest,
+    ) -> ConnectorTask:
+        try:
+            plan = service.connector_planner.store.get(plan_id)
+            service.connector_planner.validate(plan)
+        except (KeyError, ConnectorPlanError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not request.approved or not hmac.compare_digest(request.plan_hash, plan.plan_hash):
+            raise HTTPException(status_code=409, detail="exact connector plan approval required")
+        return service.connector_planner.store.create_task(plan)
+
+    @app.get("/connector-tasks/{task_id}", response_model=ConnectorTask)
+    async def connector_task(task_id: str) -> ConnectorTask:
+        try:
+            return service.connector_planner.store.task(task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/connector-tasks/{task_id}/cancel", response_model=ConnectorTask)
+    async def cancel_connector_task(task_id: str) -> ConnectorTask:
+        try:
+            return service.connector_planner.store.update_task(task_id, status="cancelled")
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/connector-tasks/{task_id}/resume", response_model=ConnectorTask)
+    async def resume_connector_task(task_id: str) -> ConnectorTask:
+        try:
+            task = service.connector_planner.store.task(task_id)
+            if task.status != "cancelled":
+                raise HTTPException(status_code=409, detail="only cancelled tasks can resume")
+            return service.connector_planner.store.update_task(task_id, status="queued_for_node")
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/harnesses/catalogue", response_model=list[HarnessDefinition])
     async def harness_catalogue() -> tuple[HarnessDefinition, ...]:
