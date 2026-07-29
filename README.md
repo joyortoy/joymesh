@@ -8,6 +8,10 @@ tracking subscriptions and quota, and selecting deterministic routes.
 JoyMesh is independent of JoyCLI and contains no application-specific planning,
 mission decomposition, private workflows, or proprietary data.
 
+The browser-first platform adds a cloud control plane and outbound-only JoyMesh
+Node without changing the core: the Python SDK remains the orchestration
+implementation, while REST, CLI, WebSocket, and browser surfaces are adapters.
+
 > **Status:** active development. The bundled fake adapter is certified.
 > Real-binary support is version-aware and remains uncertified until evidence is
 > recorded for the installed executable.
@@ -15,13 +19,18 @@ mission decomposition, private workflows, or proprietary data.
 ## Architecture
 
 The core is Python 3.12 with Pydantic v2, FastAPI, SQLAlchemy 2, SQLite, Alembic,
-Typer, and asyncio. JoyMesh is backend infrastructure and does not include an
-end-user frontend.
+Typer, and asyncio. The separately packaged Sites application provides secure
+onboarding and remote access; it is not a second orchestration implementation.
 
 See [ADR 0001](docs/adr/0001-initial-architecture.md) for the decision record,
 tradeoffs, and current limitations. See [Harness architecture](docs/harness-architecture.md),
 [Harness catalogue](docs/harness-catalogue.md), and
 [Adapter conformance](docs/adapter-conformance.md) for the support gate.
+The platform boundaries are documented in
+[Browser-first architecture](docs/browser-first-architecture.md),
+[JoyMesh Node](docs/joymesh-node.md),
+[Remote task security](docs/remote-task-security.md), and the
+[Threat model](docs/threat-model.md).
 
 ## Development
 

@@ -1,5 +1,12 @@
 # Harness installation and authentication
 
+Browser onboarding requests plans from the paired node. Approval is bound to the
+exact user, browser session, node, harness, executable, argv, working directory,
+filtered environment, risk level, plan hash, and expiry. Any difference makes
+the plan stale. Execution uses argv directly without a shell and never elevates
+with implicit `sudo`; failure for one selected harness does not stop unrelated
+plans.
+
 Normal discovery and routing never install, upgrade, uninstall, or authenticate
 software.
 

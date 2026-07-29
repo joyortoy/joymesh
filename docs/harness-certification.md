@@ -1,5 +1,12 @@
 # Harness certification
 
+Onboarding certification uses the real discovered binary in an isolated
+temporary Git repository. Evidence includes adapter and JoyMesh versions,
+binary version and fingerprint, OS, test-suite version, checks, diagnostics,
+provider configuration fingerprint, and timestamp. Paid inference requires an
+explicit cost-aware approval. Binary, adapter, environment, auth, or routing
+changes invalidate applicable evidence.
+
 Support has two independent states:
 
 1. Adapter certification proves that the adapter implementation passes the
