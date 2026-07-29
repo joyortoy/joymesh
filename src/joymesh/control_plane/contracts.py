@@ -73,18 +73,36 @@ class AccountConnectionStatus(StrEnum):
 class NodeProtocolMessageType(StrEnum):
     HELLO = "hello"
     WELCOME = "welcome"
-    HEARTBEAT = "heartbeat"
+    CHALLENGE = "control.challenge"
+    AUTHENTICATE = "node.authenticate"
+    SESSION_ESTABLISHED = "control.session_established"
+    READY = "node.ready"
+    HEARTBEAT = "node.heartbeat"
+    HEARTBEAT_ACK = "control.heartbeat_ack"
     PRESENCE = "presence"
     TASK_OFFER = "task.offer"
     TASK_ACCEPTED = "task.accepted"
     TASK_REJECTED = "task.rejected"
+    TASK_STARTED = "task.started"
+    TASK_PROGRESS = "task.progress"
+    TASK_WAITING_FOR_USER = "task.waiting_for_user"
+    TASK_EVIDENCE = "task.evidence"
+    TASK_SUCCEEDED = "task.succeeded"
+    TASK_FAILED = "task.failed"
+    TASK_CANCELLED = "task.cancelled"
+    TASK_INTERRUPTED = "task.interrupted"
     TASK_EVENT = "task.event"
     TASK_CANCEL = "task.cancel"
     TASK_RESUME = "task.resume"
     TASK_COMPLETE = "task.complete"
+    TASK_RECONCILE = "task.reconcile"
+    TASK_RECONCILE_RESPONSE = "task.reconcile_response"
+    NODE_REVOKED = "node.revoked"
     APPROVAL_REQUEST = "approval.request"
     APPROVAL_DECISION = "approval.decision"
     ERROR = "error"
+    NODE_ERROR = "node.error"
+    CONTROL_ERROR = "control.error"
     GOODBYE = "goodbye"
 
 
@@ -231,3 +249,46 @@ class AuditEvent(BaseModel):
     outcome: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
+
+
+class NodeSession(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    session_id: str = Field(default_factory=lambda: str(uuid4()))
+    node_id: str
+    organisation_id: str
+    connected_at: datetime = Field(default_factory=utc_now)
+    last_seen_at: datetime = Field(default_factory=utc_now)
+    protocol_version: str = "1"
+    runtime_version: str = "0.1.0"
+    remote_address: str | None = None
+    status: str = "online"
+    challenge_nonce: str | None = None
+
+
+class ConnectorTaskEnvelope(BaseModel):
+    """Signed connector lifecycle task offered to a bound node session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    protocol_version: Literal["1"] = "1"
+    task_id: str
+    plan_id: str
+    node_id: str
+    connector_id: str
+    connector_revision: str
+    action: str
+    plan_hash: str
+    executable: str
+    arguments: tuple[str, ...] = ()
+    method_id: str
+    package_source: str
+    expected_executables: tuple[str, ...] = ()
+    download_digest: str | None = None
+    risk_level: str = "medium"
+    nonce: str = Field(default_factory=lambda: str(uuid4()))
+    issued_at: datetime = Field(default_factory=utc_now)
+    expires_at: datetime = Field(default_factory=lambda: utc_now() + timedelta(minutes=15))
+    key_id: str
+    signature: str = ""
+    idempotency_key: str = ""

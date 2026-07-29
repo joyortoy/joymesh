@@ -473,6 +473,34 @@ class ConnectorLifecycleStore:
                 )
             await session.commit()
 
+    async def set_routing_enabled(self, *, node_id: str, connector_id: str, enabled: bool) -> None:
+        async with self.database.sessions() as session:
+            installation = await session.scalar(
+                select(NodeConnectorInstallationRow)
+                .where(
+                    NodeConnectorInstallationRow.node_id == node_id,
+                    NodeConnectorInstallationRow.connector_id == connector_id,
+                )
+                .order_by(NodeConnectorInstallationRow.installed_at.desc())
+            )
+            if installation is None:
+                session.add(
+                    NodeConnectorInstallationRow(
+                        id=str(uuid4()),
+                        node_id=node_id,
+                        connector_id=connector_id,
+                        connector_revision=self.readiness.catalogue.get(connector_id).revision,
+                        method_id="routing",
+                        executable="",
+                        version=None,
+                        enabled_for_routing=enabled,
+                        installed_at=utc_now(),
+                    )
+                )
+            else:
+                installation.enabled_for_routing = enabled
+            await session.commit()
+
 
 def _task_record(row: ConnectorTaskRow) -> ConnectorTaskRecord:
     return ConnectorTaskRecord(

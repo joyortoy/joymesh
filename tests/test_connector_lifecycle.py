@@ -349,6 +349,12 @@ async def test_task_terminal_once_and_retry(tmp_path: Path) -> None:
     task = await coordinator.approve_and_queue(
         plan.plan_id, plan_hash=plan.plan_hash, approved=True
     )
+    assert task.status is ConnectorTaskStatus.QUEUED
+    task = await coordinator.store.transition_task(
+        task.task_id,
+        expected_version=task.version,
+        status=ConnectorTaskStatus.OFFERED_TO_NODE,
+    )
     assert task.status is ConnectorTaskStatus.OFFERED_TO_NODE
     task = await coordinator.store.transition_task(
         task.task_id,

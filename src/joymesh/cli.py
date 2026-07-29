@@ -60,22 +60,24 @@ def node_init(
 
 
 @node_app.command("serve")
+@node_app.command("connect")
 def node_serve(
     node_id: str = typer.Option(..., "--node-id"),
     gateway_url: str = typer.Option(..., "--gateway-url"),
+    private_key_path: Path = typer.Option(  # noqa: B008
+        Path("~/.config/joymesh/node.ed25519"),
+        "--private-key-path",
+    ),
     token: str | None = typer.Option(None, "--token", envvar="JOYMESH_NODE_GATEWAY_TOKEN"),
 ) -> None:
-    """Maintain the node's outbound TLS WebSocket until interrupted."""
-
-    gateway_token = token or os.environ.get("JOYMESH_NODE_GATEWAY_TOKEN")
-    if not gateway_token:
-        raise typer.BadParameter("set JOYMESH_NODE_GATEWAY_TOKEN or pass --token")
+    """Authenticate and maintain the node's outbound TLS WebSocket."""
 
     async def serve() -> None:
-        node = JoyMeshNode(
+        node = JoyMeshNode.from_key_path(
             node_id=node_id,
             gateway_url=gateway_url,
-            bearer_token=gateway_token,
+            private_key_path=private_key_path,
+            bearer_token=token or os.environ.get("JOYMESH_NODE_GATEWAY_TOKEN"),
         )
 
         async def observe(message: Any) -> None:
@@ -90,6 +92,61 @@ def node_serve(
         asyncio.run(serve())
     except KeyboardInterrupt:
         typer.echo("JoyMesh Node stopped", err=True)
+
+
+@node_app.command("status")
+def node_status(
+    node_id: str = typer.Option(..., "--node-id"),
+    control_plane_url: str = typer.Option("http://127.0.0.1:8000", "--control-plane-url"),
+) -> None:
+    """Query control-plane session status for a node."""
+
+    import urllib.request
+
+    with urllib.request.urlopen(
+        f"{control_plane_url.rstrip('/')}/nodes/{node_id}/session"
+    ) as response:
+        _print(json.loads(response.read().decode()))
+
+
+@connector_app.command("discover")
+def connector_discover(
+    connector_id: str,
+    node_id: str = typer.Option("local-node", "--node-id"),
+) -> None:
+    """Plan and queue connector discovery through the shared lifecycle service."""
+
+    async def operate(mesh: JoyMesh) -> Any:
+        plan = await mesh.plan_and_persist_connector_task(
+            node_id=node_id,
+            connector_id=connector_id,
+            action=ConnectorAction.DISCOVER,
+        )
+        return await mesh.execute_connector_plan(
+            plan_id=plan.plan_id, plan_hash=plan.plan_hash, approved=True
+        )
+
+    _print(_run(operate))
+
+
+@connector_app.command("verify-auth")
+def connector_verify_auth(
+    connector_id: str,
+    node_id: str = typer.Option("local-node", "--node-id"),
+) -> None:
+    """Queue authentication verification for a connector."""
+
+    async def operate(mesh: JoyMesh) -> Any:
+        plan = await mesh.plan_and_persist_connector_task(
+            node_id=node_id,
+            connector_id=connector_id,
+            action=ConnectorAction.VERIFY_AUTHENTICATION,
+        )
+        return await mesh.execute_connector_plan(
+            plan_id=plan.plan_id, plan_hash=plan.plan_hash, approved=True
+        )
+
+    _print(_run(operate))
 
 
 def _run[T](operation: Callable[[JoyMesh], Awaitable[T]]) -> T:

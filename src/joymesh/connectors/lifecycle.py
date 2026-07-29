@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -19,10 +18,11 @@ from joymesh.connectors.lifecycle_models import (
 from joymesh.connectors.node_runner import ConnectorNodeRunner
 from joymesh.connectors.planning import ConnectorAction, ConnectorPlanner, ConnectorTaskPlan
 from joymesh.connectors.store import ConnectorLifecycleStore
+from joymesh.control_plane.security import inline_connector_node_enabled
 from joymesh.models import utc_now
 from joymesh.persistence import Database
 
-TaskOfferCallback = Callable[[ConnectorTaskRecord, ConnectorTaskPlan], Awaitable[None]]
+TaskOfferCallback = Callable[[ConnectorTaskRecord, ConnectorTaskPlan], Awaitable[bool | None]]
 
 
 @dataclass
@@ -31,9 +31,7 @@ class ConnectorLifecycleCoordinator:
     planner: ConnectorPlanner
     store: ConnectorLifecycleStore
     _runners: dict[str, ConnectorNodeRunner] = field(default_factory=dict)
-    _inline_node: bool = field(
-        default_factory=lambda: os.environ.get("JOYMESH_INLINE_CONNECTOR_NODE", "1") == "1"
-    )
+    _inline_node: bool = field(default_factory=inline_connector_node_enabled)
     _offer_callbacks: list[TaskOfferCallback] = field(default_factory=list)
     _background: list[asyncio.Task[None]] = field(default_factory=list)
 
@@ -62,14 +60,23 @@ class ConnectorLifecycleCoordinator:
         if not approved or plan.plan_hash != plan_hash:
             raise PermissionError("exact connector plan approval required")
         task = await self.store.create_task_from_plan(plan)
-        task = await self.store.transition_task(
-            task.task_id,
-            expected_version=task.version,
-            status=ConnectorTaskStatus.OFFERED_TO_NODE,
-        )
+        # Persist as queued first; only mark offered after a successful node send.
+        offered = False
         for callback in self._offer_callbacks:
-            await callback(task, plan)
-        if self._inline_node:
+            result = await callback(task, plan)
+            offered = offered or bool(result)
+        if offered:
+            task = await self.store.transition_task(
+                task.task_id,
+                expected_version=task.version,
+                status=ConnectorTaskStatus.OFFERED_TO_NODE,
+            )
+        elif self._inline_node:
+            task = await self.store.transition_task(
+                task.task_id,
+                expected_version=task.version,
+                status=ConnectorTaskStatus.OFFERED_TO_NODE,
+            )
             handle = asyncio.create_task(
                 self._run_on_node(task.task_id, plan),
                 name=f"connector-task-{task.task_id}",
@@ -80,7 +87,29 @@ class ConnectorLifecycleCoordinator:
                     self._background.remove(finished) if finished in self._background else None
                 )
             )
+        else:
+            # Remain queued until an authenticated node session is available.
+            task = await self.store.get_task(task.task_id)
         return task
+
+    async def offer_queued_tasks(self, *, node_id: str) -> tuple[ConnectorTaskRecord, ...]:
+        offered: list[ConnectorTaskRecord] = []
+        for task in await self.store.list_active_tasks(node_id=node_id):
+            if task.status is not ConnectorTaskStatus.QUEUED:
+                continue
+            plan = await self.store.get_plan(task.plan_id)
+            success = False
+            for callback in self._offer_callbacks:
+                success = success or bool(await callback(task, plan))
+            if success:
+                offered.append(
+                    await self.store.transition_task(
+                        task.task_id,
+                        expected_version=task.version,
+                        status=ConnectorTaskStatus.OFFERED_TO_NODE,
+                    )
+                )
+        return tuple(offered)
 
     async def _run_on_node(self, task_id: str, plan: ConnectorTaskPlan) -> None:
         runner = self._runners.setdefault(plan.node_id, ConnectorNodeRunner(node_id=plan.node_id))
@@ -170,21 +199,32 @@ class ConnectorLifecycleCoordinator:
             ConnectorTaskStatus.FAILED,
             ConnectorTaskStatus.CANCELLED,
             ConnectorTaskStatus.INTERRUPTED,
+            ConnectorTaskStatus.EXPIRED,
         }:
             raise ValueError("only failed or cancelled tasks can retry")
         plan = await self.store.get_plan(previous.plan_id)
         task = await self.store.create_task_from_plan(plan, previous_task_id=previous.task_id)
-        task = await self.store.transition_task(
-            task.task_id,
-            expected_version=task.version,
-            status=ConnectorTaskStatus.OFFERED_TO_NODE,
-        )
+        offered = False
+        for callback in self._offer_callbacks:
+            offered = offered or bool(await callback(task, plan))
+        if offered:
+            return await self.store.transition_task(
+                task.task_id,
+                expected_version=task.version,
+                status=ConnectorTaskStatus.OFFERED_TO_NODE,
+            )
         if self._inline_node:
+            task = await self.store.transition_task(
+                task.task_id,
+                expected_version=task.version,
+                status=ConnectorTaskStatus.OFFERED_TO_NODE,
+            )
             handle = asyncio.create_task(
                 self._run_on_node(task.task_id, plan),
                 name=f"connector-task-{task.task_id}",
             )
             self._background.append(handle)
+            return task
         return task
 
     async def authentication_complete(self, task_id: str) -> ConnectorTaskRecord:
@@ -193,6 +233,7 @@ class ConnectorLifecycleCoordinator:
             ConnectorTaskStatus.WAITING_FOR_USER,
             ConnectorTaskStatus.WAITING_FOR_AUTH_CALLBACK,
             ConnectorTaskStatus.RUNNING,
+            ConnectorTaskStatus.SUCCEEDED,
         }:
             raise ValueError("task is not waiting for authentication")
         verify_plan = self.planner.plan(
@@ -208,19 +249,21 @@ class ConnectorLifecycleCoordinator:
                 status=ConnectorTaskStatus.SUCCEEDED,
                 finished_at=utc_now(),
             )
-        verify_task = await self.store.create_task_from_plan(verify_plan, previous_task_id=task_id)
-        verify_task = await self.store.transition_task(
-            verify_task.task_id,
-            expected_version=verify_task.version,
-            status=ConnectorTaskStatus.OFFERED_TO_NODE,
+        return await self.approve_and_queue(
+            verify_plan.plan_id, plan_hash=verify_plan.plan_hash, approved=True
         )
-        if self._inline_node:
-            handle = asyncio.create_task(
-                self._run_on_node(verify_task.task_id, verify_plan),
-                name=f"connector-task-{verify_task.task_id}",
-            )
-            self._background.append(handle)
-        return verify_task
+
+    async def enable_routing(self, *, node_id: str, connector_id: str) -> ConnectorReadiness:
+        await self.store.set_routing_enabled(
+            node_id=node_id, connector_id=connector_id, enabled=True
+        )
+        return await self.store.recompute(node_id=node_id, connector_id=connector_id)
+
+    async def disable_routing(self, *, node_id: str, connector_id: str) -> ConnectorReadiness:
+        await self.store.set_routing_enabled(
+            node_id=node_id, connector_id=connector_id, enabled=False
+        )
+        return await self.store.recompute(node_id=node_id, connector_id=connector_id)
 
     async def get_task(self, task_id: str) -> ConnectorTaskRecord:
         return await self.store.get_task(task_id)

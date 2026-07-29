@@ -16,7 +16,12 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from pydantic import BaseModel
 
-from joymesh.control_plane.contracts import ActionPlan, ApprovalDecision, RemoteTaskEnvelope
+from joymesh.control_plane.contracts import (
+    ActionPlan,
+    ApprovalDecision,
+    ConnectorTaskEnvelope,
+    RemoteTaskEnvelope,
+)
 from joymesh.models import utc_now
 
 
@@ -131,11 +136,59 @@ def resolve_workspace_path(root: str, candidate: str) -> Path:
     return requested
 
 
+def sign_bytes(message: bytes, private_key: str) -> str:
+    signature = Ed25519PrivateKey.from_private_bytes(_decode(private_key)).sign(message)
+    return _encode(signature)
+
+
+def verify_bytes(message: bytes, signature: str, public_key: str) -> None:
+    Ed25519PublicKey.from_public_bytes(_decode(public_key)).verify(_decode(signature), message)
+
+
+def sign_connector_envelope(
+    envelope: ConnectorTaskEnvelope, private_key: str
+) -> ConnectorTaskEnvelope:
+    signature = Ed25519PrivateKey.from_private_bytes(_decode(private_key)).sign(
+        canonical_json(envelope, exclude={"signature"})
+    )
+    return envelope.model_copy(update={"signature": _encode(signature)})
+
+
+def verify_connector_envelope(envelope: ConnectorTaskEnvelope, public_key: str) -> None:
+    if envelope.expires_at <= utc_now():
+        raise ExpiredMessageError("connector task envelope has expired")
+    Ed25519PublicKey.from_public_bytes(_decode(public_key)).verify(
+        _decode(envelope.signature),
+        canonical_json(envelope, exclude={"signature"}),
+    )
+
+
+def load_private_key(path: Path) -> str:
+    return path.expanduser().read_text(encoding="utf-8").strip()
+
+
 def store_private_key(path: Path, private_key: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(private_key)
+
+
+def production_mode() -> bool:
+    return os.environ.get("JOYMESH_ENV", "development").lower() in {
+        "production",
+        "prod",
+    }
+
+
+def inline_connector_node_enabled() -> bool:
+    configured = os.environ.get("JOYMESH_INLINE_CONNECTOR_NODE")
+    if configured is None:
+        return not production_mode()
+    enabled = configured == "1"
+    if enabled and production_mode():
+        raise RuntimeError("inline connector node execution is refused in production")
+    return enabled
 
 
 def _encode(value: bytes) -> str:

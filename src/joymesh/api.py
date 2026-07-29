@@ -29,19 +29,23 @@ from joymesh.connectors.lifecycle_models import (
     ConnectorReadiness,
     ConnectorTaskEvent,
     ConnectorTaskRecord,
+    ConnectorTaskStatus,
 )
 from joymesh.connectors.planning import (
     ConnectorAction,
     ConnectorPlanError,
+    ConnectorTaskPlan,
 )
 from joymesh.control_plane.contracts import (
     NodeProtocolMessageType,
+    NodeSession,
     OnboardingProgress,
     OnboardingState,
     ProtocolMessage,
     RemoteTaskEnvelope,
     WorkspaceGrant,
 )
+from joymesh.control_plane.gateway import ConnectorTaskEventIngestor, NodeGateway
 from joymesh.control_plane.security import generate_node_keypair
 from joymesh.fireconnect import FireConnectClient, FireConnectError
 from joymesh.harnesses.contracts import (
@@ -67,6 +71,7 @@ from joymesh.models import (
     SubscriptionCreate,
     SubscriptionProfile,
     UsageRecord,
+    utc_now,
 )
 from joymesh.service import JoyMesh, NoRouteError
 from joymesh.workspace import InvalidWorkspaceError
@@ -168,12 +173,25 @@ def create_app(
     service = mesh or JoyMesh()
     fireconnect_client = fireconnect or FireConnectClient()
     signing_private_key, signing_public_key = generate_node_keypair()
-    node_connections: dict[str, WebSocket] = {}
+    gateway = NodeGateway(
+        signing_private_key=signing_private_key,
+        signing_public_key=signing_public_key,
+    )
+    event_ingestor: ConnectorTaskEventIngestor | None = None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        nonlocal event_ingestor
         await service.initialize()
+        event_ingestor = ConnectorTaskEventIngestor(store=service.connector_lifecycle.store)
+
+        async def offer(task: object, plan: ConnectorTaskPlan) -> bool:
+            assert isinstance(task, ConnectorTaskRecord)
+            return await gateway.offer_connector_task(task, plan)
+
+        service.connector_lifecycle.register_offer_callback(offer)
         app.state.mesh = service
+        app.state.gateway = gateway
         yield
         if owns_mesh:
             await service.close()
@@ -642,9 +660,9 @@ def create_app(
             )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
-        socket = node_connections.get(request.node_id)
+        socket = gateway.connections.get(request.node_id)
         if socket is not None:
-            await socket.send_json(
+            await socket.websocket.send_json(
                 ProtocolMessage(
                     type=NodeProtocolMessageType.TASK_OFFER,
                     node_id=request.node_id,
@@ -654,11 +672,89 @@ def create_app(
             )
         return signed
 
+    @app.get("/nodes/{node_id}/session", response_model=NodeSession | None)
+    async def node_session(node_id: str) -> NodeSession | None:
+        connection = gateway.connections.get(node_id)
+        return None if connection is None else connection.session
+
+    @app.post("/nodes/{node_id}/revoke")
+    async def revoke_node(node_id: str, identity: BrowserIdentityDependency) -> dict[str, str]:
+        node = service.control_plane.store.nodes.get(node_id)
+        if node is None or node.organisation_id != identity.organisation_id:
+            raise HTTPException(status_code=404, detail="node not found")
+        service.control_plane.store.nodes[node_id] = node.model_copy(
+            update={"revoked_at": utc_now()}
+        )
+        await gateway.revoke_node(node_id)
+        return {"status": "revoked", "node_id": node_id}
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/routing/enable",
+        response_model=ConnectorReadiness,
+    )
+    async def enable_connector_routing(node_id: str, connector_id: str) -> ConnectorReadiness:
+        return await service.connector_lifecycle.enable_routing(
+            node_id=node_id, connector_id=connector_id
+        )
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/routing/disable",
+        response_model=ConnectorReadiness,
+    )
+    async def disable_connector_routing(node_id: str, connector_id: str) -> ConnectorReadiness:
+        return await service.connector_lifecycle.disable_routing(
+            node_id=node_id, connector_id=connector_id
+        )
+
+    @app.get("/connector-tasks/{task_id}/events/stream")
+    async def stream_connector_task_events(task_id: str, request: Request) -> StreamingResponse:
+        try:
+            await service.connector_task(task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        async def event_source() -> AsyncIterator[str]:
+            sequence = 0
+            while True:
+                if await request.is_disconnected():
+                    break
+                events = await service.connector_task_events(task_id, after=sequence)
+                for event in events:
+                    sequence = event.sequence
+                    yield (
+                        f"id: {sequence}\nevent: {event.event_type}\n"
+                        f"data: {event.model_dump_json()}\n\n"
+                    )
+                task = await service.connector_task(task_id)
+                if (
+                    task.status
+                    in {
+                        ConnectorTaskStatus.SUCCEEDED,
+                        ConnectorTaskStatus.FAILED,
+                        ConnectorTaskStatus.CANCELLED,
+                        ConnectorTaskStatus.EXPIRED,
+                        ConnectorTaskStatus.INTERRUPTED,
+                    }
+                    and not events
+                ):
+                    break
+                if not events:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(
+            event_source(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     @app.websocket("/api/v1/node-gateway")
+    @app.websocket("/nodes/connect")
     async def node_gateway(websocket: WebSocket) -> None:
         configured_token = os.environ.get("JOYMESH_NODE_GATEWAY_TOKEN")
         supplied = websocket.headers.get("authorization", "").removeprefix("Bearer ")
-        if configured_token is None or not hmac.compare_digest(supplied, configured_token):
+        # Bearer token is an optional edge gate; cryptographic node auth is still required.
+        if configured_token is not None and not hmac.compare_digest(supplied, configured_token):
             await websocket.close(code=4401, reason="unauthorized")
             return
         await websocket.accept()
@@ -673,26 +769,48 @@ def create_app(
                 await websocket.close(code=4403, reason="node revoked or unknown")
                 return
             node_id = hello.node_id
-            node_connections[node_id] = websocket
-            await websocket.send_json(
-                ProtocolMessage(
-                    type=NodeProtocolMessageType.WELCOME,
-                    node_id=node_id,
-                    sequence=0,
-                    reply_to=hello.message_id,
-                    payload={"heartbeat_seconds": 20},
-                ).model_dump(mode="json")
+            await gateway.authenticate(
+                websocket,
+                node_id=node_id,
+                organisation_id=node.organisation_id,
+                public_key=node.public_key,
+                runtime_version=str(hello.payload.get("runtime_version", node.version)),
+                remote_address=websocket.client.host if websocket.client else None,
             )
+            await service.connector_lifecycle.offer_queued_tasks(node_id=node_id)
             while True:
                 message = ProtocolMessage.model_validate_json(await websocket.receive_text())
                 if message.node_id != node_id:
                     await websocket.close(code=4403, reason="node identity changed")
                     return
-        except (WebSocketDisconnect, ValueError):
+                if message.type is NodeProtocolMessageType.HEARTBEAT:
+                    connection = gateway.connections.get(node_id)
+                    if connection is not None:
+                        gateway.sessions[connection.session.session_id] = (
+                            connection.session.model_copy(update={"last_seen_at": utc_now()})
+                        )
+                        await websocket.send_json(
+                            ProtocolMessage(
+                                type=NodeProtocolMessageType.HEARTBEAT_ACK,
+                                node_id=node_id,
+                                sequence=0,
+                                reply_to=message.message_id,
+                                payload={"status": "ok"},
+                            ).model_dump(mode="json")
+                        )
+                    continue
+                if message.type is NodeProtocolMessageType.READY:
+                    await service.connector_lifecycle.offer_queued_tasks(node_id=node_id)
+                    continue
+                if message.type is NodeProtocolMessageType.TASK_RECONCILE_RESPONSE:
+                    continue
+                if event_ingestor is not None and message.type.value.startswith("task."):
+                    await event_ingestor.ingest(message)
+        except (WebSocketDisconnect, ValueError, PermissionError):
             pass
         finally:
-            if node_id is not None and node_connections.get(node_id) is websocket:
-                node_connections.pop(node_id, None)
+            if node_id is not None:
+                gateway.disconnect(node_id, websocket)
 
     @app.get("/api/v1/fireconnect", response_model=FireConnectStatus)
     async def fireconnect_status() -> FireConnectStatus:
