@@ -9,16 +9,19 @@ from dataclasses import dataclass, field
 from joymesh.connectors.lifecycle_models import (
     TERMINAL_TASK_STATUSES,
     ConnectorEvidence,
+    ConnectorExecutionOrigin,
     ConnectorLifecyclePlanResponse,
     ConnectorReadiness,
     ConnectorTaskEvent,
     ConnectorTaskRecord,
     ConnectorTaskStatus,
+    EvidenceTrustLevel,
+    NodeConnectorState,
 )
 from joymesh.connectors.node_runner import ConnectorNodeRunner
 from joymesh.connectors.planning import ConnectorAction, ConnectorPlanner, ConnectorTaskPlan
 from joymesh.connectors.store import ConnectorLifecycleStore
-from joymesh.control_plane.security import inline_connector_node_enabled
+from joymesh.control_plane.security import inline_connector_node_enabled, production_mode
 from joymesh.models import utc_now
 from joymesh.persistence import Database
 
@@ -59,8 +62,11 @@ class ConnectorLifecycleCoordinator:
         self.planner.validate(plan)
         if not approved or plan.plan_hash != plan_hash:
             raise PermissionError("exact connector plan approval required")
+        if plan.action is ConnectorAction.AUTHENTICATE:
+            existing = await self._find_active_login(plan)
+            if existing is not None:
+                return existing
         task = await self.store.create_task_from_plan(plan)
-        # Persist as queued first; only mark offered after a successful node send.
         offered = False
         for callback in self._offer_callbacks:
             result = await callback(task, plan)
@@ -88,9 +94,25 @@ class ConnectorLifecycleCoordinator:
                 )
             )
         else:
-            # Remain queued until an authenticated node session is available.
             task = await self.store.get_task(task.task_id)
         return task
+
+    async def _find_active_login(self, plan: ConnectorTaskPlan) -> ConnectorTaskRecord | None:
+        for task in await self.store.list_active_tasks(node_id=plan.node_id):
+            if task.connector_id != plan.connector_id:
+                continue
+            if task.action != ConnectorAction.AUTHENTICATE.value:
+                continue
+            if task.status in {
+                ConnectorTaskStatus.WAITING_FOR_USER,
+                ConnectorTaskStatus.WAITING_FOR_AUTH_CALLBACK,
+                ConnectorTaskStatus.QUEUED,
+                ConnectorTaskStatus.OFFERED_TO_NODE,
+                ConnectorTaskStatus.ACCEPTED_BY_NODE,
+                ConnectorTaskStatus.RUNNING,
+            }:
+                return task
+        return None
 
     async def offer_queued_tasks(self, *, node_id: str) -> tuple[ConnectorTaskRecord, ...]:
         offered: list[ConnectorTaskRecord] = []
@@ -112,7 +134,13 @@ class ConnectorLifecycleCoordinator:
         return tuple(offered)
 
     async def _run_on_node(self, task_id: str, plan: ConnectorTaskPlan) -> None:
-        runner = self._runners.setdefault(plan.node_id, ConnectorNodeRunner(node_id=plan.node_id))
+        runner = self._runners.setdefault(
+            plan.node_id,
+            ConnectorNodeRunner(
+                node_id=plan.node_id,
+                execution_origin=ConnectorExecutionOrigin.INLINE_DEVELOPMENT,
+            ),
+        )
         task = await self.store.get_task(task_id)
         task = await self.store.transition_task(
             task_id,
@@ -141,6 +169,29 @@ class ConnectorLifecycleCoordinator:
             await self.store.append_task_event(event)
 
         async def record_evidence(evidence: ConnectorEvidence) -> None:
+            if evidence.execution_origin is ConnectorExecutionOrigin.REMOTE_NODE:
+                evidence = ConnectorEvidence(
+                    evidence_id=evidence.evidence_id,
+                    node_id=evidence.node_id,
+                    connector_id=evidence.connector_id,
+                    connector_revision=evidence.connector_revision,
+                    task_id=evidence.task_id,
+                    evidence_type=evidence.evidence_type,
+                    status=evidence.status,
+                    executable_path=evidence.executable_path,
+                    executable_fingerprint=evidence.executable_fingerprint,
+                    harness_version=evidence.harness_version,
+                    provider_mode=evidence.provider_mode,
+                    details={
+                        **dict(evidence.details),
+                        "execution_origin": ConnectorExecutionOrigin.INLINE_DEVELOPMENT.value,
+                        "trust_level": EvidenceTrustLevel.DEVELOPMENT.value,
+                    },
+                    created_at=evidence.created_at,
+                    expires_at=evidence.expires_at,
+                    trust_level=EvidenceTrustLevel.DEVELOPMENT,
+                    execution_origin=ConnectorExecutionOrigin.INLINE_DEVELOPMENT,
+                )
             await self.store.record_evidence(evidence)
 
         final = await runner.execute(
@@ -254,6 +305,18 @@ class ConnectorLifecycleCoordinator:
         )
 
     async def enable_routing(self, *, node_id: str, connector_id: str) -> ConnectorReadiness:
+        readiness = await self.store.get_readiness(node_id=node_id, connector_id=connector_id)
+        if readiness.state is not NodeConnectorState.ROUTING_DISABLED:
+            raise PermissionError(
+                f"routing can only be enabled from routing_disabled (got {readiness.state.value})"
+            )
+        if production_mode():
+            if readiness.evidence_trust_level is not EvidenceTrustLevel.NODE_ATTESTED:
+                raise PermissionError(
+                    "production routing requires node-attested certification evidence"
+                )
+            if readiness.execution_origin is not ConnectorExecutionOrigin.REMOTE_NODE:
+                raise PermissionError("production routing requires remote_node execution origin")
         await self.store.set_routing_enabled(
             node_id=node_id, connector_id=connector_id, enabled=True
         )

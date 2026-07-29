@@ -253,6 +253,7 @@ class JoyMeshNode:
             return
         if message.type is NodeProtocolMessageType.TASK_CANCEL:
             task_id = str(message.payload.get("task_id", ""))
+            await self.runner.cancel_task(task_id)
             handle = self._active_tasks.get(task_id)
             if handle is not None:
                 handle.cancel()
@@ -294,6 +295,40 @@ class JoyMeshNode:
                     "sequence_number": existing.last_sequence_number,
                     "detail": "replayed terminal result",
                     "terminal_result_digest": existing.terminal_result_digest,
+                },
+            )
+            return
+        if existing is not None and existing.started_at is not None:
+            # Non-terminal journal entry: resume without relaunching Cursor.
+            active = self._active_tasks.get(envelope.task_id)
+            await self._send(
+                socket,
+                NodeProtocolMessageType.TASK_ACCEPTED,
+                {
+                    "task_id": envelope.task_id,
+                    "node_id": self.node_id,
+                    "connector_id": envelope.connector_id,
+                    "connector_revision": envelope.connector_revision,
+                    "plan_hash": envelope.plan_hash,
+                    "sequence_number": existing.last_sequence_number or 1,
+                    "detail": "resumed without duplicate execution",
+                    "process_active": active is not None and not active.done(),
+                    "journal_status": existing.status,
+                },
+            )
+            await self._send(
+                socket,
+                NodeProtocolMessageType.TASK_WAITING_FOR_USER
+                if envelope.action == "authenticate"
+                else NodeProtocolMessageType.TASK_PROGRESS,
+                {
+                    "task_id": envelope.task_id,
+                    "node_id": self.node_id,
+                    "connector_id": envelope.connector_id,
+                    "connector_revision": envelope.connector_revision,
+                    "plan_hash": envelope.plan_hash,
+                    "sequence_number": max(existing.last_sequence_number, 1) + 1,
+                    "detail": "reconciled active journal entry; Cursor not relaunched",
                 },
             )
             return
@@ -373,6 +408,8 @@ class JoyMeshNode:
                         "harness_version": evidence.harness_version,
                         "provider_mode": evidence.provider_mode,
                         "connector_revision": evidence.connector_revision,
+                        "trust_level": evidence.trust_level.value,
+                        "execution_origin": evidence.execution_origin.value,
                         "details": dict(evidence.details),
                     },
                 },
@@ -394,25 +431,13 @@ class JoyMeshNode:
             expires_at=envelope.expires_at,
             plan_hash=envelope.plan_hash,
         )
-        await self._send(
-            socket,
-            NodeProtocolMessageType.TASK_STARTED,
-            {
-                "task_id": envelope.task_id,
-                "node_id": self.node_id,
-                "connector_id": envelope.connector_id,
-                "connector_revision": envelope.connector_revision,
-                "plan_hash": envelope.plan_hash,
-                "sequence_number": 2,
-            },
-        )
         try:
             status = await self.runner.execute(
                 task_id=envelope.task_id,
                 plan=plan,
                 emit_event=emit_event,
                 record_evidence=record_evidence,
-                sequence_start=2,
+                sequence_start=1,
             )
         except asyncio.CancelledError:
             status = ConnectorTaskStatus.CANCELLED
