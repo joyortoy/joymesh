@@ -805,8 +805,26 @@ def create_app(
                 if message.type is NodeProtocolMessageType.TASK_RECONCILE_RESPONSE:
                     continue
                 if event_ingestor is not None and message.type.value.startswith("task."):
-                    await event_ingestor.ingest(message)
-        except (WebSocketDisconnect, ValueError, PermissionError):
+                    try:
+                        await event_ingestor.ingest(message)
+                    except (ValueError, PermissionError, KeyError) as exc:
+                        # Keep the authenticated node session alive; reject only the event.
+                        await websocket.send_json(
+                            ProtocolMessage(
+                                type=NodeProtocolMessageType.TASK_PROGRESS,
+                                node_id=node_id,
+                                sequence=0,
+                                payload={
+                                    "detail": f"event rejected: {exc}",
+                                    "rejected_type": message.type.value,
+                                    "task_id": message.payload.get("task_id"),
+                                },
+                            ).model_dump(mode="json")
+                        )
+                    continue
+        except WebSocketDisconnect:
+            pass
+        except (ValueError, PermissionError):
             pass
         finally:
             if node_id is not None:
