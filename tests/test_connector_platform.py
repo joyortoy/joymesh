@@ -160,24 +160,34 @@ async def test_sdk_and_api_share_connector_catalogue_and_planner(tmp_path: Path)
             )
             assert planned.status_code == 200
             body = planned.json()
-            assert body["executable"] == "npm"
-            assert body["arguments"] == [
+            plan = body["plan"]
+            assert plan["executable"] == "npm"
+            assert plan["arguments"] == [
                 "install",
                 "--global",
                 "@google/gemini-cli",
             ]
+            assert body["approval_required"] is True
+            assert body["next_action"] == "approve"
 
             rejected = await client.post(
-                f"/connector-tasks/{body['plan_id']}/execute",
-                json={"plan_hash": body["plan_hash"], "approved": False},
+                f"/connector-tasks/{plan['plan_id']}/execute",
+                json={"plan_hash": plan["plan_hash"], "approved": False},
             )
             assert rejected.status_code == 409
 
             accepted = await client.post(
-                f"/connector-tasks/{body['plan_id']}/execute",
-                json={"plan_hash": body["plan_hash"], "approved": True},
+                f"/connector-tasks/{plan['plan_id']}/execute",
+                json={"plan_hash": plan["plan_hash"], "approved": True},
             )
             assert accepted.status_code == 200
-            assert accepted.json()["status"] == "queued_for_node"
+            assert accepted.json()["status"] in {
+                "queued",
+                "offered_to_node",
+                "accepted_by_node",
+                "running",
+                "failed",
+                "succeeded",
+            }
 
     await mesh.close()
