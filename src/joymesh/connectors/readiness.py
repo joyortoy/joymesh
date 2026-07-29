@@ -10,12 +10,15 @@ from joymesh.connectors import ConnectorCatalogue, ConnectorDefinition
 from joymesh.connectors.lifecycle_models import (
     ACTIVE_TASK_STATUSES,
     ConnectorEvidenceType,
+    ConnectorExecutionOrigin,
     ConnectorReadiness,
     ConnectorTaskStatus,
+    EvidenceTrustLevel,
     NodeConnectorState,
     RecommendedConnectorAction,
 )
 from joymesh.connectors.models import ConnectorExecutionMode, ConnectorMaturity, ConnectorTier
+from joymesh.control_plane.security import production_mode
 from joymesh.models import utc_now
 
 
@@ -42,6 +45,7 @@ class _NodeConnectorSnapshot:
     executable_fingerprint: str | None
     platform: str
     node_online: bool
+    node_revoked: bool = False
 
 
 class ConnectorReadinessService:
@@ -65,6 +69,13 @@ class ConnectorReadinessService:
             or _evidence_version(snapshot, ConnectorEvidenceType.VERSION)
         )
         executable = snapshot.installation_executable or snapshot.discovery_executable
+        cert = snapshot.evidence_by_type.get(ConnectorEvidenceType.CERTIFICATION) or {}
+        trust = _parse_trust(cert.get("trust_level"))
+        origin = _parse_origin(cert.get("execution_origin"))
+        raw_profile = cert.get("routing_profile")
+        profile = raw_profile if isinstance(raw_profile, str) else None
+        if state is NodeConnectorState.READY and profile is None:
+            profile = "cursor_read_only" if connector_id == "cursor" else None
         return ConnectorReadiness(
             node_id=node_id,
             connector_id=connector_id,
@@ -77,6 +88,9 @@ class ConnectorReadinessService:
             catalogue_maturity=definition.maturity.value,
             installed_version=installed_version,
             executable_path=executable,
+            routing_profile=profile if routing else None,
+            evidence_trust_level=trust,
+            execution_origin=origin,
             updated_at=now,
         )
 
@@ -103,6 +117,15 @@ class ConnectorReadinessService:
             or definition.execution.mode is ConnectorExecutionMode.IDE_ONLY
         ):
             return (NodeConnectorState.IDE_ONLY, RecommendedConnectorAction.NONE, None)
+        if snapshot.node_revoked:
+            return (
+                NodeConnectorState.BLOCKED,
+                RecommendedConnectorAction.NONE,
+                "Node registration is revoked",
+            )
+        if not snapshot.node_online:
+            # Keep evidence-derived state but block readiness for routing.
+            pass
 
         active = snapshot.active_task_status
         active_action = snapshot.active_task_action or ""
@@ -189,12 +212,12 @@ class ConnectorReadinessService:
                 None,
             )
 
-        cert_ok = snapshot.certification_valid and not _certification_expired(snapshot, now)
+        cert_ok = _certification_accepted(snapshot, now)
         if not cert_ok:
             return (
                 NodeConnectorState.CERTIFICATION_REQUIRED,
                 RecommendedConnectorAction.CERTIFY,
-                None,
+                _certification_block_reason(snapshot),
             )
 
         if not snapshot.installation_routing_enabled:
@@ -202,6 +225,13 @@ class ConnectorReadinessService:
                 NodeConnectorState.ROUTING_DISABLED,
                 RecommendedConnectorAction.ENABLE_ROUTING,
                 None,
+            )
+
+        if not snapshot.node_online:
+            return (
+                NodeConnectorState.ROUTING_DISABLED,
+                RecommendedConnectorAction.NONE,
+                "Node is offline; routing is ineligible",
             )
 
         return (NodeConnectorState.READY, RecommendedConnectorAction.NONE, None)
@@ -213,14 +243,85 @@ def _auth_not_required(definition: ConnectorDefinition) -> bool:
 
 def _authentication_verified(snapshot: _NodeConnectorSnapshot) -> bool:
     if snapshot.auth_status == "authenticated" and snapshot.auth_verified_at is not None:
+        auth_evidence = snapshot.evidence_by_type.get(ConnectorEvidenceType.AUTHENTICATION)
+        if production_mode() and auth_evidence and not _production_trust_ok(auth_evidence):
+            return False
         return True
     auth_evidence = snapshot.evidence_by_type.get(ConnectorEvidenceType.AUTHENTICATION)
-    return bool(auth_evidence and auth_evidence.get("status") == "authenticated")
+    if not (auth_evidence and auth_evidence.get("status") == "authenticated"):
+        return False
+    if production_mode() and not _production_trust_ok(auth_evidence):
+        return False
+    return True
 
 
 def _adapter_conformance_passed(snapshot: _NodeConnectorSnapshot) -> bool:
     evidence = snapshot.evidence_by_type.get(ConnectorEvidenceType.ADAPTER_CONFORMANCE)
-    return bool(evidence and evidence.get("status") == "passed")
+    if not (evidence and evidence.get("status") == "passed"):
+        return False
+    if production_mode() and not _production_trust_ok(evidence):
+        return False
+    return True
+
+
+def _certification_accepted(snapshot: _NodeConnectorSnapshot, now: datetime) -> bool:
+    cert = snapshot.evidence_by_type.get(ConnectorEvidenceType.CERTIFICATION)
+    table_ok = snapshot.certification_valid and not _certification_expired(snapshot, now)
+    evidence_ok = bool(cert and cert.get("status") == "certified")
+    if not (table_ok or evidence_ok):
+        return False
+    if production_mode():
+        if not cert or not _production_trust_ok(cert):
+            return False
+    return True
+
+
+def _certification_block_reason(snapshot: _NodeConnectorSnapshot) -> str | None:
+    cert = snapshot.evidence_by_type.get(ConnectorEvidenceType.CERTIFICATION)
+    if not cert:
+        return None
+    if production_mode() and not _production_trust_ok(cert):
+        trust = cert.get("trust_level")
+        origin = cert.get("execution_origin")
+        return (
+            "Production routing requires node-attested remote-node evidence "
+            f"(trust={trust}, origin={origin})"
+        )
+    return None
+
+
+def _production_trust_ok(evidence: dict[str, Any]) -> bool:
+    trust = str(evidence.get("trust_level") or "")
+    origin = str(evidence.get("execution_origin") or "")
+    if trust in {EvidenceTrustLevel.MOCK.value, EvidenceTrustLevel.DEVELOPMENT.value}:
+        return False
+    if origin in {
+        ConnectorExecutionOrigin.MOCK_TEST.value,
+        ConnectorExecutionOrigin.INLINE_DEVELOPMENT.value,
+    }:
+        return False
+    return (
+        trust == EvidenceTrustLevel.NODE_ATTESTED.value
+        and origin == ConnectorExecutionOrigin.REMOTE_NODE.value
+    )
+
+
+def _parse_trust(value: object) -> EvidenceTrustLevel | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return EvidenceTrustLevel(value)
+    except ValueError:
+        return None
+
+
+def _parse_origin(value: object) -> ConnectorExecutionOrigin | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return ConnectorExecutionOrigin(value)
+    except ValueError:
+        return None
 
 
 def _broken_executable_evidence(snapshot: _NodeConnectorSnapshot) -> str | None:
