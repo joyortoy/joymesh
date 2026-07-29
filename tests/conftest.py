@@ -27,11 +27,17 @@ if "--version" in sys.argv:
     raise SystemExit(0)
 
 task = sys.argv[-1]
+if KIND == "claude-code" and "--print" in sys.argv:
+    task = sys.argv[sys.argv.index("--print") + 1]
+if KIND == "gemini-cli" and "--prompt" in sys.argv:
+    task = sys.argv[sys.argv.index("--prompt") + 1]
 resume = None
 if KIND == "codex" and "resume" in sys.argv:
     resume = sys.argv[sys.argv.index("resume") + 1]
 if KIND == "opencode" and "--session" in sys.argv:
     resume = sys.argv[sys.argv.index("--session") + 1]
+if KIND in {{"claude-code", "gemini-cli"}} and "--resume" in sys.argv:
+    resume = sys.argv[sys.argv.index("--resume") + 1]
 session_id = resume or f"{{KIND}}-session-{{os.getpid()}}"
 
 def emit(value):

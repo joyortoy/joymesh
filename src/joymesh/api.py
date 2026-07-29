@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
 from joymesh.fireconnect import FireConnectClient, FireConnectError
+from joymesh.harnesses.contracts import (
+    ApprovalToken,
+    DiscoveryResult,
+    HarnessDefinition,
+    HarnessInspection,
+    LifecyclePlan,
+    LifecycleResult,
+)
+from joymesh.harnesses.lifecycle import LifecyclePlanError
 from joymesh.models import (
     FallbackProposal,
     FireConnectConfigureRequest,
@@ -38,11 +46,15 @@ TERMINAL_STATUSES = {
 }
 
 
-DEFAULT_DASHBOARD_ORIGINS = (
-    "https://joymesh-mission-control.workspace-266561.chatgpt.site",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-)
+class DiscoveryRequest(BaseModel):
+    harness_id: str | None = None
+    probe_versions: bool = False
+    overrides: dict[str, str] = Field(default_factory=dict)
+
+
+class LifecycleExecutionRequest(BaseModel):
+    plan: LifecyclePlan
+    approval: ApprovalToken
 
 
 def create_app(
@@ -62,19 +74,6 @@ def create_app(
             await service.close()
 
     app = FastAPI(title="JoyMesh API", version="0.1.0", lifespan=lifespan)
-    configured_origins = tuple(
-        origin.strip()
-        for origin in os.environ.get("JOYMESH_DASHBOARD_ORIGINS", "").split(",")
-        if origin.strip()
-    )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[*DEFAULT_DASHBOARD_ORIGINS, *configured_origins],
-        allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Last-Event-ID"],
-        allow_private_network=True,
-    )
 
     @app.exception_handler(InvalidWorkspaceError)
     async def invalid_workspace(_request: Request, exc: InvalidWorkspaceError) -> JSONResponse:
@@ -82,7 +81,93 @@ def create_app(
 
     @app.get("/api/v1/harnesses", response_model=list[HarnessDescriptor])
     async def harnesses() -> tuple[HarnessDescriptor, ...]:
+        """Compatibility adapter view."""
+
         return await service.detect_harnesses()
+
+    @app.get("/api/v1/harnesses/catalogue", response_model=list[HarnessDefinition])
+    async def harness_catalogue() -> tuple[HarnessDefinition, ...]:
+        return service.list_harnesses()
+
+    @app.get("/api/v1/harnesses/detected", response_model=list[HarnessDescriptor])
+    async def detected_harnesses() -> tuple[HarnessDescriptor, ...]:
+        """Compatibility view for the original adapter descriptors."""
+
+        return await service.detect_harnesses()
+
+    @app.post("/api/v1/harnesses/discovery", response_model=list[DiscoveryResult])
+    async def discover_harnesses(request: DiscoveryRequest) -> tuple[DiscoveryResult, ...]:
+        try:
+            return await service.discover_harnesses(
+                request.harness_id,
+                probe_versions=request.probe_versions,
+                overrides=request.overrides,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/harnesses/discovery", response_model=list[DiscoveryResult])
+    async def discover_harnesses_read_only() -> tuple[DiscoveryResult, ...]:
+        return await service.discover_harnesses()
+
+    @app.get("/api/v1/harnesses/{harness_id}", response_model=HarnessInspection)
+    async def inspect_harness(harness_id: str) -> HarnessInspection:
+        try:
+            return await service.inspect_harness(harness_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/harnesses/{harness_id}/capabilities")
+    async def harness_capabilities(harness_id: str) -> dict[str, str]:
+        try:
+            definition = service.registry.definition(harness_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {key.value: value.value for key, value in definition.capabilities.items()}
+
+    @app.post("/api/v1/harnesses/{harness_id}/install/plan", response_model=LifecyclePlan)
+    async def install_plan(harness_id: str) -> LifecyclePlan:
+        try:
+            return service.plan_install(harness_id)
+        except (KeyError, LifecyclePlanError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/harnesses/{harness_id}/install-plan", response_model=LifecyclePlan)
+    async def install_plan_compatibility(harness_id: str) -> LifecyclePlan:
+        return await install_plan(harness_id)
+
+    @app.post("/api/v1/harnesses/{harness_id}/install", response_model=LifecycleResult)
+    async def install_harness(
+        harness_id: str,
+        request: LifecycleExecutionRequest,
+    ) -> LifecycleResult:
+        if request.plan.harness_id != service.registry.resolve_id(harness_id):
+            raise HTTPException(status_code=422, detail="plan target does not match URL")
+        try:
+            return await service.execute_lifecycle_plan(
+                request.plan,
+                approval=request.approval,
+            )
+        except (PermissionError, LifecyclePlanError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/harnesses/{harness_id}/login/plan", response_model=LifecyclePlan)
+    async def login_plan(harness_id: str) -> LifecyclePlan:
+        try:
+            return service.plan_login(harness_id)
+        except (KeyError, LifecyclePlanError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/harnesses/{harness_id}/login-plan", response_model=LifecyclePlan)
+    async def login_plan_compatibility(harness_id: str) -> LifecyclePlan:
+        return await login_plan(harness_id)
+
+    @app.post("/api/v1/harnesses/{harness_id}/certify", response_model=LifecyclePlan)
+    async def certification_plan(harness_id: str) -> LifecyclePlan:
+        try:
+            return service.plan_certification(harness_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
@@ -92,20 +177,32 @@ def create_app(
     async def fireconnect_status() -> FireConnectStatus:
         return await fireconnect_client.status()
 
-    @app.post("/api/v1/fireconnect/{harness_id}/connect", response_model=FireConnectStatus)
-    async def connect_fireconnect(
+    @app.post("/api/v1/fireconnect/{harness_id}/connect/plan", response_model=LifecyclePlan)
+    async def plan_connect_fireconnect(
         harness_id: str,
         request: FireConnectConfigureRequest,
-    ) -> FireConnectStatus:
+    ) -> LifecyclePlan:
         try:
-            return await fireconnect_client.connect(harness_id, request.model)
+            return fireconnect_client.plan_connect(harness_id, request.model)
         except FireConnectError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @app.post("/api/v1/fireconnect/{harness_id}/disconnect", response_model=FireConnectStatus)
-    async def disconnect_fireconnect(harness_id: str) -> FireConnectStatus:
+    @app.post("/api/v1/fireconnect/{harness_id}/disconnect/plan", response_model=LifecyclePlan)
+    async def plan_disconnect_fireconnect(harness_id: str) -> LifecyclePlan:
         try:
-            return await fireconnect_client.disconnect(harness_id)
+            return fireconnect_client.plan_disconnect(harness_id)
+        except FireConnectError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/fireconnect/{harness_id}/execute", response_model=FireConnectStatus)
+    async def execute_fireconnect(
+        harness_id: str,
+        request: LifecycleExecutionRequest,
+    ) -> FireConnectStatus:
+        if request.plan.harness_id != harness_id:
+            raise HTTPException(status_code=422, detail="plan target does not match URL")
+        try:
+            return await fireconnect_client.execute_plan(request.plan, request.approval)
         except FireConnectError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -131,6 +228,9 @@ def create_app(
             workspace=request.workspace,
             required_capabilities=request.required_capabilities,
             preferred_harness=request.preferred_harness,
+            allowed_harnesses=request.allowed_harnesses,
+            denied_harnesses=request.denied_harnesses,
+            paid_routes_approved=request.paid_routes_approved,
         )
 
     @app.post("/api/v1/runs", response_model=Run, status_code=status.HTTP_202_ACCEPTED)

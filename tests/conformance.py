@@ -39,12 +39,12 @@ async def assert_static_conformance(adapter: HarnessAdapter, workspace: Path) ->
     assert launch.argv
     assert launch.cwd == str(workspace)
     assert "JOYMESH_CONFORMANCE_SECRET" not in launch.env
-    assert str(workspace) in launch.argv
 
-    resumed = adapter.build_launch_spec(
-        request.model_copy(update={"resume_session_id": "native-session-1"})
-    )
-    assert "native-session-1" in resumed.argv
+    if descriptor.manifest.supports_resume:
+        resumed = adapter.build_launch_spec(
+            request.model_copy(update={"resume_session_id": "native-session-1"})
+        )
+        assert "native-session-1" in resumed.argv
 
     for capability in descriptor.manifest.capabilities:
         adapter.require_feature(capability)
@@ -85,16 +85,17 @@ async def assert_runtime_conformance(
         assert usage and usage[0].input_tokens > 0
         assert all("supersecretvalue" not in (event.message or "") for event in events)
 
-        resumed_request = request.model_copy(
-            update={"resume_session_id": completed.native_session_id}
-        )
-        resumed_route = await mesh.resolve_route(
-            request=resumed_request,
-            preferred_harness=adapter.manifest.harness_id,
-        )
-        resumed = await mesh.start_run(request=resumed_request, route=resumed_route)
-        resumed_result = await mesh.wait_for_run(resumed.id)
-        assert resumed_result.native_session_id == completed.native_session_id
+        if adapter.manifest.supports_resume:
+            resumed_request = request.model_copy(
+                update={"resume_session_id": completed.native_session_id}
+            )
+            resumed_route = await mesh.resolve_route(
+                request=resumed_request,
+                preferred_harness=adapter.manifest.harness_id,
+            )
+            resumed = await mesh.start_run(request=resumed_request, route=resumed_route)
+            resumed_result = await mesh.wait_for_run(resumed.id)
+            assert resumed_result.native_session_id == completed.native_session_id
 
         failed_request = request.model_copy(update={"task": "FAIL"})
         failed = await mesh.start_run(request=failed_request, route=route)

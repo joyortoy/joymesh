@@ -52,6 +52,10 @@ class CodexAdapter(HarnessAdapter):
             "--cd",
             request.workspace,
         ]
+        if request.model:
+            argv.extend(["--model", request.model])
+        for directory in request.additional_writable_directories:
+            argv.extend(["--add-dir", directory])
         if request.resume_session_id:
             argv.extend(["resume", request.resume_session_id])
         argv.append(request.task)

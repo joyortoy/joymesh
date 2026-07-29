@@ -8,9 +8,9 @@ tracking subscriptions and quota, and selecting deterministic routes.
 JoyMesh is independent of JoyCLI and contains no application-specific planning,
 mission decomposition, private workflows, or proprietary data.
 
-> **Status:** initial vertical slice under active development. The bundled fake
-> adapter is supported. Codex and OpenCode adapters are implemented but remain
-> experimental by default until release conformance is certified.
+> **Status:** active development. The bundled fake adapter is certified.
+> Real-binary support is version-aware and remains uncertified until evidence is
+> recorded for the installed executable.
 
 ## Architecture
 
@@ -19,7 +19,8 @@ Typer, and asyncio. JoyMesh is backend infrastructure and does not include an
 end-user frontend.
 
 See [ADR 0001](docs/adr/0001-initial-architecture.md) for the decision record,
-tradeoffs, and current limitations. See
+tradeoffs, and current limitations. See [Harness architecture](docs/harness-architecture.md),
+[Harness catalogue](docs/harness-catalogue.md), and
 [Adapter conformance](docs/adapter-conformance.md) for the support gate.
 
 ## Development
@@ -57,6 +58,10 @@ Call `await mesh.close()` during application shutdown.
 ```sh
 uv run joymesh harness detect
 uv run joymesh harness list
+uv run joymesh harness discover
+uv run joymesh harness inspect codex
+uv run joymesh harness install gemini-cli
+uv run joymesh harness certify codex
 uv run joymesh subscription list
 uv run joymesh route preview --task "Implement authentication tests"
 uv run joymesh run --workspace . --task "Implement authentication tests"
@@ -77,9 +82,18 @@ uv run joymesh api
 ```text
 GET  /api/v1/health
 GET  /api/v1/harnesses
+GET  /api/v1/harnesses/catalogue
+POST /api/v1/harnesses/discovery
+GET  /api/v1/harnesses/{id}
+GET  /api/v1/harnesses/{id}/capabilities
+POST /api/v1/harnesses/{id}/install/plan
+POST /api/v1/harnesses/{id}/install
+POST /api/v1/harnesses/{id}/login/plan
+POST /api/v1/harnesses/{id}/certify
 GET  /api/v1/fireconnect
-POST /api/v1/fireconnect/{harness}/connect
-POST /api/v1/fireconnect/{harness}/disconnect
+POST /api/v1/fireconnect/{harness}/connect/plan
+POST /api/v1/fireconnect/{harness}/disconnect/plan
+POST /api/v1/fireconnect/{harness}/execute
 GET  /api/v1/subscriptions
 POST /api/v1/routes/preview
 POST /api/v1/runs
@@ -98,11 +112,7 @@ protocol objects.
 
 ## Current limitations
 
-- Codex and OpenCode use non-interactive JSONL modes; interactive PTY sessions
-  are not exposed.
 - Quotas are manually configured, not observed from providers.
 - SQLite targets one local JoyMesh service; distributed supervision is out of
   scope for the initial slice.
-- FireConnect can be detected and configured through the local API. Codex and
-  OpenCode are runnable JoyMesh adapters; the other FireConnect targets are
-  shown as provider integrations until native JoyMesh adapters are added.
+- Lifecycle and routing-transform mutation always requires explicit approval.

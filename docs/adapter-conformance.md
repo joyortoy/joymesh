@@ -24,8 +24,9 @@ The suite covers:
 - quota and rate-limit classification
 - secret redaction
 
-Cross-adapter tests additionally prove that fake, Codex, and OpenCode execute
-the same `RunRequest` through the same `JoyMesh` service contract. Routing,
+Cross-adapter tests additionally prove that fake, Codex, OpenCode, Claude Code,
+and Gemini CLI execute the same `RunRequest` through the same `JoyMesh` service
+contract. Routing,
 fallback approval, linked continuations, concurrent isolation, and the
 SDK-first acceptance flow live in `tests/test_mesh_integration.py`.
 
@@ -42,3 +43,18 @@ support metadata to `supported` only after:
 
 The fake adapter is always supported because it is bundled and is itself run
 through the same suite.
+
+## Status meanings
+
+- **Fake-native conformance passed** means a deterministic executable that
+  speaks the documented native shape passed the runtime contract. It validates
+  JoyMesh code, not an upstream release.
+- **Real-binary certification** is evidence tied to the executable path,
+  upstream version, JoyMesh version, operating system, and suite version.
+- **Supported** requires applicable adapter conformance and current real-binary
+  certification.
+- **Experimental** means an official programmatic interface is implemented but
+  one or both certification layers are incomplete.
+- **Detected but unsupported** means discovery found a product for which
+  JoyMesh has no stable, officially documented execution contract. Detection
+  never promotes it to runnable support.

@@ -11,11 +11,13 @@ async def test_registry_detects_bundled_fake_harness() -> None:
 
     detected = await registry.detect()
 
-    assert {item.manifest.harness_id for item in detected} == {
+    assert {
         "codex",
         "fake",
         "opencode",
-    }
+        "claude-code",
+        "gemini-cli",
+    }.issubset({item.manifest.harness_id for item in detected})
     fake = next(item for item in detected if item.manifest.harness_id == "fake")
     assert fake.availability is HarnessAvailability.AVAILABLE
 

@@ -12,6 +12,7 @@ from joymesh.models import (
     EventType,
     LaunchSpec,
     NormalizedEvent,
+    PermissionMode,
     RunRequest,
     UsageDelta,
 )
@@ -53,6 +54,11 @@ class OpenCodeAdapter(HarnessAdapter):
         ]
         if request.resume_session_id:
             argv.extend(["--session", request.resume_session_id])
+        if request.permission_mode is PermissionMode.AUTO_APPROVE:
+            argv.append("--auto")
+        if request.model:
+            model = f"{request.provider}/{request.model}" if request.provider else request.model
+            argv.extend(["--model", model])
         argv.append(request.task)
         return LaunchSpec(
             argv=tuple(argv),

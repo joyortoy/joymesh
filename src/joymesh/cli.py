@@ -6,10 +6,12 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
+from uuid import uuid4
 
 import typer
 
 from joymesh.api import create_app
+from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
 from joymesh.models import BillingRoute, Run, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
 
@@ -35,6 +37,13 @@ def _run[T](operation: Callable[[JoyMesh], Awaitable[T]]) -> T:
     return asyncio.run(execute())
 
 
+def _run_value[T](operation: Callable[[JoyMesh], T]) -> T:
+    async def execute(mesh: JoyMesh) -> T:
+        return operation(mesh)
+
+    return _run(execute)
+
+
 def _print(value: Any) -> None:
     if hasattr(value, "model_dump"):
         value = value.model_dump(mode="json")
@@ -47,16 +56,130 @@ def _print(value: Any) -> None:
 
 @harness_app.command("detect")
 def harness_detect() -> None:
-    """Detect installed harnesses and report availability."""
+    """Show the compatibility adapter detection view."""
 
     _print(_run(lambda mesh: mesh.detect_harnesses()))
 
 
 @harness_app.command("list")
 def harness_list() -> None:
-    """List registered harnesses and their capabilities."""
+    """List the complete declarative harness catalogue."""
 
-    _print(_run(lambda mesh: mesh.detect_harnesses()))
+    _print(_run_value(lambda mesh: mesh.list_harnesses()))
+
+
+@harness_app.command("discover")
+def harness_discover(
+    harness_id: str | None = typer.Argument(None),
+    probe_versions: bool = typer.Option(False, "--probe-versions"),
+) -> None:
+    """Locate binaries; version execution is separately opt-in."""
+
+    _print(
+        _run(
+            lambda mesh: mesh.discover_harnesses(
+                harness_id,
+                probe_versions=probe_versions,
+            )
+        )
+    )
+
+
+@harness_app.command("inspect")
+def harness_inspect(harness_id: str) -> None:
+    """Inspect definition, installations, auth boundary, and certifications."""
+
+    _print(_run(lambda mesh: mesh.inspect_harness(harness_id)))
+
+
+def _lifecycle_command(
+    harness_id: str,
+    action: LifecycleAction,
+    approve: bool,
+) -> None:
+    async def operation(mesh: JoyMesh) -> Any:
+        planner = {
+            LifecycleAction.INSTALL: mesh.plan_install,
+            LifecycleAction.UPGRADE: mesh.plan_upgrade,
+        }[action]
+        plan = planner(harness_id, dry_run=not approve)
+        if not approve:
+            return plan
+        token = ApprovalToken(
+            action=action,
+            harness_id=plan.harness_id,
+            approved=True,
+            nonce=str(uuid4()),
+        )
+        return await mesh.execute_lifecycle_plan(plan, approval=token)
+
+    _print(_run(operation))
+
+
+@harness_app.command("install")
+def harness_install(
+    harness_id: str,
+    approve: bool = typer.Option(False, "--approve"),
+) -> None:
+    """Print an install plan, or execute it only with --approve."""
+
+    _lifecycle_command(harness_id, LifecycleAction.INSTALL, approve)
+
+
+@harness_app.command("upgrade")
+def harness_upgrade(
+    harness_id: str,
+    approve: bool = typer.Option(False, "--approve"),
+) -> None:
+    """Print an upgrade plan, or execute it only with --approve."""
+
+    _lifecycle_command(harness_id, LifecycleAction.UPGRADE, approve)
+
+
+@harness_app.command("doctor")
+def harness_doctor(harness_id: str) -> None:
+    """Show read-only lifecycle diagnostics without reading credentials."""
+
+    _print(_run(lambda mesh: mesh.inspect_harness(harness_id)))
+
+
+@harness_app.command("certify")
+def harness_certify(
+    harness_id: str | None = typer.Argument(None),
+    all_installed: bool = typer.Option(False, "--all-installed"),
+    approve: bool = typer.Option(False, "--approve"),
+) -> None:
+    """Print the approval-gated real-binary certification plan."""
+
+    if all_installed:
+
+        async def operation(mesh: JoyMesh) -> tuple[Any, ...]:
+            discovered = await mesh.discover_harnesses()
+            return tuple(
+                mesh.plan_certification(item.harness_id)
+                for item in discovered
+                if item.installations
+            )
+
+        _print(_run(operation))
+        return
+    if harness_id is None:
+        raise typer.BadParameter("provide HARNESS_ID or --all-installed")
+    if approve:
+
+        async def certify(mesh: JoyMesh) -> Any:
+            resolved = mesh.registry.resolve_id(harness_id)
+            token = ApprovalToken(
+                action=LifecycleAction.CERTIFY,
+                harness_id=resolved,
+                approved=True,
+                nonce=str(uuid4()),
+            )
+            return await mesh.certify_harness(resolved, approval=token)
+
+        _print(_run(certify))
+        return
+    _print(_run_value(lambda mesh: mesh.plan_certification(harness_id)))
 
 
 @subscription_app.command("list")

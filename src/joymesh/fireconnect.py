@@ -7,14 +7,26 @@ import json
 import shutil
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
+from joymesh.harnesses.contracts import (
+    ApprovalToken,
+    InstallSource,
+    LifecycleAction,
+    LifecyclePlan,
+)
 from joymesh.models import FireConnectStatus, FireConnectTarget
 from joymesh.security import filter_environment, redact_secrets
 
 FIRECONNECT_TARGETS = frozenset(
     {"claude", "codex", "opencode", "pi", "cursor", "vscode", "deepagents"}
 )
-JOYMESH_RUNNABLE_TARGETS = frozenset({"codex", "opencode"})
+JOYMESH_TARGET_MAP = {
+    "claude": "claude-code",
+    "codex": "codex",
+    "opencode": "opencode",
+    "pi": "pi",
+}
 
 
 class FireConnectError(RuntimeError):
@@ -53,11 +65,12 @@ class FireConnectClient:
         targets = tuple(
             FireConnectTarget(
                 id=str(item.get("id", "")),
+                harness_id=JOYMESH_TARGET_MAP.get(str(item.get("id", ""))),
                 enabled=bool(item.get("enabled", False)),
                 model=model,
                 reads_from=_optional_string(item.get("readsFrom")),
                 storage=_optional_string(item.get("storage")),
-                joymesh_runnable=str(item.get("id", "")) in JOYMESH_RUNNABLE_TARGETS,
+                joymesh_runnable=str(item.get("id", "")) in JOYMESH_TARGET_MAP,
             )
             for item, model in zip(raw_targets, model_results, strict=True)
             if item.get("id")
@@ -73,16 +86,55 @@ class FireConnectClient:
             targets=targets,
         )
 
-    async def connect(self, harness_id: str, model: str) -> FireConnectStatus:
+    def plan_connect(self, harness_id: str, model: str) -> LifecyclePlan:
         self._validate_target(harness_id)
-        executable = self._require_executable()
-        await self._run(executable, harness_id, "on", "--model", model)
-        return await self.status()
+        return LifecyclePlan(
+            id=str(uuid4()),
+            action=LifecycleAction.ROUTE_TRANSFORM,
+            harness_id=harness_id,
+            argv=("fireconnect", harness_id, "on", "--model", model),
+            source=InstallSource.STANDALONE,
+            notes=(
+                "FireConnect changes provider routing for the selected harness.",
+                "The transformed route may use a different billing mode.",
+            ),
+        )
 
-    async def disconnect(self, harness_id: str) -> FireConnectStatus:
+    def plan_disconnect(self, harness_id: str) -> LifecyclePlan:
         self._validate_target(harness_id)
+        return LifecyclePlan(
+            id=str(uuid4()),
+            action=LifecycleAction.ROUTE_TRANSFORM,
+            harness_id=harness_id,
+            argv=("fireconnect", harness_id, "off"),
+            source=InstallSource.STANDALONE,
+            notes=("FireConnect changes provider routing for the selected harness.",),
+        )
+
+    async def execute_plan(
+        self,
+        plan: LifecyclePlan,
+        approval: ApprovalToken,
+    ) -> FireConnectStatus:
+        if (
+            plan.action is not LifecycleAction.ROUTE_TRANSFORM
+            or approval.action is not plan.action
+            or approval.harness_id != plan.harness_id
+            or not approval.approved
+        ):
+            raise FireConnectError("explicit route-transform approval is required")
+        self._validate_target(plan.harness_id)
         executable = self._require_executable()
-        await self._run(executable, harness_id, "off")
+        valid_disconnect = plan.argv == ("fireconnect", plan.harness_id, "off")
+        valid_connect = (
+            len(plan.argv) == 5
+            and plan.argv[:3] == ("fireconnect", plan.harness_id, "on")
+            and plan.argv[3] == "--model"
+            and bool(plan.argv[4])
+        )
+        if not valid_disconnect and not valid_connect:
+            raise FireConnectError("invalid FireConnect plan")
+        await self._run(executable, *plan.argv[1:])
         return await self.status()
 
     async def _target_model(self, executable: str, harness_id: str) -> str | None:

@@ -34,6 +34,7 @@ class Router:
             profiles: list[SubscriptionProfile | None] = list(by_harness.get(harness_id, []))
             if not profiles:
                 profiles.append(None)
+            definition = self.registry.definition(harness_id)
             for profile in profiles:
                 candidates.append(
                     await self._candidate(
@@ -43,6 +44,8 @@ class Router:
                         harness_id=harness_id,
                         capabilities=adapter.manifest.capabilities,
                         harness_concurrency=adapter.manifest.max_concurrency,
+                        maturity=definition.maturity.value,
+                        adapter_certified=adapter.conformance_passed,
                     )
                 )
 
@@ -66,10 +69,23 @@ class Router:
         harness_id: str,
         capabilities: frozenset[Capability],
         harness_concurrency: int,
+        maturity: str,
+        adapter_certified: bool,
     ) -> RouteCandidate:
         reasons: list[str] = []
         eligible = True
         score = 100.0
+
+        if maturity in {"experimental", "discovery_only"}:
+            score -= 10
+            reasons.append(f"adapter maturity {maturity}")
+        else:
+            reasons.append(f"adapter maturity {maturity}")
+        if adapter_certified:
+            reasons.append("adapter conformance passed")
+        else:
+            score -= 5
+            reasons.append("adapter conformance not certified")
 
         if availability is not HarnessAvailability.AVAILABLE:
             eligible = False
@@ -88,6 +104,13 @@ class Router:
             score += 25
             reasons.append("user preferred harness")
 
+        if request.allowed_harnesses and harness_id not in request.allowed_harnesses:
+            eligible = False
+            reasons.append("excluded by harness allowlist")
+        if harness_id in request.denied_harnesses:
+            eligible = False
+            reasons.append("excluded by harness denylist")
+
         subscription_id = None
         concurrency_limit = harness_concurrency
         if profile is not None:
@@ -102,6 +125,11 @@ class Router:
             if profile.state is SubscriptionState.EXHAUSTED:
                 eligible = False
                 reasons.append("subscription exhausted")
+            if profile.requires_paid_approval and not request.paid_routes_approved:
+                eligible = False
+                reasons.append("paid route requires approval")
+            elif profile.requires_paid_approval:
+                reasons.append("paid route approved")
             remaining = profile.remaining_fraction
             if profile.quota_known and profile.monthly_limit is not None:
                 score += (remaining or 0) * 10
@@ -117,7 +145,12 @@ class Router:
             score -= profile.cost_weight
             reasons.append(f"cost weight {profile.cost_weight:g}")
         else:
-            reasons.append("no subscription profile")
+            if harness_id == "fake":
+                reasons.append("bundled local harness")
+            else:
+                eligible = False
+                score -= 30
+                reasons.append("no funding profile")
 
         active = await self.database.active_count(
             harness_id=harness_id, subscription_id=subscription_id

@@ -25,6 +25,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from joymesh.harnesses.contracts import CertificationEvidence, CertificationState
 from joymesh.models import (
     BillingRoute,
     EventType,
@@ -114,6 +115,20 @@ class FallbackProposalRow(Base):
     continuation_run_id: Mapped[str | None] = mapped_column(ForeignKey("runs.id"))
     reason: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class CertificationEvidenceRow(Base):
+    __tablename__ = "certification_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    harness_id: Mapped[str] = mapped_column(String(100), index=True)
+    adapter_version: Mapped[str] = mapped_column(String(50))
+    binary_version: Mapped[str | None] = mapped_column(String(300))
+    executable: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(String(40))
+    checks_json: Mapped[str] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 def default_database_url() -> str:
@@ -351,6 +366,65 @@ class Database:
             await session.commit()
         return self._fallback_model(row)
 
+    async def record_certification(self, evidence: CertificationEvidence) -> CertificationEvidence:
+        metadata = {
+            **evidence.metadata,
+            "joymesh_version": evidence.joymesh_version,
+            "operating_system": evidence.operating_system,
+            "test_suite_version": evidence.test_suite_version,
+            "diagnostics": list(evidence.diagnostics),
+        }
+        row = CertificationEvidenceRow(
+            id=evidence.id,
+            harness_id=evidence.harness_id,
+            adapter_version=evidence.adapter_version,
+            binary_version=evidence.binary_version,
+            executable=evidence.executable,
+            state=evidence.state.value,
+            checks_json=json.dumps(evidence.checks, sort_keys=True),
+            detail=evidence.detail,
+            recorded_at=evidence.recorded_at,
+            metadata_json=json.dumps(metadata, sort_keys=True),
+        )
+        async with self.sessions() as session:
+            session.add(row)
+            await session.commit()
+        return evidence
+
+    async def list_certifications(
+        self, *, harness_id: str | None = None
+    ) -> tuple[CertificationEvidence, ...]:
+        query = select(CertificationEvidenceRow).order_by(
+            CertificationEvidenceRow.recorded_at.desc(),
+            CertificationEvidenceRow.id,
+        )
+        if harness_id:
+            query = query.where(CertificationEvidenceRow.harness_id == harness_id)
+        async with self.sessions() as session:
+            rows = (await session.scalars(query)).all()
+        evidence: list[CertificationEvidence] = []
+        for row in rows:
+            metadata = json.loads(row.metadata_json)
+            evidence.append(
+                CertificationEvidence(
+                    id=row.id,
+                    harness_id=row.harness_id,
+                    adapter_version=row.adapter_version,
+                    binary_version=row.binary_version,
+                    executable=row.executable,
+                    state=CertificationState(row.state),
+                    checks=json.loads(row.checks_json),
+                    detail=row.detail,
+                    recorded_at=row.recorded_at,
+                    joymesh_version=str(metadata.pop("joymesh_version", "0.1.0")),
+                    operating_system=str(metadata.pop("operating_system", "unknown")),
+                    test_suite_version=str(metadata.pop("test_suite_version", "1")),
+                    diagnostics=tuple(metadata.pop("diagnostics", ())),
+                    metadata=metadata,
+                )
+            )
+        return tuple(evidence)
+
     @staticmethod
     def _subscription_model(row: SubscriptionRow) -> SubscriptionProfile:
         return SubscriptionProfile(
@@ -449,6 +523,4 @@ def _upgrade_legacy_sqlite_schema(connection: Connection) -> None:
                     text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {definition}')
                 )
     if "runs" in table_names:
-        connection.execute(
-            text("UPDATE runs SET task_context_id = id WHERE task_context_id = ''")
-        )
+        connection.execute(text("UPDATE runs SET task_context_id = id WHERE task_context_id = ''"))

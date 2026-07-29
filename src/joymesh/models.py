@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_serializer
 
 
 def utc_now() -> datetime:
@@ -14,12 +14,33 @@ def utc_now() -> datetime:
 
 
 class Capability(StrEnum):
+    NON_INTERACTIVE = "execution.non_interactive"
     FILE_READ = "file.read"
     FILE_WRITE = "file.write"
     SHELL = "shell"
     STREAMING = "streaming"
+    STRUCTURED_EVENTS = "events.structured"
+    SESSION_CREATE = "session.create"
     SESSION_RESUME = "session.resume"
+    MODEL_SELECTION = "model.selection"
+    PROVIDER_SELECTION = "provider.selection"
     TOOL_USE = "tool.use"
+    TOOL_PERMISSIONS = "tool.permissions"
+    FILESYSTEM_SANDBOX = "sandbox.filesystem"
+    NETWORK_SANDBOX = "sandbox.network"
+    APPROVAL_MODES = "approval.modes"
+    WORKING_DIRECTORY = "workspace.selection"
+    ADDITIONAL_WRITABLE_DIRECTORIES = "workspace.additional_writable"
+    IMAGE_INPUT = "input.image"
+    MCP = "protocol.mcp"
+    ACP = "protocol.acp"
+    USAGE_REPORTING = "usage.reporting"
+    CONTEXT_WINDOW_REPORTING = "usage.context_window"
+    RATE_LIMIT_REPORTING = "limit.rate"
+    COST_REPORTING = "usage.cost"
+    CANCELLATION = "runtime.cancellation"
+    TIMEOUT_ENFORCEMENT = "runtime.timeout"
+    PROCESS_TREE_CLEANUP = "runtime.process_tree_cleanup"
 
 
 class HarnessAvailability(StrEnum):
@@ -34,6 +55,12 @@ class RunStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     TIMED_OUT = "timed_out"
+
+
+class PermissionMode(StrEnum):
+    DEFAULT = "default"
+    READ_ONLY = "read_only"
+    AUTO_APPROVE = "auto_approve"
 
 
 class EventType(StrEnum):
@@ -185,19 +212,38 @@ class Run(BaseModel):
 
 
 class RoutePreviewRequest(BaseModel):
-    task: str = Field(min_length=1)
-    workspace: str = "."
+    task: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("task", "prompt"),
+    )
+    workspace: str = Field(
+        default=".",
+        validation_alias=AliasChoices("workspace", "cwd"),
+    )
     required_capabilities: frozenset[Capability] = Field(default_factory=frozenset)
     preferred_harness: str | None = None
+    allowed_harnesses: frozenset[str] = Field(default_factory=frozenset)
+    denied_harnesses: frozenset[str] = Field(default_factory=frozenset)
+    paid_routes_approved: bool = False
 
 
 class RunRequest(BaseModel):
-    task: str = Field(min_length=1)
-    workspace: str
+    task: str = Field(
+        min_length=1,
+        validation_alias=AliasChoices("task", "prompt"),
+    )
+    workspace: str = Field(validation_alias=AliasChoices("workspace", "cwd"))
     route: RouteCandidate | None = None
     required_capabilities: frozenset[Capability] = Field(default_factory=frozenset)
     timeout_seconds: float | None = Field(default=300, gt=0)
     resume_session_id: str | None = None
+    allowed_harnesses: frozenset[str] = Field(default_factory=frozenset)
+    denied_harnesses: frozenset[str] = Field(default_factory=frozenset)
+    paid_routes_approved: bool = False
+    permission_mode: PermissionMode = PermissionMode.DEFAULT
+    model: str | None = None
+    provider: str | None = None
+    additional_writable_directories: tuple[str, ...] = ()
 
 
 class SubscriptionCreate(BaseModel):
@@ -270,6 +316,7 @@ class FireConnectTarget(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str
+    harness_id: str | None = None
     enabled: bool = False
     model: str | None = None
     reads_from: str | None = None

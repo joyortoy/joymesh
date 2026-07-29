@@ -3,10 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
+from joymesh.harnesses.certification import CertificationService
+from joymesh.harnesses.contracts import (
+    ApprovalToken,
+    CertificationEvidence,
+    DiscoveryResult,
+    HarnessDefinition,
+    HarnessInspection,
+    LifecyclePlan,
+    LifecycleResult,
+)
+from joymesh.harnesses.discovery import DiscoveryPolicy
+from joymesh.harnesses.lifecycle import HarnessLifecycleService
 from joymesh.models import (
     Capability,
     EventType,
@@ -14,6 +28,7 @@ from joymesh.models import (
     FallbackProposal,
     HarnessDescriptor,
     NormalizedEvent,
+    PermissionMode,
     RouteCandidate,
     RoutePreview,
     RoutePreviewRequest,
@@ -56,6 +71,11 @@ class JoyMesh:
         self.registry = registry or AdapterRegistry()
         self.runtime = runtime or HarnessRuntime()
         self.router = Router(self.registry, self.database)
+        self.lifecycle = HarnessLifecycleService(
+            self.registry.definitions(),
+            self.registry.discovery,
+        )
+        self.certification = CertificationService(self.registry, self.database)
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -79,14 +99,172 @@ class JoyMesh:
         await self.initialize()
         return await self.registry.detect()
 
+    def list_harnesses(self) -> tuple[HarnessDefinition, ...]:
+        return self.registry.definitions()
+
+    async def discover_harnesses(
+        self,
+        harness_id: str | None = None,
+        *,
+        probe_versions: bool = False,
+        overrides: dict[str, str] | None = None,
+    ) -> tuple[DiscoveryResult, ...]:
+        await self.initialize()
+        return await self.registry.discover(
+            harness_id,
+            policy=DiscoveryPolicy(execute_version_commands=probe_versions),
+            overrides=overrides,
+        )
+
+    async def inspect_harness(self, harness_id: str) -> HarnessInspection:
+        await self.initialize()
+        definition = self.registry.definition(harness_id)
+        discovery = (await self.registry.discover(definition.id))[0]
+        evidence = await self.database.list_certifications(harness_id=definition.id)
+        return HarnessInspection(
+            definition=definition,
+            discovery=discovery,
+            authentication_detail="Credentials are never read; use the harness login/status flow.",
+            certifications=evidence,
+        )
+
+    def plan_install(self, harness_id: str, *, dry_run: bool = True) -> LifecyclePlan:
+        return self.lifecycle.plan_install(
+            self.registry.resolve_id(harness_id),
+            dry_run=dry_run,
+        )
+
+    def plan_upgrade(self, harness_id: str, *, dry_run: bool = True) -> LifecyclePlan:
+        return self.lifecycle.plan_upgrade(
+            self.registry.resolve_id(harness_id),
+            dry_run=dry_run,
+        )
+
+    def plan_uninstall(self, harness_id: str, *, dry_run: bool = True) -> LifecyclePlan:
+        return self.lifecycle.plan_uninstall(
+            self.registry.resolve_id(harness_id),
+            dry_run=dry_run,
+        )
+
+    def plan_login(self, harness_id: str, *, dry_run: bool = True) -> LifecyclePlan:
+        return self.lifecycle.plan_login(
+            self.registry.resolve_id(harness_id),
+            dry_run=dry_run,
+        )
+
+    def plan_certification(self, harness_id: str) -> LifecyclePlan:
+        return self.certification.plan(harness_id)
+
+    async def execute_lifecycle_plan(
+        self,
+        plan: LifecyclePlan,
+        *,
+        approval: ApprovalToken,
+    ) -> LifecycleResult:
+        await self.initialize()
+        return await self.lifecycle.execute(plan, approval=approval)
+
+    async def certifications(
+        self, *, harness_id: str | None = None
+    ) -> tuple[CertificationEvidence, ...]:
+        await self.initialize()
+        resolved = self.registry.resolve_id(harness_id) if harness_id else None
+        return await self.database.list_certifications(harness_id=resolved)
+
+    async def certify_harness(
+        self,
+        harness_id: str,
+        *,
+        approval: ApprovalToken,
+    ) -> CertificationEvidence:
+        """Run one bounded real-binary smoke certification in an isolated repository."""
+
+        resolved = self.registry.resolve_id(harness_id)
+        if (
+            not approval.approved
+            or approval.action.value != "certify"
+            or approval.harness_id != resolved
+        ):
+            raise PermissionError("explicit certification approval is required")
+        discovery = (await self.discover_harnesses(resolved, probe_versions=True))[0]
+        if not discovery.installations:
+            raise RuntimeError(f"{resolved} is not installed")
+        installation = next(
+            (item for item in discovery.installations if item.version),
+            discovery.installations[0],
+        )
+        workspace = _create_certification_workspace()
+        observations: list[NormalizedEvent] = []
+        try:
+            await _initialize_git_repository(workspace)
+            request = RunRequest(
+                task=(
+                    "Create joymesh-certification.txt containing exactly "
+                    "JOYMESH_CERTIFICATION_OK and then finish."
+                ),
+                workspace=workspace,
+                timeout_seconds=120,
+                permission_mode=PermissionMode.AUTO_APPROVE,
+            )
+            adapter = self.registry.get(resolved)
+            launch = adapter.build_launch_spec(request)
+            launch = launch.model_copy(update={"argv": (installation.executable, *launch.argv[1:])})
+
+            async def on_line(stream: str, line: str) -> None:
+                observation = adapter.normalize_output(
+                    run_id="certification",
+                    sequence=len(observations) + 1,
+                    stream=stream,
+                    line=line,
+                )
+                observations.append(observation.event)
+
+            exit_code = await self.runtime.execute(
+                run_id=f"certification-{uuid4()}",
+                launch=launch,
+                on_line=on_line,
+            )
+            output_file = Path(workspace) / "joymesh-certification.txt"
+            output_valid = _read_certification_output(output_file)
+            checks = {
+                "installation_detection": True,
+                "version_reporting": installation.version is not None,
+                "launch_specification": bool(launch.argv),
+                "environment_filtering": all(
+                    "KEY" not in key and "TOKEN" not in key for key in launch.env
+                ),
+                "workspace_propagation": launch.cwd == workspace,
+                "streaming_output": bool(observations),
+                "normalized_events": all(event.run_id == "certification" for event in observations),
+                "event_sequence_ordering": [event.sequence for event in observations]
+                == list(range(1, len(observations) + 1)),
+                "successful_completion": exit_code == 0,
+                "deterministic_workspace_result": output_valid,
+                "secret_redaction": all(
+                    "JOYMESH_CERTIFICATION_SECRET" not in (event.message or "")
+                    for event in observations
+                ),
+            }
+            return await self.certification.record(
+                harness_id=resolved,
+                binary_version=installation.version,
+                executable=installation.executable,
+                checks=checks,
+                detail=None if all(checks.values()) else "smoke certification checks failed",
+            )
+        finally:
+            _remove_certification_workspace(workspace)
+
     async def list_subscriptions(self) -> tuple[SubscriptionProfile, ...]:
         await self.initialize()
         return await self.database.list_subscriptions()
 
     async def create_subscription(self, data: SubscriptionCreate) -> SubscriptionProfile:
         await self.initialize()
-        self.registry.get(data.harness_id)
-        return await self.database.create_subscription(data)
+        definition = self.registry.definition(data.harness_id)
+        return await self.database.create_subscription(
+            data.model_copy(update={"harness_id": definition.id})
+        )
 
     async def resolve_route(
         self, *, request: RunRequest, preferred_harness: str | None = None
@@ -96,6 +274,9 @@ class JoyMesh:
             workspace=request.workspace,
             required_capabilities=request.required_capabilities,
             preferred_harness=preferred_harness,
+            allowed_harnesses=request.allowed_harnesses,
+            denied_harnesses=request.denied_harnesses,
+            paid_routes_approved=request.paid_routes_approved,
         )
         if preview.selected is None:
             raise NoRouteError("no eligible harness route")
@@ -108,6 +289,9 @@ class JoyMesh:
         workspace: str | Path = ".",
         required_capabilities: frozenset[Capability] | None = None,
         preferred_harness: str | None = None,
+        allowed_harnesses: frozenset[str] | None = None,
+        denied_harnesses: frozenset[str] | None = None,
+        paid_routes_approved: bool = False,
     ) -> RoutePreview:
         await self.initialize()
         resolved = resolve_workspace(workspace)
@@ -117,6 +301,9 @@ class JoyMesh:
                 workspace=str(resolved),
                 required_capabilities=required_capabilities or frozenset(),
                 preferred_harness=preferred_harness,
+                allowed_harnesses=allowed_harnesses or frozenset(),
+                denied_harnesses=denied_harnesses or frozenset(),
+                paid_routes_approved=paid_routes_approved,
             )
         )
 
@@ -156,13 +343,22 @@ class JoyMesh:
     async def run(
         self,
         *,
-        task: str,
-        workspace: str | Path,
+        task: str | None = None,
+        workspace: str | Path | None = None,
         route: RouteCandidate | None = None,
+        request: RunRequest | None = None,
+        harness: str = "auto",
     ) -> Run:
-        request = RunRequest(task=task, workspace=str(workspace))
-        selected = route or await self.resolve_route(request=request)
-        return await self.start_run(request=request, route=selected)
+        selected_request = request
+        if selected_request is None:
+            if task is None or workspace is None:
+                raise TypeError("task and workspace are required when request is omitted")
+            selected_request = RunRequest(task=task, workspace=str(workspace))
+        selected = route or await self.resolve_route(
+            request=selected_request,
+            preferred_harness=None if harness == "auto" else harness,
+        )
+        return await self.start_run(request=selected_request, route=selected)
 
     async def inspect_run(self, run_id: str) -> Run | None:
         await self.initialize()
@@ -327,7 +523,11 @@ class JoyMesh:
                 run.subscription_id, SubscriptionState.RATE_LIMITED
             )
         await self._event(run.id, EventType.RATE_LIMIT_ENCOUNTERED, "Rate limit encountered")
-        preview = await self.preview_routes(task=run.task, workspace=run.workspace)
+        preview = await self.preview_routes(
+            task=run.task,
+            workspace=run.workspace,
+            paid_routes_approved=True,
+        )
         route = preview.selected
         if route is None:
             return
@@ -374,3 +574,32 @@ class JoyMesh:
                 payload=payload or {},
             )
         )
+
+
+def _create_certification_workspace() -> str:
+    return tempfile.mkdtemp(prefix="joymesh-certification-")
+
+
+def _remove_certification_workspace(workspace: str) -> None:
+    shutil.rmtree(workspace, ignore_errors=True)
+
+
+def _read_certification_output(path: Path) -> bool:
+    try:
+        return path.read_text(encoding="utf-8").strip() == "JOYMESH_CERTIFICATION_OK"
+    except OSError:
+        return False
+
+
+async def _initialize_git_repository(workspace: str) -> None:
+    process = await asyncio.create_subprocess_exec(
+        "git",
+        "init",
+        "--quiet",
+        workspace,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode:
+        raise RuntimeError(f"failed to initialize certification repository: {stderr.decode()}")
