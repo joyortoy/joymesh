@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import json
 import os
-import secrets
 import shutil
 import signal
 import stat
@@ -458,6 +457,9 @@ class ConnectorNodeRunner:
         record_evidence: EvidenceSink,
         event: Callable[[str, dict[str, object]], Awaitable[None]],
     ) -> ConnectorTaskStatus:
+        from joymesh.runtime_v1.certification import ReadOnlyRepositoryProfile
+        from joymesh.runtime_v1.cursor import CursorConnectorRuntime
+
         definition = self.catalogue.get(plan.connector_id)
         executable = shutil.which(
             definition.executable_names[0] if definition.executable_names else plan.executable
@@ -466,88 +468,29 @@ class ConnectorNodeRunner:
             raise RuntimeError("cursor-agent not found")
         fingerprint = _executable_fingerprint(executable)
         version = await self._probe_version(executable)
-        project_name = f"JoyMesh Cursor Certification {secrets.token_hex(3).upper()}"
+        profile = ReadOnlyRepositoryProfile()
+        cursor = CursorConnectorRuntime(self.catalogue)
         root = Path.home() / ".joymesh" / "certification" / "cursor"
-        root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        workspace = root / task_id
-        if workspace.exists():
-            shutil.rmtree(workspace)
-        workspace.mkdir(mode=0o700)
+        await event("task.progress", {"stage": "preparing_isolated_repository"})
+        workspace = profile.build_workspace(task_id=task_id, root=root)
         try:
-            await event("task.progress", {"stage": "preparing_isolated_repository"})
-            readme = workspace / "README.md"
-            readme.write_text(f"# {project_name}\n", encoding="utf-8")
-            init = await asyncio.create_subprocess_exec(
-                "git",
-                "init",
-                "--quiet",
-                str(workspace),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            # Cursor-owned argv including --trust; generic profile owns workspace/verification.
+            argv = cursor.build_read_only_cert_argv(
+                executable=executable, prompt=workspace.prompt
             )
-            await init.communicate()
-            if init.returncode:
-                raise RuntimeError("failed to initialize certification repository")
-            add = await asyncio.create_subprocess_exec(
-                "git",
-                "-C",
-                str(workspace),
-                "add",
-                "README.md",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await add.communicate()
-            commit = await asyncio.create_subprocess_exec(
-                "git",
-                "-C",
-                str(workspace),
-                "-c",
-                "user.email=cert@joymesh.local",
-                "-c",
-                "user.name=JoyMesh Cert",
-                "commit",
-                "-m",
-                "certification baseline",
-                "--quiet",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await commit.communicate()
-            before = _workspace_manifest(workspace)
-            prompt = (
-                "Read README.md and return the exact project name.\n"
-                "Do not modify any files.\n"
-                "Do not create files.\n"
-                "Do not delete files.\n"
-                "Do not access paths outside this repository.\n"
-                "Do not run shell commands.\n"
-                "Do not install dependencies.\n"
-                "Do not use Git commands."
-            )
-            # Supported order for cursor-agent 2025.09.x: options before prompt.
-            # --trust is required for non-interactive isolated certification workspaces.
-            argv = (
-                executable,
-                "--print",
-                "--output-format",
-                "stream-json",
-                "--trust",
-                prompt,
-            )
-            prompt_digest = hashlib.sha256(prompt.encode()).hexdigest()
             plan_digest = plan.plan_hash
             await event(
                 "task.progress",
                 {
                     "stage": "running_structured_read_only_test",
                     "argv": [*list(argv[:-1]), "<PROMPT>"],
-                    "workspace": str(workspace),
+                    "workspace": str(workspace.path),
+                    "certification_profile": profile.profile_id,
                 },
             )
             process = await asyncio.create_subprocess_exec(
                 *argv,
-                cwd=str(workspace),
+                cwd=str(workspace.path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
@@ -560,41 +503,23 @@ class ConnectorNodeRunner:
                 raise RuntimeError("certification timed out") from None
             output = stdout.decode(errors="replace") + stderr.decode(errors="replace")
             await event("task.progress", {"stage": "validating_filesystem"})
-            after = _workspace_manifest(workspace)
-            git_status = await asyncio.create_subprocess_exec(
-                "git",
-                "-C",
-                str(workspace),
-                "status",
-                "--porcelain",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            verification = profile.verify_result(
+                workspace,
+                output=output,
+                returncode=process.returncode if process.returncode is not None else 1,
             )
-            status_out, _ = await git_status.communicate()
-            clean = status_out.decode().strip() == ""
-            name_found = project_name in output
-            files_unchanged = before["files"] == after["files"]
-            hashes_unchanged = before["hashes"] == after["hashes"]
-            no_symlink_escape = not after["symlink_escape"]
-            passed = {
-                "discovery": True,
-                "authentication": True,
-                "adapter": True,
-                "read_test": name_found and process.returncode == 0,
-                "write_test": False,
-                "command_test": False,
-                "session_resume": False,
-                "workspace_clean": clean and files_unchanged and hashes_unchanged,
-                "structured_output": bool(output.strip()),
-                "symlink_safe": no_symlink_escape,
-            }
-            digest = hashlib.sha256(json.dumps(passed, sort_keys=True).encode()).hexdigest()
-            status = (
-                "certified"
-                if passed["read_test"] and passed["workspace_clean"] and passed["symlink_safe"]
-                else "failed"
-            )
-            scope = CURSOR_READ_ONLY_SCOPE
+            scope = profile.produce_scope()
+            status = "certified" if verification.passed else "failed"
+            digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "reasons": list(verification.reasons),
+                        "git_clean": verification.git_clean,
+                        "name_found": verification.name_found,
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
             await event("task.progress", {"stage": "persisting_certification_evidence"})
             await record_evidence(
                 self._evidence(
@@ -606,15 +531,19 @@ class ConnectorNodeRunner:
                     version=version,
                     details={
                         "level": "read_only",
-                        "project_name": project_name,
+                        "project_name": workspace.project_name,
                         "routing_profile": scope.profile,
-                        "workspace": str(workspace),
+                        "policy_profile": "read_only",
+                        "workspace": str(workspace.path),
                         "argv": [*list(argv[:-1]), "<PROMPT>"],
-                        "prompt_digest": prompt_digest,
+                        "prompt_digest": workspace.prompt_digest,
                         "plan_digest": plan_digest,
-                        "before_manifest": before,
-                        "after_manifest": after,
-                        "git_clean": clean,
+                        "before_manifest": dict(workspace.before_manifest),
+                        "after_manifest": dict(verification.after_manifest),
+                        "git_clean": verification.git_clean,
+                        "certification_profile": profile.profile_id,
+                        "certification_profile_revision": profile.profile_revision,
+                        "reasons": list(verification.reasons),
                     },
                     fingerprint=fingerprint,
                 )
@@ -629,14 +558,15 @@ class ConnectorNodeRunner:
                     version=version,
                     details={
                         "passed_levels": {
-                            "read_only_certified": passed["read_test"],
+                            "read_only_certified": verification.passed,
                             "write_certified": False,
                             "command_certified": False,
                             "session_resume_certified": False,
                         },
                         "evidence_digest": digest,
                         "routing_profile": scope.profile,
-                        "workspace_clean": passed["workspace_clean"],
+                        "policy_profile": "read_only",
+                        "workspace_clean": verification.git_clean,
                         "certification_scope": {
                             "profile": scope.profile,
                             "structured_execution": scope.structured_execution,
@@ -649,9 +579,11 @@ class ConnectorNodeRunner:
                             "workspace_containment": scope.workspace_containment,
                             "cancellation": scope.cancellation,
                         },
-                        "prompt_digest": prompt_digest,
+                        "prompt_digest": workspace.prompt_digest,
                         "plan_digest": plan_digest,
-                        "workspace": str(workspace),
+                        "workspace": str(workspace.path),
+                        "certification_profile": profile.profile_id,
+                        "certification_profile_revision": profile.profile_revision,
                     },
                     fingerprint=fingerprint,
                 )
@@ -662,7 +594,7 @@ class ConnectorNodeRunner:
                 else ConnectorTaskStatus.FAILED
             )
         finally:
-            shutil.rmtree(workspace, ignore_errors=True)
+            profile.cleanup(workspace)
 
     async def _certify_mock(
         self,
