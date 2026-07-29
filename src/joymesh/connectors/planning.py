@@ -16,11 +16,17 @@ from joymesh.connectors.models import AuthenticationMethod, InstallationOption
 
 
 class ConnectorAction(StrEnum):
+    DISCOVER = "discover"
     INSTALL = "install"
     UPGRADE = "upgrade"
     UNINSTALL = "uninstall"
+    REPAIR = "repair"
     AUTHENTICATE = "authenticate"
+    VERIFY_AUTHENTICATION = "verify_authentication"
+    VERIFY_ADAPTER = "verify_adapter"
     CERTIFY = "certify"
+    ENABLE_ROUTING = "enable_routing"
+    DISABLE_ROUTING = "disable_routing"
 
 
 class ConnectorPlanError(ValueError):
@@ -148,6 +154,85 @@ class ConnectorPlanner:
                 package_source=str(definition.official_source.documentation_source),
                 expected_executables=definition.executable_names,
             )
+        if action is ConnectorAction.DISCOVER:
+            argv: tuple[str, ...]
+            if definition.executable_names:
+                argv = (definition.executable_names[0], "--version")
+            else:
+                argv = ("joymesh", "connector", "discover", connector_id)
+            return self._create(
+                node_id=node_id,
+                connector_id=connector_id,
+                revision=definition.revision,
+                action=action,
+                method_id="discover",
+                argv=argv,
+                package_source=str(definition.official_source.documentation_source),
+                expected_executables=definition.executable_names,
+                risk_level="low",
+            )
+        if action is ConnectorAction.VERIFY_AUTHENTICATION:
+            method = self._authentication(definition.authentication_methods, method_id)
+            status_argv = method.status_argv or method.login_argv
+            if not status_argv:
+                raise ConnectorPlanError(f"{connector_id} has no authentication status command")
+            return self._create(
+                node_id=node_id,
+                connector_id=connector_id,
+                revision=definition.revision,
+                action=action,
+                method_id=method.id,
+                argv=status_argv,
+                package_source=str(definition.official_source.documentation_source),
+                expected_executables=definition.executable_names,
+                risk_level="low",
+            )
+        if action is ConnectorAction.VERIFY_ADAPTER:
+            if not definition.executable_names:
+                raise ConnectorPlanError(
+                    f"{connector_id} has no executable for adapter verification"
+                )
+            return self._create(
+                node_id=node_id,
+                connector_id=connector_id,
+                revision=definition.revision,
+                action=action,
+                method_id="adapter-conformance",
+                argv=(definition.executable_names[0], "--help"),
+                package_source=str(definition.official_source.documentation_source),
+                expected_executables=definition.executable_names,
+                risk_level="low",
+            )
+        if action is ConnectorAction.REPAIR:
+            options = definition.installation_options or definition.upgrade_options
+            option = self._installation(options, method_id, selected_platform)
+            if not option.executable:
+                raise ConnectorPlanError(
+                    f"{option.id} must be fetched and digest-bound by the JoyMesh Node first"
+                )
+            return self._create(
+                node_id=node_id,
+                connector_id=connector_id,
+                revision=definition.revision,
+                action=action,
+                method_id=option.id,
+                argv=option.argv,
+                package_source=option.package_source,
+                expected_executables=definition.executable_names,
+                risk_level="medium",
+            )
+        if action in {ConnectorAction.ENABLE_ROUTING, ConnectorAction.DISABLE_ROUTING}:
+            return self._create(
+                node_id=node_id,
+                connector_id=connector_id,
+                revision=definition.revision,
+                action=action,
+                method_id=action.value,
+                argv=("joymesh", "connector", action.value.replace("_", "-"), connector_id),
+                package_source=str(definition.official_source.documentation_source),
+                expected_executables=definition.executable_names,
+                risk_level="low",
+            )
         if action is ConnectorAction.CERTIFY:
             if not definition.certification_profile_id:
                 raise ConnectorPlanError(f"{connector_id} has no certification profile")
@@ -162,11 +247,14 @@ class ConnectorPlanner:
                 expected_executables=definition.executable_names,
                 risk_level="high",
             )
-        options = {
+        install_actions = {
             ConnectorAction.INSTALL: definition.installation_options,
             ConnectorAction.UPGRADE: definition.upgrade_options,
             ConnectorAction.UNINSTALL: definition.uninstall_options,
-        }[action]
+        }
+        if action not in install_actions:
+            raise ConnectorPlanError(f"unsupported connector action: {action.value}")
+        options = install_actions[action]
         option = self._installation(options, method_id, selected_platform)
         if not option.executable:
             raise ConnectorPlanError(

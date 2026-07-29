@@ -10,6 +10,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from joymesh.connectors import ConnectorCatalogue, ConnectorDefinition
+from joymesh.connectors.lifecycle import ConnectorLifecycleCoordinator, build_coordinator
+from joymesh.connectors.lifecycle_models import (
+    ConnectorReadiness,
+    ConnectorTaskEvent,
+    ConnectorTaskRecord,
+)
 from joymesh.connectors.planning import (
     ConnectorAction,
     ConnectorPlanner,
@@ -77,6 +83,7 @@ class JoyMesh:
         self.database = Database(database_url)
         self.connector_catalogue = ConnectorCatalogue.builtins()
         self.connector_planner = ConnectorPlanner(self.connector_catalogue)
+        self._connector_lifecycle: ConnectorLifecycleCoordinator | None = None
         self.registry = registry or AdapterRegistry()
         self.runtime = runtime or HarnessRuntime()
         self.router = Router(self.registry, self.database)
@@ -95,7 +102,14 @@ class JoyMesh:
         async with self._initialize_lock:
             if not self._initialized:
                 await self.database.initialize()
+                self._connector_lifecycle = build_coordinator(self.database, self.connector_planner)
                 self._initialized = True
+
+    @property
+    def connector_lifecycle(self) -> ConnectorLifecycleCoordinator:
+        if self._connector_lifecycle is None:
+            raise RuntimeError("JoyMesh is not initialized")
+        return self._connector_lifecycle
 
     async def close(self) -> None:
         for run_id in await self.runtime.active_run_ids():
@@ -138,6 +152,63 @@ class JoyMesh:
             platform=platform,
             download_digest=download_digest,
         )
+
+    async def plan_and_persist_connector_task(
+        self,
+        *,
+        node_id: str,
+        connector_id: str,
+        action: ConnectorAction,
+        method_id: str | None = None,
+        platform: str | None = None,
+        download_digest: str | None = None,
+    ) -> ConnectorTaskPlan:
+        await self.initialize()
+        plan = self.plan_connector_task(
+            node_id=node_id,
+            connector_id=connector_id,
+            action=action,
+            method_id=method_id,
+            platform=platform,
+            download_digest=download_digest,
+        )
+        return await self.connector_lifecycle.persist_plan(plan)
+
+    async def execute_connector_plan(
+        self,
+        *,
+        plan_id: str,
+        plan_hash: str,
+        approved: bool,
+    ) -> ConnectorTaskRecord:
+        await self.initialize()
+        return await self.connector_lifecycle.approve_and_queue(
+            plan_id, plan_hash=plan_hash, approved=approved
+        )
+
+    async def connector_readiness(self, *, node_id: str, connector_id: str) -> ConnectorReadiness:
+        await self.initialize()
+        return await self.connector_lifecycle.get_readiness(
+            node_id=node_id, connector_id=connector_id
+        )
+
+    async def list_connector_readiness(self, *, node_id: str) -> tuple[ConnectorReadiness, ...]:
+        await self.initialize()
+        return await self.connector_lifecycle.list_readiness(node_id=node_id)
+
+    async def connector_task(self, task_id: str) -> ConnectorTaskRecord:
+        await self.initialize()
+        return await self.connector_lifecycle.get_task(task_id)
+
+    async def connector_task_events(
+        self, task_id: str, *, after: int = 0
+    ) -> tuple[ConnectorTaskEvent, ...]:
+        await self.initialize()
+        return await self.connector_lifecycle.list_task_events(task_id, after=after)
+
+    async def active_connector_tasks(self, *, node_id: str) -> tuple[ConnectorTaskRecord, ...]:
+        await self.initialize()
+        return await self.connector_lifecycle.list_active_tasks(node_id=node_id)
 
     async def discover_harnesses(
         self,

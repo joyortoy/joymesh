@@ -24,11 +24,15 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from joymesh.connectors import ConnectorDefinition
+from joymesh.connectors.lifecycle_models import (
+    ConnectorLifecyclePlanResponse,
+    ConnectorReadiness,
+    ConnectorTaskEvent,
+    ConnectorTaskRecord,
+)
 from joymesh.connectors.planning import (
     ConnectorAction,
     ConnectorPlanError,
-    ConnectorTask,
-    ConnectorTaskPlan,
 )
 from joymesh.control_plane.contracts import (
     NodeProtocolMessageType,
@@ -219,14 +223,14 @@ def create_app(
         del node_id
         return await service.discover_harnesses(probe_versions=True)
 
-    def build_connector_plan(
+    async def build_connector_plan(
         node_id: str,
         connector_id: str,
         action: ConnectorAction,
         request: ConnectorPlanRequest,
-    ) -> ConnectorTaskPlan:
+    ) -> ConnectorLifecyclePlanResponse:
         try:
-            return service.plan_connector_task(
+            plan = await service.plan_and_persist_connector_task(
                 node_id=node_id,
                 connector_id=connector_id,
                 action=action,
@@ -236,103 +240,209 @@ def create_app(
             )
         except (KeyError, ConnectorPlanError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return service.connector_lifecycle.plan_response(plan)
 
     @app.post(
         "/nodes/{node_id}/connectors/{connector_id}/install/plan",
-        response_model=ConnectorTaskPlan,
+        response_model=ConnectorLifecyclePlanResponse,
     )
     @app.post(
         "/api/v1/nodes/{node_id}/connectors/{connector_id}/install/plan",
-        response_model=ConnectorTaskPlan,
+        response_model=ConnectorLifecyclePlanResponse,
     )
     async def connector_install_plan(
         node_id: str,
         connector_id: str,
         request: ConnectorPlanRequest,
-    ) -> ConnectorTaskPlan:
-        return build_connector_plan(node_id, connector_id, ConnectorAction.INSTALL, request)
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(node_id, connector_id, ConnectorAction.INSTALL, request)
 
     @app.post(
         "/nodes/{node_id}/connectors/{connector_id}/upgrade/plan",
-        response_model=ConnectorTaskPlan,
+        response_model=ConnectorLifecyclePlanResponse,
     )
     async def connector_upgrade_plan(
         node_id: str,
         connector_id: str,
         request: ConnectorPlanRequest,
-    ) -> ConnectorTaskPlan:
-        return build_connector_plan(node_id, connector_id, ConnectorAction.UPGRADE, request)
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(node_id, connector_id, ConnectorAction.UPGRADE, request)
 
     @app.post(
         "/nodes/{node_id}/connectors/{connector_id}/uninstall/plan",
-        response_model=ConnectorTaskPlan,
+        response_model=ConnectorLifecyclePlanResponse,
     )
     async def connector_uninstall_plan(
         node_id: str,
         connector_id: str,
         request: ConnectorPlanRequest,
-    ) -> ConnectorTaskPlan:
-        return build_connector_plan(node_id, connector_id, ConnectorAction.UNINSTALL, request)
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(node_id, connector_id, ConnectorAction.UNINSTALL, request)
 
     @app.post(
         "/nodes/{node_id}/connectors/{connector_id}/authenticate/plan",
-        response_model=ConnectorTaskPlan,
+        response_model=ConnectorLifecyclePlanResponse,
     )
     async def connector_authentication_plan(
         node_id: str,
         connector_id: str,
         request: ConnectorPlanRequest,
-    ) -> ConnectorTaskPlan:
-        return build_connector_plan(node_id, connector_id, ConnectorAction.AUTHENTICATE, request)
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(
+            node_id, connector_id, ConnectorAction.AUTHENTICATE, request
+        )
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/verify-authentication/plan",
+        response_model=ConnectorLifecyclePlanResponse,
+    )
+    async def connector_verify_authentication_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(
+            node_id, connector_id, ConnectorAction.VERIFY_AUTHENTICATION, request
+        )
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/verify-adapter/plan",
+        response_model=ConnectorLifecyclePlanResponse,
+    )
+    async def connector_verify_adapter_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(
+            node_id, connector_id, ConnectorAction.VERIFY_ADAPTER, request
+        )
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/repair/plan",
+        response_model=ConnectorLifecyclePlanResponse,
+    )
+    async def connector_repair_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(node_id, connector_id, ConnectorAction.REPAIR, request)
+
+    @app.post(
+        "/nodes/{node_id}/connectors/{connector_id}/discover/plan",
+        response_model=ConnectorLifecyclePlanResponse,
+    )
+    async def connector_discover_plan(
+        node_id: str,
+        connector_id: str,
+        request: ConnectorPlanRequest,
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(node_id, connector_id, ConnectorAction.DISCOVER, request)
 
     @app.post(
         "/nodes/{node_id}/connectors/{connector_id}/certify/plan",
-        response_model=ConnectorTaskPlan,
+        response_model=ConnectorLifecyclePlanResponse,
     )
     async def connector_certification_task_plan(
         node_id: str,
         connector_id: str,
         request: ConnectorPlanRequest,
-    ) -> ConnectorTaskPlan:
-        return build_connector_plan(node_id, connector_id, ConnectorAction.CERTIFY, request)
+    ) -> ConnectorLifecyclePlanResponse:
+        return await build_connector_plan(node_id, connector_id, ConnectorAction.CERTIFY, request)
 
-    @app.post("/connector-tasks/{plan_id}/execute", response_model=ConnectorTask)
+    @app.get(
+        "/nodes/{node_id}/connectors/{connector_id}/readiness",
+        response_model=ConnectorReadiness,
+    )
+    @app.get(
+        "/api/v1/nodes/{node_id}/connectors/{connector_id}/readiness",
+        response_model=ConnectorReadiness,
+    )
+    async def connector_readiness(node_id: str, connector_id: str) -> ConnectorReadiness:
+        try:
+            return await service.connector_readiness(node_id=node_id, connector_id=connector_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/nodes/{node_id}/connectors/readiness", response_model=list[ConnectorReadiness])
+    @app.get(
+        "/api/v1/nodes/{node_id}/connectors/readiness",
+        response_model=list[ConnectorReadiness],
+    )
+    async def connectors_readiness(node_id: str) -> tuple[ConnectorReadiness, ...]:
+        return await service.list_connector_readiness(node_id=node_id)
+
+    @app.get(
+        "/nodes/{node_id}/active-connector-tasks",
+        response_model=list[ConnectorTaskRecord],
+    )
+    async def active_connector_tasks(node_id: str) -> tuple[ConnectorTaskRecord, ...]:
+        return await service.active_connector_tasks(node_id=node_id)
+
+    @app.post("/connector-tasks/{plan_id}/execute", response_model=ConnectorTaskRecord)
+    @app.post("/connector-tasks/{plan_id}/approve", response_model=ConnectorTaskRecord)
     async def execute_connector_task(
         plan_id: str,
         request: ConnectorTaskExecutionRequest,
-    ) -> ConnectorTask:
+    ) -> ConnectorTaskRecord:
         try:
-            plan = service.connector_planner.store.get(plan_id)
-            service.connector_planner.validate(plan)
-        except (KeyError, ConnectorPlanError) as exc:
+            return await service.execute_connector_plan(
+                plan_id=plan_id,
+                plan_hash=request.plan_hash,
+                approved=request.approved,
+            )
+        except (KeyError, ConnectorPlanError, PermissionError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        if not request.approved or not hmac.compare_digest(request.plan_hash, plan.plan_hash):
-            raise HTTPException(status_code=409, detail="exact connector plan approval required")
-        return service.connector_planner.store.create_task(plan)
 
-    @app.get("/connector-tasks/{task_id}", response_model=ConnectorTask)
-    async def connector_task(task_id: str) -> ConnectorTask:
+    @app.get("/connector-tasks/{task_id}", response_model=ConnectorTaskRecord)
+    async def connector_task(task_id: str) -> ConnectorTaskRecord:
         try:
-            return service.connector_planner.store.task(task_id)
+            return await service.connector_task(task_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @app.post("/connector-tasks/{task_id}/cancel", response_model=ConnectorTask)
-    async def cancel_connector_task(task_id: str) -> ConnectorTask:
+    @app.get("/connector-tasks/{task_id}/events", response_model=list[ConnectorTaskEvent])
+    async def connector_task_events(
+        task_id: str,
+        after: int = Query(default=0, ge=0),
+    ) -> tuple[ConnectorTaskEvent, ...]:
         try:
-            return service.connector_planner.store.update_task(task_id, status="cancelled")
+            await service.connector_task(task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return await service.connector_task_events(task_id, after=after)
+
+    @app.post("/connector-tasks/{task_id}/cancel", response_model=ConnectorTaskRecord)
+    async def cancel_connector_task(task_id: str) -> ConnectorTaskRecord:
+        try:
+            return await service.connector_lifecycle.cancel_task(task_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    @app.post("/connector-tasks/{task_id}/resume", response_model=ConnectorTask)
-    async def resume_connector_task(task_id: str) -> ConnectorTask:
+    @app.post("/connector-tasks/{task_id}/retry", response_model=ConnectorTaskRecord)
+    async def retry_connector_task(task_id: str) -> ConnectorTaskRecord:
         try:
-            task = service.connector_planner.store.task(task_id)
-            if task.status != "cancelled":
-                raise HTTPException(status_code=409, detail="only cancelled tasks can resume")
-            return service.connector_planner.store.update_task(task_id, status="queued_for_node")
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            return await service.connector_lifecycle.retry_task(task_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/connector-tasks/{task_id}/authentication-complete",
+        response_model=ConnectorTaskRecord,
+    )
+    async def connector_authentication_complete(task_id: str) -> ConnectorTaskRecord:
+        try:
+            return await service.connector_lifecycle.authentication_complete(task_id)
+        except (KeyError, ValueError, ConnectorPlanError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/connector-tasks/{task_id}/resume", response_model=ConnectorTaskRecord)
+    async def resume_connector_task(task_id: str) -> ConnectorTaskRecord:
+        try:
+            return await service.connector_lifecycle.retry_task(task_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/v1/harnesses/catalogue", response_model=list[HarnessDefinition])
     async def harness_catalogue() -> tuple[HarnessDefinition, ...]:
