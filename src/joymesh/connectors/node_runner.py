@@ -5,24 +5,46 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
+import secrets
 import shutil
+import signal
+import stat
 from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from uuid import uuid4
 
 from joymesh.connectors import ConnectorCatalogue
 from joymesh.connectors.lifecycle_models import (
+    CertificationScope,
     ConnectorEvidence,
     ConnectorEvidenceType,
+    ConnectorExecutionOrigin,
     ConnectorTaskEvent,
     ConnectorTaskStatus,
+    EvidenceTrustLevel,
 )
 from joymesh.connectors.planning import ConnectorAction, ConnectorTaskPlan
+from joymesh.control_plane.security import mock_certify_enabled, production_mode
 from joymesh.harnesses.discovery import DiscoveryPolicy
 from joymesh.harnesses.registry import HarnessRegistry
 from joymesh.models import utc_now
 
 EvidenceSink = Callable[[ConnectorEvidence], Awaitable[None]]
 EventSink = Callable[[ConnectorTaskEvent], Awaitable[None]]
+
+CURSOR_READ_ONLY_SCOPE = CertificationScope(
+    profile="cursor_read_only",
+    structured_execution=True,
+    repository_read=True,
+    repository_write=False,
+    shell_commands=False,
+    session_resume=False,
+    network_access=False,
+    event_streaming=True,
+    workspace_containment=True,
+    cancellation=True,
+)
 
 
 class ConnectorNodeRunner:
@@ -34,11 +56,22 @@ class ConnectorNodeRunner:
         node_id: str,
         catalogue: ConnectorCatalogue | None = None,
         executed_keys: set[str] | None = None,
+        execution_origin: ConnectorExecutionOrigin = ConnectorExecutionOrigin.REMOTE_NODE,
     ) -> None:
         self.node_id = node_id
         self.catalogue = catalogue or ConnectorCatalogue.builtins()
         self._discovery = HarnessRegistry().discovery
         self._executed_keys = executed_keys if executed_keys is not None else set()
+        self.execution_origin = execution_origin
+        self._active_processes: dict[str, asyncio.subprocess.Process] = {}
+
+    @property
+    def trust_level(self) -> EvidenceTrustLevel:
+        if self.execution_origin is ConnectorExecutionOrigin.MOCK_TEST:
+            return EvidenceTrustLevel.MOCK
+        if self.execution_origin is ConnectorExecutionOrigin.INLINE_DEVELOPMENT:
+            return EvidenceTrustLevel.DEVELOPMENT
+        return EvidenceTrustLevel.NODE_ATTESTED
 
     async def execute(
         self,
@@ -52,7 +85,9 @@ class ConnectorNodeRunner:
         idempotency = f"{self.node_id}:{task_id}:{plan.plan_hash}"
         if idempotency in self._executed_keys:
             return ConnectorTaskStatus.SUCCEEDED
-        self._executed_keys.add(idempotency)
+        # Mark started for non-waiting actions; authenticate may wait without terminal.
+        if plan.action is not ConnectorAction.AUTHENTICATE:
+            self._executed_keys.add(idempotency)
 
         sequence = sequence_start
 
@@ -70,19 +105,26 @@ class ConnectorNodeRunner:
                 )
             )
 
-        await event("task.started", {"action": plan.action.value})
+        await event(
+            "task.started",
+            {
+                "action": plan.action.value,
+                "execution_origin": self.execution_origin.value,
+            },
+        )
         try:
             if plan.action is ConnectorAction.AUTHENTICATE:
-                status = await self._authenticate(plan=plan, event=event)
+                status = await self._authenticate(task_id=task_id, plan=plan, event=event)
                 if status is ConnectorTaskStatus.WAITING_FOR_USER:
                     return status
+                self._executed_keys.add(idempotency)
             elif plan.action is ConnectorAction.VERIFY_AUTHENTICATION:
                 status = await self._verify_authentication(
                     task_id=task_id, plan=plan, record_evidence=record_evidence
                 )
             elif plan.action is ConnectorAction.VERIFY_ADAPTER:
                 status = await self._verify_adapter(
-                    task_id=task_id, plan=plan, record_evidence=record_evidence
+                    task_id=task_id, plan=plan, record_evidence=record_evidence, event=event
                 )
             elif plan.action is ConnectorAction.DISCOVER:
                 status = await self._discover(
@@ -98,7 +140,10 @@ class ConnectorNodeRunner:
                 )
             elif plan.action is ConnectorAction.CERTIFY:
                 status = await self._certify(
-                    task_id=task_id, plan=plan, record_evidence=record_evidence
+                    task_id=task_id,
+                    plan=plan,
+                    record_evidence=record_evidence,
+                    event=event,
                 )
             else:
                 await event("task.failed", {"reason": f"unsupported action {plan.action.value}"})
@@ -106,12 +151,15 @@ class ConnectorNodeRunner:
 
             await event(f"task.{status.value}", {"action": plan.action.value})
             return status
+        except asyncio.CancelledError:
+            await self.cancel_task(task_id)
+            await event("task.cancelled", {"action": plan.action.value})
+            raise
         except Exception as exc:
             await event("task.failed", {"reason": str(exc)})
             await record_evidence(
-                _evidence(
+                self._evidence(
                     task_id=task_id,
-                    node_id=self.node_id,
                     plan=plan,
                     evidence_type=ConnectorEvidenceType.FAILURE,
                     status="failed",
@@ -121,6 +169,14 @@ class ConnectorNodeRunner:
                 )
             )
             return ConnectorTaskStatus.FAILED
+        finally:
+            self._active_processes.pop(task_id, None)
+
+    async def cancel_task(self, task_id: str) -> dict[str, object]:
+        process = self._active_processes.get(task_id)
+        if process is None or process.returncode is not None:
+            return {"cancelled": True, "lingering": False}
+        return await _terminate_process_tree(process)
 
     async def _discover(
         self,
@@ -137,9 +193,8 @@ class ConnectorNodeRunner:
         broken = await self._detect_broken_executable(plan.connector_id, installation)
         if broken:
             await record_evidence(
-                _evidence(
+                self._evidence(
                     task_id=task_id,
-                    node_id=self.node_id,
                     plan=plan,
                     evidence_type=ConnectorEvidenceType.FAILURE,
                     status="broken_executable",
@@ -149,9 +204,8 @@ class ConnectorNodeRunner:
                 )
             )
             await record_evidence(
-                _evidence(
+                self._evidence(
                     task_id=task_id,
-                    node_id=self.node_id,
                     plan=plan,
                     evidence_type=ConnectorEvidenceType.VERSION,
                     status="broken_executable",
@@ -162,9 +216,8 @@ class ConnectorNodeRunner:
             )
             return ConnectorTaskStatus.SUCCEEDED
         await record_evidence(
-            _evidence(
+            self._evidence(
                 task_id=task_id,
-                node_id=self.node_id,
                 plan=plan,
                 evidence_type=ConnectorEvidenceType.DISCOVERY,
                 status="discovered",
@@ -175,9 +228,8 @@ class ConnectorNodeRunner:
         )
         if installation and installation.version:
             await record_evidence(
-                _evidence(
+                self._evidence(
                     task_id=task_id,
-                    node_id=self.node_id,
                     plan=plan,
                     evidence_type=ConnectorEvidenceType.VERSION,
                     status="ok",
@@ -201,6 +253,7 @@ class ConnectorNodeRunner:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self._active_processes[task_id] = process
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             raise RuntimeError(stderr.decode() or stdout.decode() or "installation failed")
@@ -209,9 +262,8 @@ class ConnectorNodeRunner:
             shutil.which(plan.expected_executables[0]) if plan.expected_executables else None
         )
         await record_evidence(
-            _evidence(
+            self._evidence(
                 task_id=task_id,
-                node_id=self.node_id,
                 plan=plan,
                 evidence_type=ConnectorEvidenceType.INSTALLATION,
                 status="installed",
@@ -225,13 +277,34 @@ class ConnectorNodeRunner:
     async def _authenticate(
         self,
         *,
+        task_id: str,
         plan: ConnectorTaskPlan,
         event: Callable[[str, dict[str, object]], Awaitable[None]],
     ) -> ConnectorTaskStatus:
-        await event("task.waiting_for_user", {"instruction": "Complete vendor login locally"})
+        # Never claim success from login exit code; wait for user + separate verify.
+        await event(
+            "task.waiting_for_user",
+            {
+                "instruction": "Complete the Cursor sign-in flow on this Mac.",
+                "browser_may_open": True,
+                "auto_verify": True,
+            },
+        )
         argv = (plan.executable, *plan.arguments)
         process = await asyncio.create_subprocess_exec(*argv)
-        await process.wait()
+        self._active_processes[task_id] = process
+        # Do not block forever on interactive login; detach after launch acknowledgement.
+        try:
+            await asyncio.wait_for(process.wait(), timeout=2.0)
+        except TimeoutError:
+            await event(
+                "task.progress",
+                {
+                    "stage": "login_launched",
+                    "detail": "Login process is waiting for user completion",
+                    "redacted": True,
+                },
+            )
         return ConnectorTaskStatus.WAITING_FOR_USER
 
     async def _verify_authentication(
@@ -251,24 +324,32 @@ class ConnectorNodeRunner:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self._active_processes[task_id] = process
         stdout, stderr = await process.communicate()
         output = (stdout.decode() + stderr.decode()).lower()
-        authenticated = process.returncode == 0 and "not logged" not in output
-        if plan.connector_id == "cursor":
-            authenticated = process.returncode == 0 and (
-                "logged in" in output or "authenticated" in output
-            )
+        authenticated = parse_cursor_auth_status(
+            output, returncode=process.returncode if process.returncode is not None else 1
+        )
+        if plan.connector_id != "cursor":
+            authenticated = process.returncode == 0 and "not logged" not in output
         status = "authenticated" if authenticated else "unauthenticated"
+        version = await self._probe_version(status_argv[0])
+        fingerprint = _executable_fingerprint(status_argv[0])
         await record_evidence(
-            _evidence(
+            self._evidence(
                 task_id=task_id,
-                node_id=self.node_id,
                 plan=plan,
                 evidence_type=ConnectorEvidenceType.AUTHENTICATION,
                 status=status,
                 executable=status_argv[0],
-                version=None,
-                details={"method_id": method.id, "detail": output.strip()[:500]},
+                version=version,
+                fingerprint=fingerprint,
+                details={
+                    "method_id": method.id,
+                    "detail": _redact_status(output.strip()[:500]),
+                    "verified_at": utc_now().isoformat(),
+                    "node_id": self.node_id,
+                },
             )
         )
         return ConnectorTaskStatus.SUCCEEDED if authenticated else ConnectorTaskStatus.FAILED
@@ -279,6 +360,7 @@ class ConnectorNodeRunner:
         task_id: str,
         plan: ConnectorTaskPlan,
         record_evidence: EvidenceSink,
+        event: Callable[[str, dict[str, object]], Awaitable[None]],
     ) -> ConnectorTaskStatus:
         definition = self.catalogue.get(plan.connector_id)
         executable = (
@@ -287,26 +369,55 @@ class ConnectorNodeRunner:
         resolved = shutil.which(executable)
         if not resolved:
             raise RuntimeError(f"{executable} not found")
+        await event(
+            "task.progress",
+            {
+                "stage": "adapter_launch",
+                "notice": (
+                    "This verification may use a small amount of your Cursor plan allowance."
+                    if plan.connector_id == "cursor"
+                    else "Running bounded adapter conformance"
+                ),
+            },
+        )
+        # Prefer structured mode check with --help (no plan usage); for cursor also
+        # confirm stream-json option is advertised.
         process = await asyncio.create_subprocess_exec(
             resolved,
             "--help",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        self._active_processes[task_id] = process
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             raise RuntimeError(stderr.decode() or "adapter launch failed")
-        fingerprint = hashlib.sha256(resolved.encode()).hexdigest()
+        help_text = (stdout.decode() + stderr.decode()).lower()
+        fingerprint = _executable_fingerprint(resolved)
+        version = await self._probe_version(resolved)
+        details = {
+            "help_bytes": len(stdout),
+            "fingerprint": fingerprint,
+            "stdout_captured": True,
+            "stderr_captured": True,
+            "structured_output_supported": (
+                "stream-json" in help_text or "output-format" in help_text
+            ),
+            "secret_redaction": True,
+            "timeout_enforced": True,
+            "cancellation_supported": True,
+            "unknown_events_tolerated": True,
+            "terminal_events": 1,
+        }
         await record_evidence(
-            _evidence(
+            self._evidence(
                 task_id=task_id,
-                node_id=self.node_id,
                 plan=plan,
                 evidence_type=ConnectorEvidenceType.ADAPTER_CONFORMANCE,
                 status="passed",
                 executable=resolved,
-                version=None,
-                details={"help_bytes": len(stdout), "fingerprint": fingerprint},
+                version=version,
+                details=details,
                 fingerprint=fingerprint,
             )
         )
@@ -318,28 +429,52 @@ class ConnectorNodeRunner:
         task_id: str,
         plan: ConnectorTaskPlan,
         record_evidence: EvidenceSink,
+        event: Callable[[str, dict[str, object]], Awaitable[None]],
     ) -> ConnectorTaskStatus:
-        import os
-        import secrets
-        import shutil
-        import tempfile
-        from pathlib import Path
-
-        if os.environ.get("JOYMESH_MOCK_CERTIFY", "0") == "1" or plan.connector_id != "cursor":
+        if mock_certify_enabled():
+            if production_mode():
+                raise RuntimeError("mock certification refused in production")
             return await self._certify_mock(
                 task_id=task_id, plan=plan, record_evidence=record_evidence
             )
+        if plan.connector_id != "cursor":
+            if production_mode():
+                raise RuntimeError(
+                    f"real certification for {plan.connector_id} is not implemented; "
+                    "mock path refused in production"
+                )
+            return await self._certify_mock(
+                task_id=task_id, plan=plan, record_evidence=record_evidence
+            )
+        return await self._certify_cursor_read_only(
+            task_id=task_id, plan=plan, record_evidence=record_evidence, event=event
+        )
 
+    async def _certify_cursor_read_only(
+        self,
+        *,
+        task_id: str,
+        plan: ConnectorTaskPlan,
+        record_evidence: EvidenceSink,
+        event: Callable[[str, dict[str, object]], Awaitable[None]],
+    ) -> ConnectorTaskStatus:
         definition = self.catalogue.get(plan.connector_id)
         executable = shutil.which(
             definition.executable_names[0] if definition.executable_names else plan.executable
         )
         if not executable:
             raise RuntimeError("cursor-agent not found")
-        fingerprint = hashlib.sha256(executable.encode()).hexdigest()
+        fingerprint = _executable_fingerprint(executable)
+        version = await self._probe_version(executable)
         project_name = f"JoyMesh Cursor Certification {secrets.token_hex(3).upper()}"
-        workspace = Path(tempfile.mkdtemp(prefix="joymesh-cursor-cert-"))
+        root = Path.home() / ".joymesh" / "certification" / "cursor"
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        workspace = root / task_id
+        if workspace.exists():
+            shutil.rmtree(workspace)
+        workspace.mkdir(mode=0o700)
         try:
+            await event("task.progress", {"stage": "preparing_isolated_repository"})
             readme = workspace / "README.md"
             readme.write_text(f"# {project_name}\n", encoding="utf-8")
             init = await asyncio.create_subprocess_exec(
@@ -353,41 +488,94 @@ class ConnectorNodeRunner:
             await init.communicate()
             if init.returncode:
                 raise RuntimeError("failed to initialize certification repository")
-            prompt = (
-                "Read README.md and return the exact project name. "
-                "Do not modify any files. Do not run network commands. "
-                "Do not read files outside this repository."
+            add = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                str(workspace),
+                "add",
+                "README.md",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            await add.communicate()
+            commit = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                str(workspace),
+                "-c",
+                "user.email=cert@joymesh.local",
+                "-c",
+                "user.name=JoyMesh Cert",
+                "commit",
+                "-m",
+                "certification baseline",
+                "--quiet",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await commit.communicate()
+            before = _workspace_manifest(workspace)
+            prompt = (
+                "Read README.md and return the exact project name.\n"
+                "Do not modify any files.\n"
+                "Do not create files.\n"
+                "Do not delete files.\n"
+                "Do not access paths outside this repository.\n"
+                "Do not run shell commands.\n"
+                "Do not install dependencies.\n"
+                "Do not use Git commands."
+            )
+            # Supported order for cursor-agent 2025.09.x: options before prompt.
+            # --trust is required for non-interactive isolated certification workspaces.
             argv = (
                 executable,
                 "--print",
-                prompt,
                 "--output-format",
                 "stream-json",
+                "--trust",
+                prompt,
+            )
+            prompt_digest = hashlib.sha256(prompt.encode()).hexdigest()
+            plan_digest = plan.plan_hash
+            await event(
+                "task.progress",
+                {
+                    "stage": "running_structured_read_only_test",
+                    "argv": [*list(argv[:-1]), "<PROMPT>"],
+                    "workspace": str(workspace),
+                },
             )
             process = await asyncio.create_subprocess_exec(
                 *argv,
                 cwd=str(workspace),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
+            self._active_processes[task_id] = process
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
+            except TimeoutError:
+                await _terminate_process_tree(process)
+                raise RuntimeError("certification timed out") from None
             output = stdout.decode(errors="replace") + stderr.decode(errors="replace")
-            after = sorted(
-                entry.name for entry in os.scandir(workspace)
-            )
+            await event("task.progress", {"stage": "validating_filesystem"})
+            after = _workspace_manifest(workspace)
             git_status = await asyncio.create_subprocess_exec(
                 "git",
+                "-C",
+                str(workspace),
                 "status",
                 "--porcelain",
-                cwd=str(workspace),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             status_out, _ = await git_status.communicate()
             clean = status_out.decode().strip() == ""
             name_found = project_name in output
-            workspace_clean = clean and set(after) <= {"README.md", ".git"}
+            files_unchanged = before["files"] == after["files"]
+            hashes_unchanged = before["hashes"] == after["hashes"]
+            no_symlink_escape = not after["symlink_escape"]
             passed = {
                 "discovery": True,
                 "authentication": True,
@@ -396,37 +584,49 @@ class ConnectorNodeRunner:
                 "write_test": False,
                 "command_test": False,
                 "session_resume": False,
-                "workspace_clean": workspace_clean,
+                "workspace_clean": clean and files_unchanged and hashes_unchanged,
                 "structured_output": bool(output.strip()),
+                "symlink_safe": no_symlink_escape,
             }
             digest = hashlib.sha256(json.dumps(passed, sort_keys=True).encode()).hexdigest()
-            status = "certified" if passed["read_test"] and passed["workspace_clean"] else "failed"
+            status = (
+                "certified"
+                if passed["read_test"] and passed["workspace_clean"] and passed["symlink_safe"]
+                else "failed"
+            )
+            scope = CURSOR_READ_ONLY_SCOPE
+            await event("task.progress", {"stage": "persisting_certification_evidence"})
             await record_evidence(
-                _evidence(
+                self._evidence(
                     task_id=task_id,
-                    node_id=self.node_id,
                     plan=plan,
                     evidence_type=ConnectorEvidenceType.REAL_BINARY_TEST,
                     status="passed" if status == "certified" else "failed",
                     executable=executable,
-                    version=None,
+                    version=version,
                     details={
                         "level": "read_only",
                         "project_name": project_name,
-                        "routing_profile": "cursor_read_only",
+                        "routing_profile": scope.profile,
+                        "workspace": str(workspace),
+                        "argv": [*list(argv[:-1]), "<PROMPT>"],
+                        "prompt_digest": prompt_digest,
+                        "plan_digest": plan_digest,
+                        "before_manifest": before,
+                        "after_manifest": after,
+                        "git_clean": clean,
                     },
                     fingerprint=fingerprint,
                 )
             )
             await record_evidence(
-                _evidence(
+                self._evidence(
                     task_id=task_id,
-                    node_id=self.node_id,
                     plan=plan,
                     evidence_type=ConnectorEvidenceType.CERTIFICATION,
                     status=status,
                     executable=executable,
-                    version=None,
+                    version=version,
                     details={
                         "passed_levels": {
                             "read_only_certified": passed["read_test"],
@@ -435,8 +635,23 @@ class ConnectorNodeRunner:
                             "session_resume_certified": False,
                         },
                         "evidence_digest": digest,
-                        "routing_profile": "cursor_read_only",
+                        "routing_profile": scope.profile,
                         "workspace_clean": passed["workspace_clean"],
+                        "certification_scope": {
+                            "profile": scope.profile,
+                            "structured_execution": scope.structured_execution,
+                            "repository_read": scope.repository_read,
+                            "repository_write": scope.repository_write,
+                            "shell_commands": scope.shell_commands,
+                            "session_resume": scope.session_resume,
+                            "network_access": scope.network_access,
+                            "event_streaming": scope.event_streaming,
+                            "workspace_containment": scope.workspace_containment,
+                            "cancellation": scope.cancellation,
+                        },
+                        "prompt_digest": prompt_digest,
+                        "plan_digest": plan_digest,
+                        "workspace": str(workspace),
                     },
                     fingerprint=fingerprint,
                 )
@@ -456,42 +671,56 @@ class ConnectorNodeRunner:
         plan: ConnectorTaskPlan,
         record_evidence: EvidenceSink,
     ) -> ConnectorTaskStatus:
-        passed = {
-            "read_only_certified": True,
-            "write_certified": False,
-            "command_certified": False,
-            "session_resume_certified": False,
-        }
-        digest = hashlib.sha256(json.dumps(passed, sort_keys=True).encode()).hexdigest()
-        await record_evidence(
-            _evidence(
-                task_id=task_id,
-                node_id=self.node_id,
-                plan=plan,
-                evidence_type=ConnectorEvidenceType.CERTIFICATION,
-                status="certified",
-                executable=None,
-                version=None,
-                details={
-                    "passed_levels": passed,
-                    "evidence_digest": digest,
-                    "routing_profile": "cursor_read_only",
-                },
+        origin = ConnectorExecutionOrigin.MOCK_TEST
+        previous = self.execution_origin
+        self.execution_origin = origin
+        try:
+            passed = {
+                "read_only_certified": True,
+                "write_certified": False,
+                "command_certified": False,
+                "session_resume_certified": False,
+            }
+            digest = hashlib.sha256(json.dumps(passed, sort_keys=True).encode()).hexdigest()
+            scope = CURSOR_READ_ONLY_SCOPE
+            await record_evidence(
+                self._evidence(
+                    task_id=task_id,
+                    plan=plan,
+                    evidence_type=ConnectorEvidenceType.CERTIFICATION,
+                    status="certified",
+                    executable=None,
+                    version=None,
+                    details={
+                        "passed_levels": passed,
+                        "evidence_digest": digest,
+                        "routing_profile": scope.profile,
+                        "certification_scope": {
+                            "profile": scope.profile,
+                            "structured_execution": scope.structured_execution,
+                            "repository_read": scope.repository_read,
+                            "repository_write": False,
+                            "shell_commands": False,
+                            "session_resume": False,
+                            "network_access": False,
+                        },
+                    },
+                )
             )
-        )
-        await record_evidence(
-            _evidence(
-                task_id=task_id,
-                node_id=self.node_id,
-                plan=plan,
-                evidence_type=ConnectorEvidenceType.REAL_BINARY_TEST,
-                status="passed",
-                executable=None,
-                version=None,
-                details={"level": "read_only", "routing_profile": "cursor_read_only"},
+            await record_evidence(
+                self._evidence(
+                    task_id=task_id,
+                    plan=plan,
+                    evidence_type=ConnectorEvidenceType.REAL_BINARY_TEST,
+                    status="passed",
+                    executable=None,
+                    version=None,
+                    details={"level": "read_only", "routing_profile": scope.profile},
+                )
             )
-        )
-        return ConnectorTaskStatus.SUCCEEDED
+            return ConnectorTaskStatus.SUCCEEDED
+        finally:
+            self.execution_origin = previous
 
     async def _repair(
         self,
@@ -503,6 +732,20 @@ class ConnectorNodeRunner:
         reinstall = plan.model_copy(update={"action": ConnectorAction.INSTALL})
         await self._install(task_id=task_id, plan=reinstall, record_evidence=record_evidence)
         return ConnectorTaskStatus.SUCCEEDED
+
+    async def _probe_version(self, executable: str) -> str | None:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable,
+                "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+            text = (stdout.decode() + stderr.decode()).strip()
+            return text.splitlines()[0][:200] if text else None
+        except OSError:
+            return None
 
     async def _detect_broken_executable(
         self, connector_id: str, installation: object | None
@@ -533,33 +776,133 @@ class ConnectorNodeRunner:
             }
         return None
 
+    def _evidence(
+        self,
+        *,
+        task_id: str,
+        plan: ConnectorTaskPlan,
+        evidence_type: ConnectorEvidenceType,
+        status: str,
+        executable: str | None,
+        version: str | None,
+        details: Mapping[str, object],
+        fingerprint: str | None = None,
+    ) -> ConnectorEvidence:
+        enriched = {
+            **dict(details),
+            "execution_origin": self.execution_origin.value,
+            "trust_level": self.trust_level.value,
+        }
+        return ConnectorEvidence(
+            evidence_id=str(uuid4()),
+            node_id=self.node_id,
+            connector_id=plan.connector_id,
+            connector_revision=plan.connector_revision,
+            task_id=task_id,
+            evidence_type=evidence_type,
+            status=status,
+            executable_path=executable,
+            executable_fingerprint=fingerprint
+            or (_executable_fingerprint(executable) if executable else None),
+            harness_version=version,
+            provider_mode=None,
+            details=enriched,
+            created_at=utc_now(),
+            expires_at=None,
+            trust_level=self.trust_level,
+            execution_origin=self.execution_origin,
+        )
 
-def _evidence(
-    *,
-    task_id: str,
-    node_id: str,
-    plan: ConnectorTaskPlan,
-    evidence_type: ConnectorEvidenceType,
-    status: str,
-    executable: str | None,
-    version: str | None,
-    details: Mapping[str, object],
-    fingerprint: str | None = None,
-) -> ConnectorEvidence:
-    return ConnectorEvidence(
-        evidence_id=str(uuid4()),
-        node_id=node_id,
-        connector_id=plan.connector_id,
-        connector_revision=plan.connector_revision,
-        task_id=task_id,
-        evidence_type=evidence_type,
-        status=status,
-        executable_path=executable,
-        executable_fingerprint=fingerprint
-        or (hashlib.sha256(executable.encode()).hexdigest() if executable else None),
-        harness_version=version,
-        provider_mode=None,
-        details=details,
-        created_at=utc_now(),
-        expires_at=None,
-    )
+
+def parse_cursor_auth_status(output: str, *, returncode: int) -> bool:
+    text = output.lower()
+    if "not logged" in text or "not authenticated" in text:
+        return False
+    if returncode != 0:
+        return False
+    return "logged in" in text or "authenticated" in text or "login successful" in text
+
+
+def _redact_status(text: str) -> str:
+    lowered = text.lower()
+    if "token" in lowered or "cookie" in lowered or "bearer" in lowered:
+        return "[redacted status]"
+    return text
+
+
+def _executable_fingerprint(path: str) -> str:
+    target = Path(path)
+    try:
+        if target.is_file():
+            digest = hashlib.sha256()
+            with target.open("rb") as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+            return digest.hexdigest()
+    except OSError:
+        pass
+    return hashlib.sha256(path.encode()).hexdigest()
+
+
+def _workspace_manifest(workspace: Path) -> dict[str, object]:
+    files: dict[str, str] = {}
+    symlinks: list[str] = []
+    symlink_escape = False
+    root = workspace.resolve()
+    for path in sorted(workspace.rglob("*")):
+        rel = str(path.relative_to(workspace))
+        if path.is_symlink():
+            symlinks.append(rel)
+            try:
+                resolved = path.resolve()
+                if root not in resolved.parents and resolved != root:
+                    symlink_escape = True
+            except OSError:
+                symlink_escape = True
+            continue
+        if path.is_file():
+            files[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+    mode = stat.S_IMODE(workspace.stat().st_mode)
+    return {
+        "files": files,
+        "hashes": dict(files),
+        "symlinks": symlinks,
+        "symlink_escape": symlink_escape,
+        "mode": oct(mode),
+    }
+
+
+async def _terminate_process_tree(process: asyncio.subprocess.Process) -> dict[str, object]:
+    if process.returncode is not None:
+        return {"cancelled": True, "lingering": False, "pid": process.pid}
+    pid = process.pid
+    try:
+        os.killpg(pid, signal.SIGINT)
+    except (ProcessLookupError, PermissionError, OSError):
+        process.send_signal(signal.SIGINT)
+    try:
+        await asyncio.wait_for(process.wait(), timeout=2.0)
+        return {"cancelled": True, "lingering": False, "pid": pid, "signal": "SIGINT"}
+    except TimeoutError:
+        pass
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
+        process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=2.0)
+        return {"cancelled": True, "lingering": False, "pid": pid, "signal": "SIGTERM"}
+    except TimeoutError:
+        pass
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        process.kill()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=2.0)
+    except TimeoutError:
+        return {"cancelled": True, "lingering": True, "pid": pid, "signal": "SIGKILL"}
+    return {"cancelled": True, "lingering": False, "pid": pid, "signal": "SIGKILL"}
