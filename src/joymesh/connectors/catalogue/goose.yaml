@@ -1,0 +1,12 @@
+{
+  "revision":"2026-07-29.1","harness_id":"goose","display_name":"Goose","vendor":"Agentic AI Foundation",
+  "description":"Open-source extensible coding agent originally created by Block.","homepage_domain":"block.github.io","category":"open-source","open_source":true,"maturity":"discoverable",
+  "executable_names":["goose"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":false,"streaming_output_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"official-script-review","mechanism":"official_script","platforms":["darwin","linux"],"package_source":"github:aaif-goose/goose","official_origin":"https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh","digest_required":true,"executable":false}],
+  "authentication_methods":[{"id":"provider","kind":"provider_configuration","interactive":true}],
+  "provider_modes":[{"provider_id":"configured","display_name":"Configured provider","funding_source":"api","authentication_method":"provider_configuration","separately_billed":true},{"provider_id":"local","display_name":"Local model","funding_source":"local","authentication_method":"none","separately_billed":false}],
+  "execution":{"mode":"text_headless","argv":["goose","run","--text","{task}"],"protocol":"text"},
+  "adapter_id":"goose","certification_profile_id":"goose-v1",
+  "official_source":{"documentation_source":"https://block.github.io/goose/","source_repository":"https://github.com/aaif-goose/goose","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"goose-aaif-official-script-v1"}
+}

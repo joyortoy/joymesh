@@ -1,0 +1,11 @@
+{
+  "revision":"2026-07-29.1","harness_id":"amazon-q","display_name":"Amazon Q Developer CLI","vendor":"Amazon Web Services",
+  "description":"Amazon Q Developer command-line experience; general coding headless contract remains under review.","homepage_domain":"aws.amazon.com","category":"enterprise","maturity":"blocked",
+  "executable_names":["qchat"],"remote_execution_supported":false,"interactive_execution_supported":true,"non_interactive_execution_supported":false,
+  "structured_output_supported":false,"streaming_output_supported":false,"supported_platforms":["darwin","linux"],
+  "authentication_methods":[{"id":"builder-id","kind":"browser_oauth","interactive":true},{"id":"identity-center","kind":"cloud_credential_chain","interactive":true}],
+  "provider_modes":[{"provider_id":"amazon-q","display_name":"Amazon Q Developer","funding_source":"subscription","authentication_method":"aws_identity","separately_billed":false}],
+  "execution":{"mode":"discovery_only","protocol":"none"},"experimental":true,
+  "blocked_reason":"Official documentation reviewed on 2026-07-29 does not expose a stable general coding task headless contract for qchat.",
+  "official_source":{"documentation_source":"https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-mcp-config-CLI.html","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"amazon-q-qchat-discovery-review-v1"}
+}

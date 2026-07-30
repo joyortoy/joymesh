@@ -1,0 +1,12 @@
+{
+  "revision":"2026-07-29.1","harness_id":"cursor","display_name":"Cursor Agent CLI","vendor":"Cursor",
+  "description":"Cursor's documented headless coding-agent CLI.","homepage_domain":"cursor.com","category":"terminal","maturity":"discoverable",
+  "executable_names":["cursor-agent"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"official-script-review","mechanism":"official_script","platforms":["darwin","linux"],"package_source":"cursor.com","official_origin":"https://cursor.com/install","digest_required":true,"executable":false}],
+  "authentication_methods":[{"id":"cursor","kind":"browser_oauth","login_argv":["cursor-agent","login"],"status_argv":["cursor-agent","status"],"interactive":true},{"id":"api-key","kind":"environment_variable","environment_variables":["CURSOR_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"cursor","display_name":"Cursor account","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["cursor-agent","--print","--output-format","stream-json","{task}"],"protocol":"stream_json"},
+  "adapter_id":"cursor","certification_profile_id":"cursor-v1",
+  "official_source":{"documentation_source":"https://docs.cursor.com/en/cli/headless","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"cursor-agent-official-script-v1"}
+}

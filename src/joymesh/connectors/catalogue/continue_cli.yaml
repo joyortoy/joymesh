@@ -1,0 +1,13 @@
+{
+  "revision":"2026-07-29.1","harness_id":"continue","display_name":"Continue CLI","vendor":"Continue",
+  "description":"Terminal coding agent sharing the Continue engine.","homepage_domain":"continue.dev","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["cn"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":false,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"official-script-review","mechanism":"official_script","platforms":["darwin","linux"],"package_source":"github:continuedev/continue","official_origin":"https://raw.githubusercontent.com/continuedev/continue/main/extensions/cli/scripts/install.sh","digest_required":true,"executable":false}],
+  "prerequisites":[{"kind":"account","name":"Continue account","required":false},{"kind":"runtime","name":"Node.js","minimum_version":"20","required":false}],
+  "authentication_methods":[{"id":"continue","kind":"browser_oauth","login_argv":["cn","login"]},{"id":"continue-api","kind":"environment_variable","environment_variables":["CONTINUE_API_KEY"],"interactive":false},{"id":"anthropic","kind":"local_api_key","environment_variables":["ANTHROPIC_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"continue","display_name":"Continue account","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false},{"provider_id":"anthropic","display_name":"Anthropic API","funding_source":"api","authentication_method":"api_key","separately_billed":true}],
+  "execution":{"mode":"text_headless","argv":["cn","-p","{task}"],"resume_argv":["cn","-p","{task}","--resume"],"protocol":"text"},
+  "adapter_id":"continue","certification_profile_id":"continue-v1",
+  "official_source":{"documentation_source":"https://docs.continue.dev/cli/quickstart","source_repository":"https://github.com/continuedev/continue","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"continue-cli-official-script-digest-v1"}
+}

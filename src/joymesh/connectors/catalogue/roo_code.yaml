@@ -1,0 +1,12 @@
+{
+  "revision":"2026-07-29.1","harness_id":"roo-code","display_name":"Roo Code","vendor":"Roo Code",
+  "description":"VS Code-family agent integration; no reviewed independent machine CLI contract.","homepage_domain":"roocode.com","tier":"ide","category":"ide","open_source":true,"maturity":"discoverable",
+  "remote_execution_supported":false,"interactive_execution_supported":true,"non_interactive_execution_supported":false,
+  "structured_output_supported":false,"streaming_output_supported":false,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"vscode-marketplace","mechanism":"vscode_extension","platforms":["darwin","linux","win32"],"argv":["code","--install-extension","RooVeterinaryInc.roo-cline"],"package_source":"vscode:RooVeterinaryInc.roo-cline"}],
+  "prerequisites":[{"kind":"ide","name":"Visual Studio Code"}],
+  "authentication_methods":[{"id":"provider","kind":"ide_configuration","interactive":true}],
+  "execution":{"mode":"ide_only","protocol":"none"},
+  "ide_extension":{"ecosystem":"vscode","identifier":"RooVeterinaryInc.roo-cline","marketplace_url":"https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline"},
+  "official_source":{"documentation_source":"https://docs.roocode.com/getting-started/installing","source_repository":"https://github.com/RooCodeInc/Roo-Code","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"roo-code-vscode-extension-v1"}
+}

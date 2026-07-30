@@ -1,0 +1,15 @@
+{
+  "revision":"2026-07-29.1","harness_id":"aider","display_name":"Aider","vendor":"Aider AI",
+  "description":"Open-source Git-aware pair programming agent.","homepage_domain":"aider.chat","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["aider"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":false,"streaming_output_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"uv","mechanism":"uv","platforms":["darwin","linux","win32"],"argv":["uv","tool","install","--force","--python","python3.12","--with","pip","aider-chat@latest"],"package_source":"pypi:aider-chat"}],
+  "upgrade_options":[{"id":"uv","mechanism":"uv","platforms":["darwin","linux","win32"],"argv":["uv","tool","upgrade","aider-chat"],"package_source":"pypi:aider-chat"}],
+  "uninstall_options":[{"id":"uv","mechanism":"uv","platforms":["darwin","linux","win32"],"argv":["uv","tool","uninstall","aider-chat"],"package_source":"pypi:aider-chat"}],
+  "prerequisites":[{"kind":"package_manager","name":"uv"},{"kind":"executable","name":"git"}],
+  "authentication_methods":[{"id":"provider-key","kind":"environment_variable","environment_variables":["OPENAI_API_KEY","ANTHROPIC_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"multi-provider","display_name":"Configured provider","funding_source":"api","authentication_method":"api_key","separately_billed":true},{"provider_id":"local","display_name":"Local/OpenAI-compatible","funding_source":"local","authentication_method":"endpoint","separately_billed":false}],
+  "execution":{"mode":"text_headless","argv":["aider","--message","{task}","--no-auto-commits","--no-pretty"],"protocol":"text"},
+  "adapter_id":"aider","certification_profile_id":"aider-v1",
+  "official_source":{"documentation_source":"https://aider.chat/docs/install.html","source_repository":"https://github.com/Aider-AI/aider","package_source":"pypi:aider-chat","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"aider-uv-python312-v1"}
+}

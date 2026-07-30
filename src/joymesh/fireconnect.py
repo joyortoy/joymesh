@@ -1,0 +1,248 @@
+"""FireConnect provider bridge discovery and configuration.
+
+Mutation plans execute through ``ProviderRouteService`` so every production
+``on``/``off`` acquires a coordinator lease. Status remains a read-only probe.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import shutil
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from joymesh.harnesses.contracts import (
+    ApprovalToken,
+    InstallSource,
+    LifecycleAction,
+    LifecyclePlan,
+)
+from joymesh.models import FireConnectStatus, FireConnectTarget
+from joymesh.security import filter_environment, redact_secrets
+
+FIRECONNECT_TARGETS = frozenset(
+    {"claude", "codex", "opencode", "pi", "cursor", "vscode", "deepagents"}
+)
+JOYMESH_TARGET_MAP = {
+    "claude": "claude-code",
+    "codex": "codex",
+    "opencode": "opencode",
+    "pi": "pi",
+}
+# Provider-route manager connector ids (JoyMesh runtime connectors).
+_PROVIDER_ROUTE_CONNECTOR = {
+    "claude": "claude",
+    "codex": "codex",
+    "opencode": "opencode",
+    "cursor": "cursor",
+}
+
+
+class FireConnectError(RuntimeError):
+    pass
+
+
+class FireConnectClient:
+    def __init__(self, executable: str | None = None) -> None:
+        self._configured_executable = executable
+
+    def executable(self) -> str | None:
+        if self._configured_executable:
+            return self._configured_executable
+        if discovered := shutil.which("fireconnect"):
+            return discovered
+        fallback = Path.home() / ".local" / "bin" / "fireconnect"
+        return str(fallback) if fallback.is_file() else None
+
+    async def status(self) -> FireConnectStatus:
+        executable = self.executable()
+        if executable is None:
+            return FireConnectStatus(
+                available=False,
+                detail="FireConnect is not installed on this machine",
+            )
+
+        try:
+            global_status = await self._json(executable, "status", "--json")
+        except FireConnectError as exc:
+            return FireConnectStatus(available=False, detail=str(exc))
+
+        raw_targets = global_status.get("perHarness", [])
+        model_results = await asyncio.gather(
+            *(self._target_model(executable, str(item.get("id", ""))) for item in raw_targets)
+        )
+        targets = tuple(
+            FireConnectTarget(
+                id=str(item.get("id", "")),
+                harness_id=JOYMESH_TARGET_MAP.get(str(item.get("id", ""))),
+                enabled=bool(item.get("enabled", False)),
+                model=model,
+                reads_from=_optional_string(item.get("readsFrom")),
+                storage=_optional_string(item.get("storage")),
+                joymesh_runnable=str(item.get("id", "")) in JOYMESH_TARGET_MAP,
+            )
+            for item, model in zip(raw_targets, model_results, strict=True)
+            if item.get("id")
+        )
+        auth = global_status.get("auth") or {}
+        environment = global_status.get("environment") or {}
+        return FireConnectStatus(
+            available=True,
+            signed_in=bool(auth.get("signedIn", False)),
+            version=_optional_string(environment.get("cliVersion")),
+            backend=_optional_string(global_status.get("backendLabel")),
+            detail=_optional_string(auth.get("reason")),
+            targets=targets,
+        )
+
+    def plan_connect(self, harness_id: str, model: str) -> LifecyclePlan:
+        self._validate_target(harness_id)
+        return LifecyclePlan(
+            id=str(uuid4()),
+            action=LifecycleAction.ROUTE_TRANSFORM,
+            harness_id=harness_id,
+            argv=("fireconnect", harness_id, "on", "--model", model),
+            source=InstallSource.STANDALONE,
+            notes=(
+                "FireConnect changes provider routing for the selected harness.",
+                "The transformed route may use a different billing mode.",
+                "Deprecated: prefer POST /api/v1/provider-routes/.../enable.",
+            ),
+        )
+
+    def plan_disconnect(self, harness_id: str) -> LifecyclePlan:
+        self._validate_target(harness_id)
+        return LifecyclePlan(
+            id=str(uuid4()),
+            action=LifecycleAction.ROUTE_TRANSFORM,
+            harness_id=harness_id,
+            argv=("fireconnect", harness_id, "off"),
+            source=InstallSource.STANDALONE,
+            notes=(
+                "FireConnect changes provider routing for the selected harness.",
+                "Deprecated: prefer POST /api/v1/provider-routes/.../disable.",
+            ),
+        )
+
+    async def execute_plan(
+        self,
+        plan: LifecyclePlan,
+        approval: ApprovalToken,
+    ) -> FireConnectStatus:
+        """Execute a route transform via the lease-coordinated provider-route service."""
+
+        if (
+            plan.action is not LifecycleAction.ROUTE_TRANSFORM
+            or approval.action is not plan.action
+            or approval.harness_id != plan.harness_id
+            or not approval.approved
+        ):
+            raise FireConnectError("explicit route-transform approval is required")
+        self._validate_target(plan.harness_id)
+        valid_disconnect = plan.argv == ("fireconnect", plan.harness_id, "off")
+        valid_connect = (
+            len(plan.argv) == 5
+            and plan.argv[:3] == ("fireconnect", plan.harness_id, "on")
+            and plan.argv[3] == "--model"
+            and bool(plan.argv[4])
+        )
+        if not valid_disconnect and not valid_connect:
+            raise FireConnectError("invalid FireConnect plan")
+
+        connector_id = _PROVIDER_ROUTE_CONNECTOR.get(plan.harness_id)
+        if connector_id is None:
+            raise FireConnectError(
+                f"harness {plan.harness_id} has no JoyMesh provider-route connector; "
+                "use /api/v1/provider-routes when supported"
+            )
+
+        from joymesh.runtime_v1.provider_routes.lease_store import ProviderRouteLeaseError
+        from joymesh.runtime_v1.provider_routes.service import ProviderRouteService
+
+        # Ensure manager subprocess uses the same executable when configured for tests.
+        if self._configured_executable:
+            from joymesh.runtime_v1.provider_routes import registry as registry_mod
+            from joymesh.runtime_v1.provider_routes.fireconnect import (
+                FireConnectProviderRouteManager,
+            )
+
+            registry_mod.reset_provider_route_managers_for_tests()
+            registry_mod._MANAGERS = {
+                "fireconnect": FireConnectProviderRouteManager(self._configured_executable)
+            }
+
+        service = ProviderRouteService()
+        try:
+            if valid_connect:
+                model = plan.argv[4]
+                result = await service.enable_permanently(
+                    "fireconnect",
+                    connector_id,
+                    model_id=model,
+                )
+            else:
+                result = await service.disable_permanently("fireconnect", connector_id)
+        except ProviderRouteLeaseError as exc:
+            raise FireConnectError(exc.message) from exc
+        if not result.ok:
+            raise FireConnectError(result.message or "provider-route mutation failed")
+        return await self.status()
+
+    async def _target_model(self, executable: str, harness_id: str) -> str | None:
+        if harness_id not in FIRECONNECT_TARGETS:
+            return None
+        try:
+            status = await self._json(executable, harness_id, "status", "--json")
+        except FireConnectError:
+            return None
+        current = status.get("current") or {}
+        return _optional_string(current.get("main") or status.get("model"))
+
+    def _require_executable(self) -> str:
+        executable = self.executable()
+        if executable is None:
+            raise FireConnectError("FireConnect is not installed on this machine")
+        return executable
+
+    @staticmethod
+    def _validate_target(harness_id: str) -> None:
+        if harness_id not in FIRECONNECT_TARGETS:
+            raise FireConnectError(f"unsupported FireConnect harness: {harness_id}")
+
+    async def _json(self, executable: str, *args: str) -> dict[str, Any]:
+        output = await self._run(executable, *args)
+        try:
+            value = json.loads(output)
+        except json.JSONDecodeError as exc:
+            raise FireConnectError("FireConnect returned invalid status data") from exc
+        if not isinstance(value, dict):
+            raise FireConnectError("FireConnect returned invalid status data")
+        return value
+
+    @staticmethod
+    async def _run(executable: str, *args: str) -> str:
+        # Read-only status probes only. Mutations must go through ProviderRouteService.
+        if (args and args[-1] in {"on", "off"}) or (len(args) >= 2 and args[1] in {"on", "off"}):
+            raise FireConnectError(
+                "direct FireConnect mutation is forbidden; use ProviderRouteService"
+            )
+        process = await asyncio.create_subprocess_exec(
+            executable,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=filter_environment(),
+        )
+        stdout, stderr = await process.communicate()
+        output = stdout.decode(errors="replace").strip()
+        error = stderr.decode(errors="replace").strip()
+        if process.returncode != 0:
+            detail = redact_secrets(error or output or f"exit status {process.returncode}")
+            raise FireConnectError(detail)
+        return output
+
+
+def _optional_string(value: object) -> str | None:
+    return str(value) if value not in {None, ""} else None

@@ -1,0 +1,24 @@
+{
+  "revision":"2026-07-29.1","harness_id":"claude-code","display_name":"Claude Code","vendor":"Anthropic",
+  "description":"Anthropic coding agent for terminal automation.","homepage_domain":"anthropic.com","category":"terminal","maturity":"authenticatable",
+  "executable_names":["claude"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,
+  "supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","@anthropic-ai/claude-code"],"package_source":"npm:@anthropic-ai/claude-code"}],
+  "upgrade_options":[{"id":"native-update","mechanism":"native","platforms":["darwin","linux","win32"],"argv":["claude","update"],"package_source":"claude-native-updater"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@anthropic-ai/claude-code"],"package_source":"npm:@anthropic-ai/claude-code"}],
+  "prerequisites":[{"kind":"runtime","name":"Node.js","minimum_version":"18"}],
+  "authentication_methods":[
+    {"id":"claude-account","kind":"browser_oauth","login_argv":["claude","auth","login"],"status_argv":["claude","auth","status","--json"],"interactive":true},
+    {"id":"api-key","kind":"environment_variable","environment_variables":["ANTHROPIC_API_KEY"],"status_argv":["claude","auth","status","--json"],"interactive":false}
+  ],
+  "provider_modes":[
+    {"provider_id":"anthropic-subscription","display_name":"Claude subscription","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false},
+    {"provider_id":"anthropic-api","display_name":"Anthropic API","funding_source":"api","authentication_method":"api_key","separately_billed":true},
+    {"provider_id":"bedrock","display_name":"Amazon Bedrock","funding_source":"cloud","authentication_method":"aws_credential_chain","separately_billed":true},
+    {"provider_id":"vertex","display_name":"Vertex AI","funding_source":"cloud","authentication_method":"google_credential_chain","separately_billed":true}
+  ],
+  "execution":{"mode":"structured_headless","argv":["claude","--print","{task}","--output-format","stream-json","--verbose","--permission-mode","plan","--tools","Read,Glob,Grep"],"resume_argv":["claude","--print","{task}","--resume","{session_id}","--output-format","stream-json","--verbose"],"protocol":"stream_json"},
+  "adapter_id":"claude-code","certification_profile_id":"claude-code-v1",
+  "official_source":{"documentation_source":"https://docs.anthropic.com/en/docs/claude-code/getting-started","package_source":"npm:@anthropic-ai/claude-code","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"npm-global-anthropic-claude-code-v1"}
+}
