@@ -26,7 +26,7 @@ Browser / API
 → JoyMesh Node
 → real Cursor Agent
 → node-attested evidence
-→ restricted cursor_read_only routing
+→ restricted read_only_repository routing
 → READY
 ```
 
@@ -126,7 +126,7 @@ After valid certification, readiness is `ROUTING_DISABLED` until the user
 explicitly enables routing. Eligible profile:
 
 ```text
-cursor_read_only  (compatibility alias of generic read_only)
+read_only_repository  (compatibility alias of generic read_only)
 ```
 
 Allowed: codebase reading, explanation, architecture analysis, summarisation,

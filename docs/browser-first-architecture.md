@@ -10,7 +10,7 @@ JoyMesh has four independently deployable layers:
    WebSocket, validates application signatures and workspace grants, and invokes
    the SDK service layer.
 4. Harness adapters translate the shared `RunRequest` and normalized event
-   contract to Codex, OpenCode, or the deterministic fake harness.
+   contract to Codex, OpenCode, or another registered production harness.
 
 The Python `JoyMesh` service remains the orchestration seam. REST, CLI, the node
 gateway, and the browser are adapters; they must not implement independent

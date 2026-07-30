@@ -29,3 +29,15 @@ Authoritative onboarding data must not move to local storage.
 
 Run `alembic check` at head and `npm run db:generate` after frontend schema
 changes.
+
+## Backend exited but mission did not complete
+
+Backend process success is **not** mission completion. Inspect completion events:
+
+* `backend.completed` without `verification.passed`
+* `evidence.rejected` / missing required evidence
+* `verification.failed` / `verification.inconclusive`
+* `execution.blocked` with `restore_failed`
+* `execution.stale_attempt_rejected`
+
+See [Execution completion](runtime/execution-completion.md).

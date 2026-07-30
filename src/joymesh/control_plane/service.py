@@ -14,9 +14,16 @@ from joymesh.control_plane.contracts import (
     NodeRegistration,
     OnboardingProgress,
     OnboardingState,
+    PaidRoutePolicy,
     PairingSession,
     RemoteTaskEnvelope,
     WorkspaceGrant,
+)
+from joymesh.control_plane.onboarding_store import (
+    InMemoryOnboardingProgressRepository,
+    OnboardingConflictError,
+    OnboardingProgressRepository,
+    new_progress,
 )
 from joymesh.control_plane.security import NonceStore, sign_envelope, verify_approval
 from joymesh.models import utc_now
@@ -24,7 +31,12 @@ from joymesh.models import utc_now
 
 @dataclass
 class ControlPlaneStore:
-    """Injectable store contract used by tests and the local reference service."""
+    """Injectable store contract used by tests and the local reference service.
+
+    Onboarding progress is NOT stored here in production — use
+    ``OnboardingProgressRepository``. The ``onboarding`` dict remains only as a
+    deprecated mirror for older tests that inspect ``store.onboarding`` directly.
+    """
 
     onboarding: dict[str, OnboardingProgress] = field(default_factory=dict)
     pairings: dict[str, PairingSession] = field(default_factory=dict)
@@ -39,22 +51,34 @@ class ControlPlaneStore:
 class ControlPlane:
     """One orchestration seam shared by SDK, API, CLI, and WebSocket gateway."""
 
-    def __init__(self, store: ControlPlaneStore | None = None) -> None:
+    def __init__(
+        self,
+        store: ControlPlaneStore | None = None,
+        *,
+        onboarding_repository: OnboardingProgressRepository | None = None,
+    ) -> None:
         self.store = store or ControlPlaneStore()
+        self.onboarding_repository: OnboardingProgressRepository = (
+            onboarding_repository or InMemoryOnboardingProgressRepository()
+        )
         self.nonces = NonceStore()
 
     async def onboarding_progress(
         self, *, user_id: str, organisation_id: str, workspace_id: str
     ) -> OnboardingProgress:
-        key = f"{user_id}:{workspace_id}"
-        progress = self.store.onboarding.get(key)
+        progress = await self.onboarding_repository.get(
+            user_id=user_id, workspace_id=workspace_id
+        )
         if progress is None:
-            progress = OnboardingProgress(
-                user_id=user_id,
-                organisation_id=organisation_id,
-                workspace_id=workspace_id,
+            progress = await self.onboarding_repository.put(
+                progress=new_progress(
+                    user_id=user_id,
+                    organisation_id=organisation_id,
+                    workspace_id=workspace_id,
+                ).model_copy(update={"state": OnboardingState.ACCOUNT_READY}),
             )
-            self.store.onboarding[key] = progress
+        # Deprecated mirror for older tests.
+        self.store.onboarding[f"{user_id}:{workspace_id}"] = progress
         return progress
 
     async def set_onboarding_state(
@@ -65,8 +89,14 @@ class ControlPlane:
         workspace_id: str,
         state: OnboardingState,
         node_id: str | None = None,
+        pairing_id: str | None = None,
         selected_harnesses: tuple[str, ...] | None = None,
         limited_mode_reason: str | None = None,
+        paid_route_policy: PaidRoutePolicy | None = None,
+        fireconnect_enabled: bool | None = None,
+        last_error: str | None = None,
+        expected_revision: int | None = None,
+        clear_error: bool = False,
     ) -> OnboardingProgress:
         current = await self.onboarding_progress(
             user_id=user_id,
@@ -76,22 +106,74 @@ class ControlPlane:
         completed = current.completed_steps
         if current.state not in completed and current.state is not OnboardingState.NOT_STARTED:
             completed = (*completed, current.state)
+        selected = (
+            selected_harnesses
+            if selected_harnesses is not None
+            else current.selected_harnesses
+        )
+        forbidden = {"fake", "joy"}
+        if any(item in forbidden for item in selected):
+            raise ValueError(
+                "removed harness ids cannot be selected during onboarding: "
+                + ", ".join(sorted(forbidden & set(selected)))
+            )
+        if selected_harnesses is not None:
+            try:
+                from joymesh.config import (
+                    HarnessPreferences,
+                    load_user_config,
+                    save_harness_preferences,
+                )
+
+                prefs = load_user_config().harnesses
+                save_harness_preferences(
+                    HarnessPreferences(
+                        enabled=tuple(dict.fromkeys(selected_harnesses)),
+                        default=prefs.default if prefs.default in selected_harnesses else None,
+                        custom=dict(prefs.custom),
+                        selection_required=False,
+                        migration_message=None,
+                    )
+                )
+            except OSError:
+                pass
         updated = current.model_copy(
             update={
+                "organisation_id": organisation_id or current.organisation_id,
                 "state": state,
                 "node_id": node_id if node_id is not None else current.node_id,
-                "selected_harnesses": (
-                    selected_harnesses
-                    if selected_harnesses is not None
-                    else current.selected_harnesses
-                ),
+                "pairing_id": pairing_id if pairing_id is not None else current.pairing_id,
+                "selected_harnesses": selected,
                 "completed_steps": completed,
                 "limited_mode_reason": limited_mode_reason,
+                "paid_route_policy": (
+                    paid_route_policy
+                    if paid_route_policy is not None
+                    else current.paid_route_policy
+                ),
+                "fireconnect_enabled": (
+                    fireconnect_enabled
+                    if fireconnect_enabled is not None
+                    else current.fireconnect_enabled
+                ),
+                "last_error": None if clear_error else (
+                    last_error if last_error is not None else current.last_error
+                ),
                 "updated_at": utc_now(),
+                "unsynchronised": False,
             }
         )
-        self.store.onboarding[f"{user_id}:{workspace_id}"] = updated
-        return updated
+        try:
+            stored = await self.onboarding_repository.put(
+                progress=updated,
+                expected_revision=expected_revision
+                if expected_revision is not None
+                else current.revision,
+            )
+        except OnboardingConflictError:
+            raise
+        self.store.onboarding[f"{user_id}:{workspace_id}"] = stored
+        return stored
 
     async def begin_pairing(
         self,
@@ -110,6 +192,56 @@ class ControlPlane:
         )
         self.store.pairings[pairing.id] = pairing
         return pairing, device_code
+
+    async def pairing_status(self, pairing_id: str) -> dict[str, Any]:
+        pairing = self.store.pairings.get(pairing_id)
+        if pairing is None:
+            raise KeyError("pairing session not found")
+        expired = pairing.expires_at <= utc_now()
+        node = next(
+            (
+                item
+                for item in self.store.nodes.values()
+                if item.workspace_id == pairing.workspace_id
+                and item.organisation_id == pairing.organisation_id
+                and item.revoked_at is None
+                and pairing.approved_by_user_id is not None
+            ),
+            None,
+        )
+        # Prefer node created after this pairing approval window.
+        if pairing.approved_by_user_id:
+            candidates = [
+                item
+                for item in self.store.nodes.values()
+                if item.workspace_id == pairing.workspace_id
+                and item.organisation_id == pairing.organisation_id
+                and item.revoked_at is None
+            ]
+            node = candidates[-1] if candidates else None
+        status = "pending"
+        if expired and node is None:
+            status = "expired"
+        elif pairing.approved_by_user_id and node is None:
+            status = "approved_waiting_for_node"
+        elif node is not None:
+            status = "paired"
+        return {
+            "pairing_id": pairing.id,
+            "user_code": pairing.user_code,
+            "status": status,
+            "expires_at": pairing.expires_at.isoformat(),
+            "approved": pairing.approved_by_user_id is not None,
+            "node": None if node is None else node.model_dump(mode="json"),
+        }
+
+    async def cancel_pairing(self, pairing_id: str) -> None:
+        pairing = self.store.pairings.get(pairing_id)
+        if pairing is None:
+            raise KeyError("pairing session not found")
+        self.store.pairings[pairing_id] = pairing.model_copy(
+            update={"expires_at": utc_now()}
+        )
 
     async def approve_pairing(self, pairing_id: str, *, user_id: str) -> PairingSession:
         pairing = self.store.pairings[pairing_id]
@@ -154,6 +286,26 @@ class ControlPlane:
             target_id=node.id,
         )
         return node
+
+    async def environment_diagnostics(self, *, node_id: str) -> dict[str, Any]:
+        node = self.store.nodes.get(node_id)
+        if node is None:
+            raise KeyError("node not found")
+        if node.revoked_at is not None:
+            raise PermissionError("node revoked")
+        return {
+            "node_id": node.id,
+            "node_online": True,
+            "name": node.name,
+            "operating_system": node.platform,
+            "architecture": "unknown",
+            "version": node.version,
+            "available_package_managers": [],
+            "supported_connector_hint": "Use connector readiness for install eligibility",
+            "writable_install_locations": [],
+            "path_state": "unknown",
+            "required_restart": False,
+        }
 
     async def grant_workspace(self, grant: WorkspaceGrant, *, actor_id: str) -> WorkspaceGrant:
         self.store.grants[grant.id] = grant
@@ -226,7 +378,7 @@ class ControlPlane:
         self,
         *,
         organisation_id: str,
-        actor_id: str,
+        actor_id: str | None,
         action: str,
         target_type: str,
         target_id: str,
@@ -236,7 +388,7 @@ class ControlPlane:
         self.store.audit.append(
             AuditEvent(
                 organisation_id=organisation_id,
-                actor_id=actor_id,
+                actor_id=actor_id or "system",
                 action=action,
                 target_type=target_type,
                 target_id=target_id,

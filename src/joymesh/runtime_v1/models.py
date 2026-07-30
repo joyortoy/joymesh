@@ -69,6 +69,8 @@ class RuntimeTaskRequest:
     prohibited_capabilities: frozenset[str] = frozenset()
     preferred_connectors: tuple[str, ...] = ()
     required_connector: str | None = None
+    preferred_providers: tuple[str, ...] = ()
+    required_provider: str | None = None
     preferred_nodes: tuple[str, ...] = ()
     required_node: str | None = None
     timeout_seconds: int = 300
@@ -96,6 +98,8 @@ class RuntimeTaskRecord(BaseModel):
     policy_profile: str
     preferred_connectors: tuple[str, ...] = ()
     required_connector: str | None = None
+    preferred_providers: tuple[str, ...] = ()
+    required_provider: str | None = None
     preferred_nodes: tuple[str, ...] = ()
     required_node: str | None = None
     timeout_seconds: int = 300
@@ -103,6 +107,17 @@ class RuntimeTaskRecord(BaseModel):
     status: RuntimeTaskStatus = RuntimeTaskStatus.PENDING
     selected_node_id: str | None = None
     selected_connector_id: str | None = None
+    selected_backend_id: str | None = None
+    selected_harness_id: str | None = None
+    execution_id: str | None = None
+    execution_decision_reason: str | None = None
+    execution_fallback_order: tuple[str, ...] = ()
+    provider_routing_required: bool = False
+    selected_provider_id: str | None = None
+    selected_provider_route_id: str | None = None
+    selected_provider_route_manager_id: str | None = None
+    selected_model_id: str | None = None
+    provider_selection_reason: str | None = None
     approval_required: bool = False
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -210,6 +225,8 @@ class CreateRuntimeTaskBody(BaseModel):
     prohibited_capabilities: tuple[str, ...] = ()
     preferred_connectors: tuple[str, ...] = ()
     required_connector: str | None = None
+    preferred_providers: tuple[str, ...] = ()
+    required_provider: str | None = None
     preferred_nodes: tuple[str, ...] = ()
     required_node: str | None = None
     timeout_seconds: int = Field(default=300, ge=1, le=86_400)

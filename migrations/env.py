@@ -9,7 +9,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-import joymesh.control_plane.persistence  # noqa: F401
+import joymesh.control_plane.persistence
+import joymesh.runtime_v1.provider_routes.lease_store
 import joymesh.runtime_v1.store  # noqa: F401
 from joymesh.persistence import Base
 

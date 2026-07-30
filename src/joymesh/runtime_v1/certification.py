@@ -69,7 +69,7 @@ class ReadOnlyRepositoryProfile:
         if workspace.exists():
             shutil.rmtree(workspace)
         workspace.mkdir(mode=0o700)
-        project_name = f"JoyMesh Cursor Certification {secrets.token_hex(3).upper()}"
+        project_name = f"JoyMesh Certification {secrets.token_hex(3).upper()}"
         readme = workspace / "README.md"
         readme.write_text(f"# {project_name}\n", encoding="utf-8")
         _git(["init", "--quiet", str(workspace)])
@@ -139,7 +139,7 @@ class ReadOnlyRepositoryProfile:
 
     def produce_scope(self) -> CertificationScope:
         return CertificationScope(
-            profile="cursor_read_only",
+            profile="read_only_repository",
             structured_execution=True,
             repository_read=True,
             repository_write=False,

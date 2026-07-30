@@ -170,18 +170,36 @@ async def test_harness_lifecycle_api_uses_same_service(tmp_path: Path) -> None:
 async def test_fireconnect_transform_is_read_only_until_approved(tmp_path: Path) -> None:
     binary = tmp_path / "fireconnect"
     marker = tmp_path / "changed"
+    state = tmp_path / "fc-state.json"
     binary.write_text(
         f"#!{sys.executable}\n"
         "import json, sys\n"
         "from pathlib import Path\n"
         f"marker = Path({str(marker)!r})\n"
+        f"state_path = Path({str(state)!r})\n"
+        "state = json.loads(state_path.read_text()) if state_path.exists() else "
+        "{'enabled': False, 'model': None}\n"
         "if sys.argv[1:3] == ['status', '--json']:\n"
         " print(json.dumps({'auth': {'signedIn': True}, 'environment': "
-        "{'cliVersion': '1.0'}, 'perHarness': [{'id': 'codex', 'enabled': False}]}))\n"
-        "elif sys.argv[-2:] == ['status', '--json']:\n"
-        " print(json.dumps({'current': {'main': 'accounts/fw/models/test'}}))\n"
+        "{'cliVersion': '1.0'}, 'perHarness': [{'id': 'codex', "
+        "'enabled': state['enabled']}]}))\n"
+        "elif len(sys.argv) >= 3 and sys.argv[2:4] == ['status', '--json']:\n"
+        " print(json.dumps({\n"
+        "  'harness': sys.argv[1],\n"
+        "  'provider': 'fireworks' if state['enabled'] else 'default',\n"
+        "  'hasAuthToken': state['enabled'],\n"
+        "  'current': {'main': state['model']},\n"
+        " }))\n"
+        "elif len(sys.argv) >= 3 and sys.argv[2] == 'on':\n"
+        " model = sys.argv[sys.argv.index('--model')+1] if '--model' in sys.argv else 'x'\n"
+        " state_path.write_text(json.dumps({'enabled': True, 'model': model}))\n"
+        " marker.write_text('changed')\n"
+        " print('enabled')\n"
+        "elif len(sys.argv) >= 3 and sys.argv[2] == 'off':\n"
+        " state_path.write_text(json.dumps({'enabled': False, 'model': None}))\n"
+        " print('disabled')\n"
         "else:\n"
-        " marker.write_text('changed')\n",
+        " print('unknown', file=sys.stderr); raise SystemExit(2)\n",
         encoding="utf-8",
     )
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)

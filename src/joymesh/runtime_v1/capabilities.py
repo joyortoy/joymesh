@@ -325,8 +325,7 @@ def expand_capabilities(
     overridden = sorted(requested & prohibited)
     if overridden:
         raise ValueError(
-            "prohibited capabilities override requested capabilities: "
-            + ", ".join(overridden)
+            "prohibited capabilities override requested capabilities: " + ", ".join(overridden)
         )
     expanded: set[str] = set()
     stack = list(requested)

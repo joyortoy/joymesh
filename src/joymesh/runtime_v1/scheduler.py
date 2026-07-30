@@ -97,9 +97,7 @@ class RuntimeScheduler:
                     reasons.append("routing disabled")
                 missing = required - connector.certified_capabilities
                 if missing:
-                    reasons.append(
-                        "capabilities not certified: " + ", ".join(sorted(missing))
-                    )
+                    reasons.append("capabilities not certified: " + ", ".join(sorted(missing)))
                 if production_mode():
                     if connector.trust_level is not EvidenceTrustLevel.NODE_ATTESTED:
                         reasons.append("production requires node-attested evidence")
@@ -166,9 +164,7 @@ class RuntimeScheduler:
         return candidates
 
 
-def _placement_for(
-    node: SchedulerNodeSnapshot, workspace_id: str
-) -> WorkspacePlacement | None:
+def _placement_for(node: SchedulerNodeSnapshot, workspace_id: str) -> WorkspacePlacement | None:
     for placement in node.placements:
         if placement.workspace_id == workspace_id:
             return placement

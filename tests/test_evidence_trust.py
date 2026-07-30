@@ -86,7 +86,7 @@ def _snapshot(**overrides: object) -> _NodeConnectorSnapshot:
                 "status": "certified",
                 "trust_level": EvidenceTrustLevel.NODE_ATTESTED.value,
                 "execution_origin": ConnectorExecutionOrigin.REMOTE_NODE.value,
-                "routing_profile": "cursor_read_only",
+                "routing_profile": "read_only_repository",
                 "connector_revision": revision,
             },
         },
@@ -125,7 +125,7 @@ def test_production_routing_rejects_mock_evidence(monkeypatch: pytest.MonkeyPatc
                 "status": "certified",
                 "trust_level": EvidenceTrustLevel.MOCK.value,
                 "execution_origin": ConnectorExecutionOrigin.MOCK_TEST.value,
-                "routing_profile": "cursor_read_only",
+                "routing_profile": "read_only_repository",
                 "connector_revision": revision,
             },
         }
@@ -159,7 +159,7 @@ def test_production_routing_rejects_inline_evidence(monkeypatch: pytest.MonkeyPa
                 "status": "certified",
                 "trust_level": EvidenceTrustLevel.DEVELOPMENT.value,
                 "execution_origin": ConnectorExecutionOrigin.INLINE_DEVELOPMENT.value,
-                "routing_profile": "cursor_read_only",
+                "routing_profile": "read_only_repository",
                 "connector_revision": revision,
             },
         }
@@ -175,7 +175,7 @@ def test_production_accepts_node_attested_evidence(monkeypatch: pytest.MonkeyPat
         node_id="n1", connector_id="cursor", snapshot=_snapshot()
     )
     assert readiness.state is NodeConnectorState.READY
-    assert readiness.routing_profile == "cursor_read_only"
+    assert readiness.routing_profile == "read_only_repository"
     assert readiness.evidence_trust_level is EvidenceTrustLevel.NODE_ATTESTED
 
 
@@ -227,7 +227,7 @@ async def test_enable_routing_rejects_mock_in_production(
                 executable_fingerprint="fp",
                 harness_version="2025.09.18-7ae6800",
                 provider_mode=None,
-                details={"routing_profile": "cursor_read_only", "method_id": "cursor"},
+                details={"routing_profile": "read_only_repository", "method_id": "cursor"},
                 created_at=utc_now(),
                 expires_at=None,
                 trust_level=trust,

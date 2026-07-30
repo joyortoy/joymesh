@@ -37,6 +37,8 @@ class RuntimeTaskRow(Base):
     policy_profile: Mapped[str] = mapped_column(String(80))
     preferred_connectors_json: Mapped[str] = mapped_column(Text, default="[]")
     required_connector: Mapped[str | None] = mapped_column(String(100))
+    preferred_providers_json: Mapped[str] = mapped_column(Text, default="[]")
+    required_provider: Mapped[str | None] = mapped_column(String(100))
     preferred_nodes_json: Mapped[str] = mapped_column(Text, default="[]")
     required_node: Mapped[str | None] = mapped_column(String(100))
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=300)
@@ -44,6 +46,17 @@ class RuntimeTaskRow(Base):
     status: Mapped[str] = mapped_column(String(40), index=True)
     selected_node_id: Mapped[str | None] = mapped_column(String(100))
     selected_connector_id: Mapped[str | None] = mapped_column(String(100))
+    selected_backend_id: Mapped[str | None] = mapped_column(String(100))
+    selected_harness_id: Mapped[str | None] = mapped_column(String(100))
+    execution_id: Mapped[str | None] = mapped_column(String(80))
+    execution_decision_reason: Mapped[str | None] = mapped_column(String(300))
+    execution_fallback_order_json: Mapped[str] = mapped_column(Text, default="[]")
+    provider_routing_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    selected_provider_id: Mapped[str | None] = mapped_column(String(100))
+    selected_provider_route_id: Mapped[str | None] = mapped_column(String(200))
+    selected_provider_route_manager_id: Mapped[str | None] = mapped_column(String(100))
+    selected_model_id: Mapped[str | None] = mapped_column(String(300))
+    provider_selection_reason: Mapped[str | None] = mapped_column(String(200))
     approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
     detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -92,9 +105,7 @@ class TaskLeaseRow(Base):
 
 class ExecutionAttemptRow(Base):
     __tablename__ = "execution_attempts"
-    __table_args__ = (
-        UniqueConstraint("task_id", "attempt_number", name="uq_attempt_number"),
-    )
+    __table_args__ = (UniqueConstraint("task_id", "attempt_number", name="uq_attempt_number"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task_id: Mapped[str] = mapped_column(String(36), index=True)
     attempt_number: Mapped[int] = mapped_column(Integer)
@@ -185,6 +196,8 @@ class RuntimeStore:
                 policy_profile=task.policy_profile,
                 preferred_connectors_json=json.dumps(list(task.preferred_connectors)),
                 required_connector=task.required_connector,
+                preferred_providers_json=json.dumps(list(task.preferred_providers)),
+                required_provider=task.required_provider,
                 preferred_nodes_json=json.dumps(list(task.preferred_nodes)),
                 required_node=task.required_node,
                 timeout_seconds=task.timeout_seconds,
@@ -192,6 +205,17 @@ class RuntimeStore:
                 status=task.status.value,
                 selected_node_id=task.selected_node_id,
                 selected_connector_id=task.selected_connector_id,
+                selected_backend_id=task.selected_backend_id,
+                selected_harness_id=task.selected_harness_id,
+                execution_id=task.execution_id,
+                execution_decision_reason=task.execution_decision_reason,
+                execution_fallback_order_json=json.dumps(list(task.execution_fallback_order)),
+                provider_routing_required=task.provider_routing_required,
+                selected_provider_id=task.selected_provider_id,
+                selected_provider_route_id=task.selected_provider_route_id,
+                selected_provider_route_manager_id=task.selected_provider_route_manager_id,
+                selected_model_id=task.selected_model_id,
+                provider_selection_reason=task.provider_selection_reason,
                 approval_required=task.approval_required,
                 detail=task.detail,
                 created_at=task.created_at,
@@ -234,9 +258,7 @@ class RuntimeStore:
                             policy_profile=candidate.policy_profile,
                             score=candidate.score,
                             eligible=candidate.eligible,
-                            rejection_reasons_json=json.dumps(
-                                list(candidate.rejection_reasons)
-                            ),
+                            rejection_reasons_json=json.dumps(list(candidate.rejection_reasons)),
                             scoring_factors_json=json.dumps(dict(candidate.scoring_factors)),
                             certified_capabilities_json=json.dumps(
                                 sorted(candidate.certified_capabilities)
@@ -273,9 +295,7 @@ class RuntimeStore:
                         expires_at=lease.expires_at,
                         heartbeat_at=lease.heartbeat_at,
                         status=lease.status.value,
-                        active_marker=lease.task_id
-                        if lease.status is LeaseStatus.ACTIVE
-                        else None,
+                        active_marker=lease.task_id if lease.status is LeaseStatus.ACTIVE else None,
                     )
                 )
                 await session.commit()

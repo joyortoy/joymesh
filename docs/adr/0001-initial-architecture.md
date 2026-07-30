@@ -25,8 +25,10 @@ Use Python 3.12 for the core runtime and public SDK.
 - Typer exposes the same service layer as a local developer CLI.
 - Routing is a pure, deterministic function over capabilities, availability,
   subscription policy, quota, concurrency, cost weight, and user preference.
-- A bundled fake adapter, Codex adapter, and OpenCode adapter all implement one
-  launch/normalization contract.
+- Codex and OpenCode adapters implement one launch/normalization contract.
+  A deterministic fake adapter exists for **tests only** and is not part of the
+  production registry or default configuration (historical note: early prototypes
+  bundled a fake harness; that path has been removed).
 - A reusable conformance suite gates the `supported` status for every adapter.
 - JoyMesh has no frontend; the Python package is the only build artifact.
 
@@ -53,10 +55,10 @@ consumer. Adapters normalize output into versioned events instead.
 
 ### PTY-first execution
 
-PTYs are necessary for interactive harnesses, but the fake adapter is
-non-interactive. The shared runtime starts with pipe-based execution and keeps
-the adapter/runtime boundary suitable for a PTY transport in the Codex adapter
-increment.
+PTYs are necessary for interactive harnesses. Early prototypes used a
+non-interactive test-only fake adapter; production adapters (Codex, OpenCode)
+drive the shared pipe-based runtime, keeping the adapter/runtime boundary
+suitable for a PTY transport where needed.
 
 ## Consequences
 

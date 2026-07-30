@@ -29,9 +29,6 @@ class AdapterRegistry(HarnessRegistry):
     async def detect(self) -> tuple[HarnessDescriptor, ...]:
         descriptors: list[HarnessDescriptor] = []
         for adapter in self.list():
-            if adapter.manifest.harness_id == "fake":
-                descriptors.append(await adapter.detect())
-                continue
             configured, configured_available = _configured_executable(adapter.executable_name)
             if configured is not None:
                 available = configured_available

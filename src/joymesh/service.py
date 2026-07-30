@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import uuid4
 
+from joymesh.config import HarnessPreferences
 from joymesh.connectors import ConnectorCatalogue, ConnectorDefinition
 from joymesh.connectors.lifecycle import ConnectorLifecycleCoordinator, build_coordinator
 from joymesh.connectors.lifecycle_models import (
@@ -71,7 +72,18 @@ TERMINAL_STATUSES = {
 
 
 class NoRouteError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        remediation: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.remediation = remediation
+        self.details = details or {}
 
 
 class JoyMesh:
@@ -95,7 +107,11 @@ class JoyMesh:
             self.registry.discovery,
         )
         self.certification = CertificationService(self.registry, self.database)
-        self.control_plane = ControlPlane()
+        from joymesh.control_plane.onboarding_store import SqlOnboardingProgressRepository
+
+        self.control_plane = ControlPlane(
+            onboarding_repository=SqlOnboardingProgressRepository(self.database.sessions)
+        )
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -427,6 +443,30 @@ class JoyMesh:
             )
         )
 
+    def _assert_capabilities(
+        self, *, harness_id: str, required: frozenset[Capability]
+    ) -> None:
+        from joymesh.harnesses.selection import find_capability_mismatch
+
+        adapter = self.registry.get(harness_id)
+        mismatch = find_capability_mismatch(
+            harness_id=harness_id,
+            supported=adapter.manifest.capabilities,
+            required=required,
+        )
+        if mismatch is None:
+            return
+        raise NoRouteError(
+            f"harness capability mismatch: {harness_id} missing "
+            f"{', '.join(mismatch.missing_capabilities)}",
+            code="harness_capability_mismatch",
+            remediation=(
+                "Choose a harness that declares the required capabilities, "
+                "or reduce the task requirements."
+            ),
+            details=mismatch.as_dict(),
+        )
+
     async def start_run(
         self,
         *,
@@ -439,6 +479,10 @@ class JoyMesh:
         resolved = resolve_workspace(request.workspace)
         if not route.eligible:
             raise NoRouteError("selected route is not eligible")
+        self._assert_capabilities(
+            harness_id=route.harness_id,
+            required=request.required_capabilities,
+        )
         self.registry.get(route.harness_id)
         normalized_request = request.model_copy(update={"workspace": str(resolved), "route": route})
         run = Run(
@@ -474,11 +518,92 @@ class JoyMesh:
             if task is None or workspace is None:
                 raise TypeError("task and workspace are required when request is omitted")
             selected_request = RunRequest(task=task, workspace=str(workspace))
-        selected = route or await self.resolve_route(
+        if route is not None:
+            return await self.start_run(request=selected_request, route=route)
+
+        from joymesh.config import load_user_config
+        from joymesh.harnesses.selection import HarnessSelectionError, resolve_harness
+        from joymesh.models import HarnessAvailability
+
+        prefs = load_user_config().harnesses
+        self._apply_custom_harnesses(prefs)
+        detected = await self.registry.detect()
+        ready = [
+            item.manifest.harness_id
+            for item in detected
+            if item.availability is HarnessAvailability.AVAILABLE
+        ]
+        if prefs.enabled:
+            ready = [item for item in ready if item in prefs.enabled]
+        override = None if harness == "auto" else harness
+        preferred = selected_request.preferred_harness
+        try:
+            resolution = resolve_harness(
+                prefs=prefs,
+                ready_enabled=ready,
+                override=override,
+                preferred=preferred,
+                interactive=False,
+                known_ids=[item.manifest.harness_id for item in detected],
+                allow_disabled_override=bool(override),
+                allow_test_harnesses=bool(
+                    getattr(self.registry, "_allow_test_harnesses", False)
+                ),
+            )
+        except HarnessSelectionError as exc:
+            raise NoRouteError(
+                str(exc.message),
+                code=exc.code,
+                remediation=exc.remediation,
+                details=exc.details,
+            ) from exc
+
+        # Explicit per-run override: never silently fall back to another harness.
+        if override:
+            self._assert_capabilities(
+                harness_id=resolution.harness_id,
+                required=selected_request.required_capabilities,
+            )
+            locked = selected_request.model_copy(
+                update={
+                    "allowed_harnesses": frozenset({resolution.harness_id}),
+                    "preferred_harness": resolution.harness_id,
+                }
+            )
+            selected = await self.resolve_route(
+                request=locked,
+                preferred_harness=resolution.harness_id,
+            )
+            return await self.start_run(request=locked, route=selected)
+
+        selected = await self.resolve_route(
             request=selected_request,
-            preferred_harness=None if harness == "auto" else harness,
+            preferred_harness=resolution.harness_id,
         )
         return await self.start_run(request=selected_request, route=selected)
+
+    def _apply_custom_harnesses(self, prefs: HarnessPreferences) -> None:
+        from joymesh.harnesses.nonstandard import (
+            CustomHarnessAdapter,
+            assess_custom_harness_readiness,
+            custom_harness_definition,
+            validate_custom_harness_config,
+        )
+
+        for config in prefs.custom.values():
+            validation = validate_custom_harness_config(config)
+            if not validation.ok:
+                continue
+            definition = custom_harness_definition(config)
+            if definition.id not in {item.id for item in self.registry.definitions()}:
+                self.registry.register_custom_definition(definition)
+            readiness = assess_custom_harness_readiness(config)
+            if not readiness.ready:
+                continue
+            try:
+                self.registry.get(config.harness_id)
+            except KeyError:
+                self.registry.register(CustomHarnessAdapter(config), replace=True)
 
     async def inspect_run(self, run_id: str) -> Run | None:
         await self.initialize()

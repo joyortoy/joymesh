@@ -1,4 +1,8 @@
-"""Deterministic fake harness used for tests and demonstrations."""
+"""Deterministic fake harness — **test-only**.
+
+Do not register this adapter in the production ``HarnessRegistry`` default set.
+Import it only from tests or explicit test fixtures.
+"""
 
 from __future__ import annotations
 
@@ -21,9 +25,15 @@ from joymesh.models import (
 )
 from joymesh.security import redact_secrets
 
+# Sentinel — architecture tests assert this is never a production default.
+TEST_ONLY_HARNESS_ID = "fake"
+REMOVED_PRODUCTION_HARNESS_IDS = frozenset({"fake", "joy"})
+
 
 class FakeHarnessAdapter(HarnessAdapter):
-    executable_name = "python"
+    """Bundled deterministic adapter for unit/integration tests only."""
+
+    executable_name = sys.executable
     conformance_passed = True
 
     def __init__(self, *, step_delay: float = 0.01) -> None:
@@ -32,8 +42,8 @@ class FakeHarnessAdapter(HarnessAdapter):
     @property
     def manifest(self) -> CapabilityManifest:
         return CapabilityManifest(
-            harness_id="fake",
-            display_name="Fake Harness",
+            harness_id=TEST_ONLY_HARNESS_ID,
+            display_name="Fake Harness (test-only)",
             capabilities=frozenset(
                 {
                     Capability.FILE_READ,
@@ -51,9 +61,9 @@ class FakeHarnessAdapter(HarnessAdapter):
             manifest=self.manifest,
             availability=HarnessAvailability.AVAILABLE,
             executable=sys.executable,
-            version="bundled",
+            version="bundled-test",
             support_status=SupportStatus.SUPPORTED,
-            detail="Bundled deterministic adapter",
+            detail="Test-only deterministic adapter; not a production harness",
         )
 
     def build_launch_spec(self, request: RunRequest) -> LaunchSpec:

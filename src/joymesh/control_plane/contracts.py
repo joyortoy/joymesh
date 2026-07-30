@@ -31,6 +31,7 @@ class OnboardingState(StrEnum):
     COMPLETE = "COMPLETE"
     LIMITED_MODE = "LIMITED_MODE"
     BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
 
 
 class HarnessReadiness(StrEnum):
@@ -156,11 +157,18 @@ class OnboardingProgress(BaseModel):
     organisation_id: str
     workspace_id: str
     node_id: str | None = None
+    pairing_id: str | None = None
     state: OnboardingState = OnboardingState.NOT_STARTED
     selected_harnesses: tuple[str, ...] = ()
     completed_steps: tuple[OnboardingState, ...] = ()
     limited_mode_reason: str | None = None
+    paid_route_policy: PaidRoutePolicy = PaidRoutePolicy.ASK
+    fireconnect_enabled: bool = False
+    last_error: str | None = None
+    revision: int = 1
+    created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+    unsynchronised: bool = False
 
 
 class PlanCommand(BaseModel):

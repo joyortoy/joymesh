@@ -19,6 +19,15 @@ from joymesh.control_plane.security import generate_node_keypair, store_private_
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
 from joymesh.models import BillingRoute, Run, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
+from joymesh.telemetry import (
+    MetricsMode,
+    TelemetryMode,
+    build_metrics_from_run,
+    consent_needed,
+    ensure_consent,
+    get_telemetry_service,
+    load_user_config,
+)
 
 app = typer.Typer(help="Harness interoperability for coding agents.")
 harness_app = typer.Typer(help="Discover and inspect harnesses.")
@@ -27,12 +36,165 @@ route_app = typer.Typer(help="Preview deterministic routes.")
 run_app = typer.Typer(help="Launch and inspect harness runs.", invoke_without_command=True)
 node_app = typer.Typer(help="Pair and run an outbound-only JoyMesh Node.")
 connector_app = typer.Typer(help="Validate, inspect, and certify versioned connectors.")
+provider_route_app = typer.Typer(help="Inspect and manage provider routes (not harnesses).")
+telemetry_app = typer.Typer(help="Manage anonymous execution metrics preferences (alias).")
+metrics_app = typer.Typer(help="Manage anonymous execution metrics consent preferences.")
 app.add_typer(harness_app, name="harness")
 app.add_typer(subscription_app, name="subscription")
 app.add_typer(route_app, name="route")
 app.add_typer(run_app, name="run")
 app.add_typer(node_app, name="node")
 app.add_typer(connector_app, name="connector")
+app.add_typer(provider_route_app, name="provider-route")
+app.add_typer(metrics_app, name="metrics")
+app.add_typer(telemetry_app, name="telemetry")
+
+
+@app.command("init")
+def init_command() -> None:
+    """Initialize JoyMesh user preferences (anonymous metrics consent)."""
+
+    config = ensure_consent(interactive=True)
+    settings = config.metrics
+    mode = settings.mode.value if settings.mode else "unset"
+    typer.echo(f"Metrics preference: {mode}")
+    if settings.consent_completed:
+        typer.echo("Consent saved. Change anytime with: joymesh metrics status|on|ask|off")
+    else:
+        typer.echo("No metrics preference saved (non-interactive session).")
+
+
+def _metrics_status() -> None:
+    status = get_telemetry_service().status()
+    mode = status.get("mode") or "unset"
+    consent = "yes" if status.get("consent_completed") else "no"
+    typer.echo(f"mode: {mode}")
+    typer.echo(f"consent_completed: {consent}")
+    typer.echo(f"config: {status.get('config_path')}")
+
+
+def _metrics_set(mode: MetricsMode, *, label: str) -> None:
+    get_telemetry_service().set_mode(mode)
+    typer.echo(f"metrics: {label}")
+
+
+def _metrics_preview() -> None:
+    from joymesh.telemetry import render_preview_yaml
+
+    typer.echo("# Example anonymous execution metrics (placeholders only; not your data)")
+    typer.echo(render_preview_yaml().rstrip())
+
+
+@metrics_app.command("status")
+def metrics_status() -> None:
+    """Display the current anonymous metrics preference."""
+
+    _metrics_status()
+
+
+@metrics_app.command("on")
+def metrics_on() -> None:
+    """Always send anonymous execution metrics."""
+
+    _metrics_set(MetricsMode.ALWAYS, label="always")
+
+
+@metrics_app.command("ask")
+def metrics_ask() -> None:
+    """Ask before sending anonymous execution metrics."""
+
+    _metrics_set(MetricsMode.ASK, label="ask")
+
+
+@metrics_app.command("off")
+def metrics_off() -> None:
+    """Never send anonymous execution metrics."""
+
+    _metrics_set(MetricsMode.NEVER, label="never")
+
+
+@metrics_app.command("preview")
+def metrics_preview() -> None:
+    """Show an example anonymous metrics schema (placeholder values only)."""
+
+    _metrics_preview()
+
+
+@telemetry_app.command("status")
+def telemetry_status() -> None:
+    """Alias for ``joymesh metrics status``."""
+
+    _metrics_status()
+
+
+@telemetry_app.command("on")
+def telemetry_on() -> None:
+    """Alias for ``joymesh metrics on``."""
+
+    _metrics_set(TelemetryMode.ALWAYS, label="always")
+
+
+@telemetry_app.command("ask")
+def telemetry_ask() -> None:
+    """Alias for ``joymesh metrics ask``."""
+
+    _metrics_set(TelemetryMode.ASK, label="ask")
+
+
+@telemetry_app.command("off")
+def telemetry_off() -> None:
+    """Alias for ``joymesh metrics off``."""
+
+    _metrics_set(TelemetryMode.NEVER, label="never")
+
+
+@telemetry_app.command("preview")
+def telemetry_preview() -> None:
+    """Alias for ``joymesh metrics preview``."""
+
+    _metrics_preview()
+
+
+def _maybe_prompt_telemetry_consent() -> None:
+    if consent_needed(load_user_config()):
+        ensure_consent(interactive=True)
+
+
+def _maybe_send_run_telemetry(run: Run, *, task: str | None = None) -> None:
+    try:
+        service = get_telemetry_service()
+        settings = service.load_settings()
+        # Never / incomplete consent: do not generate metrics for transmission.
+        if (
+            not settings.consent_completed
+            or settings.mode is None
+            or settings.mode is MetricsMode.NEVER
+        ):
+            return
+        task_type = None
+        if task:
+            from joymesh.runtime_v1.execution_routing.capability_routing.task_analysis import (
+                TaskAnalyzer,
+            )
+
+            task_type = TaskAnalyzer().analyse(task).task_class.value
+        usage_rows = _run(lambda mesh: mesh.usage(run_id=run.id))
+        usage_payload = None
+        if usage_rows:
+            usage_payload = {
+                "input_tokens": sum(item.input_tokens for item in usage_rows),
+                "output_tokens": sum(item.output_tokens for item in usage_rows),
+            }
+        metrics = build_metrics_from_run(
+            run,
+            usage=usage_payload,
+            task_type=task_type,
+        )
+        service.maybe_send(metrics)
+    except Exception:
+        # Metrics must never interrupt task execution or CLI output.
+        return
+
 
 
 @node_app.command("init")
@@ -41,6 +203,7 @@ def node_init(
 ) -> None:
     """Create a local Ed25519 node key; prints only the public registration value."""
 
+    _maybe_prompt_telemetry_consent()
     private_key_path = (
         private_key_path.expanduser()
         if private_key_path is not None
@@ -151,33 +314,226 @@ def connector_verify_auth(
 
 @connector_app.command("live-test")
 def connector_live_test(
-    connector_id: str,
-    profile: str = typer.Option("read-only", "--profile"),
-    control_plane_url: str = typer.Option("http://127.0.0.1:8787", "--control-plane-url"),
-    node_id: str = typer.Option(..., "--node-id"),
-    enable_routing: bool = typer.Option(
-        False, "--enable-routing", help="Require explicit confirmation to enable routing"
+    connector_id: str = typer.Argument(..., help="Built-in connector id (cursor|codex|opencode)"),
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON"),
+    workspace: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--workspace",
+        help="Workspace directory for read-only certification",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
     ),
+    prompt: str = typer.Option(
+        "Read README.md if present and return the project name without modifying files.",
+        "--prompt",
+    ),
+    timeout_seconds: float = typer.Option(180.0, "--timeout-seconds"),
+    profile: str = typer.Option("read-only", "--profile"),
 ) -> None:
-    """Guide a production live Cursor acceptance run without mocking evidence."""
+    """Run a connector-neutral local live test via ConnectorRuntime."""
 
-    from joymesh.connectors.live_test import run_cursor_live_test
-    from joymesh.control_plane.security import assert_live_production_config
+    from joymesh.runtime_v1.connectors import get_connector
+    from joymesh.runtime_v1.connectors.live_test import (
+        render_live_test_result,
+        run_connector_live_test,
+    )
 
-    if connector_id != "cursor":
-        raise typer.BadParameter("live-test currently supports only cursor")
     if profile != "read-only":
         raise typer.BadParameter("only --profile read-only is supported")
-    config = assert_live_production_config()
-    typer.echo(json.dumps({"runtime": config}, indent=2, sort_keys=True))
-    result = run_cursor_live_test(
-        control_plane_url=control_plane_url,
-        node_id=node_id,
-        enable_routing=enable_routing,
-    )
-    _print(result)
-    if result.get("status") != "ready" and result.get("status") != "routing_disabled":
+
+    try:
+        connector = get_connector(connector_id)
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    target = workspace or Path.cwd()
+
+    async def _run() -> object:
+        return await run_connector_live_test(
+            connector=connector,
+            workspace=target,
+            prompt=prompt,
+            timeout_seconds=timeout_seconds,
+        )
+
+    result = asyncio.run(_run())
+    assert hasattr(result, "as_dict")
+    if json_output:
+        typer.echo(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    else:
+        from joymesh.runtime_v1.connector_protocol import ConnectorLiveTestResult
+
+        assert isinstance(result, ConnectorLiveTestResult)
+        typer.echo(render_live_test_result(result))
+    if not getattr(result, "certification_passed", False):
         raise typer.Exit(2)
+
+
+@provider_route_app.command("list")
+def provider_route_list(
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """List built-in provider-route managers."""
+
+    from joymesh.runtime_v1.provider_routes import builtin_provider_route_managers
+
+    managers = builtin_provider_route_managers()
+    payload = [
+        {"manager_id": item.manager_id, "display_name": item.display_name}
+        for item in managers.values()
+    ]
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        for item in payload:
+            typer.echo(f"{item['manager_id']}\t{item['display_name']}")
+
+
+@provider_route_app.command("status")
+def provider_route_status(
+    connector_id: str | None = typer.Argument(
+        None,
+        help="Optional JoyMesh connector id (e.g. opencode)",
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+    manager_id: str = typer.Option("fireconnect", "--manager-id"),
+) -> None:
+    """Inspect provider routes for a connector (or all supported connectors)."""
+
+    from joymesh.runtime_v1.provider_routes import get_provider_route_manager
+
+    try:
+        manager = get_provider_route_manager(manager_id)
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    async def _run() -> dict[str, object]:
+        discovery = await manager.discover()
+        auth = await manager.inspect_auth()
+        routes = await manager.list_routes(connector_id)
+        return {
+            "manager": {"manager_id": manager.manager_id, "display_name": manager.display_name},
+            "discovery": discovery.as_dict(),
+            "authentication": auth.as_dict(),
+            "routes": [item.as_dict() for item in routes],
+        }
+
+    payload = asyncio.run(_run())
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        auth = payload["authentication"]
+        routes = payload["routes"]
+        assert isinstance(auth, dict)
+        assert isinstance(routes, list)
+        typer.echo(f"Manager: {manager_id}\nAuth: {auth.get('status')}\nRoutes: {len(routes)}")
+        for route in routes:
+            assert isinstance(route, dict)
+            typer.echo(
+                f"  {route.get('connector_id')} provider={route.get('provider_id')} "
+                f"enabled={route.get('enabled')} model={route.get('model_id')}"
+            )
+
+
+@provider_route_app.command("enable")
+def provider_route_enable(
+    manager_id: str = typer.Argument(..., help="Provider-route manager id"),
+    connector_id: str = typer.Argument(..., help="JoyMesh connector id"),
+    model: str | None = typer.Option(None, "--model"),
+    approve: bool = typer.Option(False, "--approve", help="Required explicit approval"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Enable a provider route (mutates harness configuration; requires --approve)."""
+
+    if not approve:
+        raise typer.BadParameter("refusing to mutate provider routing without --approve")
+
+    async def _run() -> dict[str, object]:
+        from joymesh.runtime_v1.provider_routes.service import ProviderRouteService
+
+        service = ProviderRouteService()
+        result = await service.enable_permanently(
+            manager_id,
+            connector_id,
+            model_id=model,
+        )
+        return result.as_dict()
+
+    try:
+        payload = asyncio.run(_run())
+    except Exception as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        typer.echo(f"ok={payload.get('ok')} message={payload.get('message')}")
+    if not payload.get("ok"):
+        raise typer.Exit(2)
+
+
+@provider_route_app.command("disable")
+def provider_route_disable(
+    manager_id: str = typer.Argument(..., help="Provider-route manager id"),
+    connector_id: str = typer.Argument(..., help="JoyMesh connector id"),
+    approve: bool = typer.Option(False, "--approve", help="Required explicit approval"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Disable a provider route and restore previous configuration when supported."""
+
+    if not approve:
+        raise typer.BadParameter("refusing to mutate provider routing without --approve")
+
+    async def _run() -> dict[str, object]:
+        from joymesh.runtime_v1.provider_routes.service import ProviderRouteService
+
+        service = ProviderRouteService()
+        result = await service.disable_permanently(manager_id, connector_id)
+        return result.as_dict()
+
+    try:
+        payload = asyncio.run(_run())
+    except Exception as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        typer.echo(
+            f"ok={payload.get('ok')} restored={payload.get('restored')} "
+            f"message={payload.get('message')}"
+        )
+    if not payload.get("ok"):
+        raise typer.Exit(2)
+
+
+@provider_route_app.command("verify")
+def provider_route_verify(
+    manager_id: str = typer.Argument(...),
+    connector_id: str = typer.Argument(...),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Re-inspect and verify a provider route without mutating configuration."""
+
+    from joymesh.runtime_v1.provider_routes import get_provider_route_manager
+
+    try:
+        manager = get_provider_route_manager(manager_id)
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    async def _run() -> dict[str, object]:
+        route = await manager.verify_route(connector_id)
+        return route.as_dict()
+
+    payload = asyncio.run(_run())
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        typer.echo(
+            f"connector={payload.get('connector_id')} provider={payload.get('provider_id')} "
+            f"enabled={payload.get('enabled')} model={payload.get('model_id')}"
+        )
 
 
 def _run[T](operation: Callable[[JoyMesh], Awaitable[T]]) -> T:
@@ -311,6 +667,268 @@ def harness_list() -> None:
     """List the complete declarative harness catalogue."""
 
     _print(_run_value(lambda mesh: mesh.list_harnesses()))
+
+
+@harness_app.command("status")
+def harness_status() -> None:
+    """Show enabled harnesses, default, and migration state."""
+
+    from joymesh.config import load_user_config
+
+    prefs = load_user_config().harnesses
+    payload = {
+        "enabled": list(prefs.enabled),
+        "default": prefs.default,
+        "ask_each_run": prefs.default is None,
+        "selection_required": prefs.selection_required,
+        "migration_message": prefs.migration_message,
+        "custom": sorted(prefs.custom),
+    }
+    _print(payload)
+
+
+@harness_app.command("enable")
+def harness_enable(harness_id: str) -> None:
+    """Enable a harness for selection."""
+
+    from joymesh.config import HarnessPreferences, load_user_config, save_harness_preferences
+    from joymesh.harnesses.nonstandard import validate_custom_harness_config
+    from joymesh.harnesses.registry import FORBIDDEN_PRODUCTION_HARNESS_IDS
+
+    if harness_id in FORBIDDEN_PRODUCTION_HARNESS_IDS:
+        raise typer.BadParameter(f"harness removed from production: {harness_id}")
+    prefs = load_user_config().harnesses
+    if harness_id in prefs.custom:
+        validation = validate_custom_harness_config(prefs.custom[harness_id])
+        if not validation.ok:
+            for issue in validation.issues:
+                typer.echo(f"{issue.code}: {issue.message}", err=True)
+            raise typer.Exit(2)
+    enabled = tuple(dict.fromkeys([*prefs.enabled, harness_id]))
+    save_harness_preferences(
+        HarnessPreferences(
+            enabled=enabled,
+            default=prefs.default,
+            custom=dict(prefs.custom),
+            selection_required=False,
+            migration_message=None,
+        )
+    )
+    typer.echo(f"enabled: {harness_id}")
+
+
+@harness_app.command("disable")
+def harness_disable(harness_id: str) -> None:
+    """Disable a harness."""
+
+    from joymesh.config import HarnessPreferences, load_user_config, save_harness_preferences
+
+    prefs = load_user_config().harnesses
+    enabled = tuple(item for item in prefs.enabled if item != harness_id)
+    default = None if prefs.default == harness_id else prefs.default
+    save_harness_preferences(
+        HarnessPreferences(
+            enabled=enabled,
+            default=default,
+            custom=dict(prefs.custom),
+            selection_required=prefs.selection_required,
+            migration_message=prefs.migration_message,
+        )
+    )
+    typer.echo(f"disabled: {harness_id}")
+
+
+@harness_app.command("default")
+def harness_default(
+    harness_id: str | None = typer.Argument(None),
+    clear: bool = typer.Option(False, "--clear", help="Clear default (ask each run)"),
+) -> None:
+    """Set or clear the default harness."""
+
+    from joymesh.config import HarnessPreferences, load_user_config, save_harness_preferences
+    from joymesh.harnesses.registry import FORBIDDEN_PRODUCTION_HARNESS_IDS
+
+    prefs = load_user_config().harnesses
+    if clear or harness_id in {None, "clear", "ask"}:
+        default = None
+    else:
+        assert harness_id is not None
+        if harness_id in FORBIDDEN_PRODUCTION_HARNESS_IDS:
+            raise typer.BadParameter(f"harness removed from production: {harness_id}")
+        default = harness_id
+    save_harness_preferences(
+        HarnessPreferences(
+            enabled=prefs.enabled,
+            default=default,
+            custom=dict(prefs.custom),
+            selection_required=False,
+            migration_message=None,
+        )
+    )
+    typer.echo(f"default: {default or 'ask-each-run'}")
+
+
+@harness_app.command("select")
+def harness_select() -> None:
+    """Interactively choose enabled harnesses and an optional default."""
+
+    from joymesh.config import HarnessPreferences, load_user_config, save_harness_preferences
+    from joymesh.harnesses.registry import FORBIDDEN_PRODUCTION_HARNESS_IDS
+    from joymesh.models import HarnessAvailability
+
+    defs = _run_value(lambda mesh: mesh.list_harnesses())
+    detected = {
+        item.manifest.harness_id: item
+        for item in _run(lambda mesh: mesh.detect_harnesses())
+    }
+    typer.echo("Choose the harnesses JoyMesh may use (comma-separated ids):")
+    for definition in defs:
+        if definition.id in FORBIDDEN_PRODUCTION_HARNESS_IDS:
+            continue
+        descriptor = detected.get(definition.id)
+        ready = (
+            descriptor is not None
+            and descriptor.availability is HarnessAvailability.AVAILABLE
+        )
+        state = "ready" if ready else "not ready"
+        typer.echo(f"  [ ] {definition.id:20} {definition.display_name} ({state})")
+    prefs = load_user_config().harnesses
+    for harness_id, custom in prefs.custom.items():
+        typer.echo(f"  [ ] {harness_id:20} {custom.display_name} (custom)")
+    raw = typer.prompt("Enabled harness ids", default=",".join(prefs.enabled) or "")
+    enabled = tuple(
+        part.strip()
+        for part in raw.replace(" ", ",").split(",")
+        if part.strip() and part.strip() not in FORBIDDEN_PRODUCTION_HARNESS_IDS
+    )
+    typer.echo("Which harness should JoyMesh use by default?")
+    typer.echo("  ( ) <harness-id>")
+    typer.echo("  ( ) ask   — ask each run")
+    default_raw = typer.prompt("Default harness id or 'ask'", default=prefs.default or "ask")
+    default = None if default_raw.strip().lower() in {"ask", "none", ""} else default_raw.strip()
+    save_harness_preferences(
+        HarnessPreferences(
+            enabled=enabled,
+            default=default,
+            custom=dict(prefs.custom),
+            selection_required=False,
+            migration_message=None,
+        )
+    )
+    typer.echo(f"enabled={list(enabled)} default={default or 'ask-each-run'}")
+
+
+@harness_app.command("add-custom")
+def harness_add_custom(
+    harness_id: str = typer.Option(..., "--id"),
+    display_name: str = typer.Option(..., "--name"),
+    executable: str = typer.Option(..., "--executable"),
+    arg: list[str] = typer.Option([], "--arg", help="Repeatable argv entry"),  # noqa: B008
+    input_mode: str = typer.Option("stdin", "--input-mode"),
+    output_mode: str = typer.Option("jsonl", "--output-mode"),
+    timeout_seconds: int = typer.Option(1800, "--timeout-seconds"),
+) -> None:
+    """Define a custom harness (saved but not enabled)."""
+
+    from joymesh.config import (
+        CustomHarnessConfig,
+        HarnessPreferences,
+        load_user_config,
+        save_harness_preferences,
+    )
+    from joymesh.harnesses.nonstandard import validate_custom_harness_config
+
+    config = CustomHarnessConfig(
+        harness_id=harness_id,
+        display_name=display_name,
+        executable=executable,
+        args=tuple(arg),
+        input_mode=input_mode,
+        output_mode=output_mode,
+        timeout_seconds=timeout_seconds,
+    )
+    result = validate_custom_harness_config(config)
+    if not result.ok:
+        for issue in result.issues:
+            typer.echo(f"{issue.code}: {issue.message}", err=True)
+        raise typer.Exit(2)
+    prefs = load_user_config().harnesses
+    custom = dict(prefs.custom)
+    custom[harness_id] = config
+    save_harness_preferences(
+        HarnessPreferences(
+            enabled=prefs.enabled,
+            default=prefs.default,
+            custom=custom,
+            selection_required=prefs.selection_required,
+            migration_message=prefs.migration_message,
+        )
+    )
+    typer.echo(f"saved custom harness {harness_id} (not enabled)")
+
+
+@harness_app.command("validate")
+def harness_validate(harness_id: str) -> None:
+    """Validate a custom harness configuration."""
+
+    from joymesh.config import load_user_config
+    from joymesh.harnesses.nonstandard import validate_custom_harness_config
+
+    prefs = load_user_config().harnesses
+    config = prefs.custom.get(harness_id)
+    if config is None:
+        raise typer.BadParameter(f"unknown custom harness: {harness_id}")
+    result = validate_custom_harness_config(config)
+    _print(
+        {
+            "ok": result.ok,
+            "issues": [{"code": i.code, "message": i.message} for i in result.issues],
+        }
+    )
+    if not result.ok:
+        raise typer.Exit(2)
+
+
+@harness_app.command("test")
+def harness_test_custom(harness_id: str) -> None:
+    """Non-destructive readiness check for a custom harness."""
+
+    from joymesh.config import load_user_config
+    from joymesh.harnesses.nonstandard import assess_custom_harness_readiness
+
+    prefs = load_user_config().harnesses
+    config = prefs.custom.get(harness_id)
+    if config is None:
+        raise typer.BadParameter(f"unknown custom harness: {harness_id}")
+    readiness = assess_custom_harness_readiness(config)
+    _print(readiness.as_dict())
+    if not readiness.ready:
+        raise typer.Exit(2)
+
+
+@harness_app.command("remove-custom")
+def harness_remove_custom(harness_id: str) -> None:
+    """Remove a custom harness definition."""
+
+    from joymesh.config import HarnessPreferences, load_user_config, save_harness_preferences
+
+    prefs = load_user_config().harnesses
+    if harness_id not in prefs.custom:
+        raise typer.BadParameter(f"unknown custom harness: {harness_id}")
+    custom = dict(prefs.custom)
+    del custom[harness_id]
+    enabled = tuple(item for item in prefs.enabled if item != harness_id)
+    default = None if prefs.default == harness_id else prefs.default
+    save_harness_preferences(
+        HarnessPreferences(
+            enabled=enabled,
+            default=default,
+            custom=custom,
+            selection_required=prefs.selection_required,
+            migration_message=prefs.migration_message,
+        )
+    )
+    typer.echo(f"removed custom harness {harness_id}")
 
 
 @harness_app.command("discover")
@@ -482,6 +1100,7 @@ def run_launch(
     ctx: typer.Context,
     workspace: str | None = typer.Option(None, "--workspace"),
     task: str | None = typer.Option(None, "--task"),
+    harness: str = typer.Option("auto", "--harness", help="Harness id or 'auto'"),
 ) -> None:
     """Launch a run when called without a run subcommand."""
 
@@ -490,16 +1109,21 @@ def run_launch(
     if workspace is None or task is None:
         raise typer.BadParameter("--workspace and --task are required")
 
+    _maybe_prompt_telemetry_consent()
+
     async def operation(mesh: JoyMesh) -> Run:
-        run = await mesh.run(task=task, workspace=workspace)
+        run = await mesh.run(task=task, workspace=workspace, harness=harness)
         return await mesh.wait(run.id)
 
     try:
         completed = _run(operation)
     except NoRouteError as exc:
         typer.echo(str(exc), err=True)
+        if getattr(exc, "remediation", None):
+            typer.echo(exc.remediation, err=True)
         raise typer.Exit(2) from exc
     _print(completed)
+    _maybe_send_run_telemetry(completed, task=task)
 
 
 @run_app.command("inspect")

@@ -1,0 +1,22 @@
+{
+  "revision":"2026-07-29.1","harness_id":"grok","display_name":"Grok Build","vendor":"xAI",
+  "description":"xAI Grok Build coding agent CLI.","homepage_domain":"x.ai","category":"terminal","maturity":"authenticatable",
+  "executable_names":["grok"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,
+  "supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","@xai-official/grok"],"package_source":"npm:@xai-official/grok"}],
+  "upgrade_options":[{"id":"native-update","mechanism":"native","platforms":["darwin","linux","win32"],"argv":["grok","update"],"package_source":"grok-native-updater"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@xai-official/grok"],"package_source":"npm:@xai-official/grok"}],
+  "prerequisites":[{"kind":"runtime","name":"Node.js","minimum_version":"18"}],
+  "authentication_methods":[
+    {"id":"grok-account","kind":"browser_oauth","login_argv":["grok","login"],"status_argv":["grok","models"],"interactive":true},
+    {"id":"api-key","kind":"environment_variable","environment_variables":["XAI_API_KEY"],"status_argv":["grok","models"],"interactive":false}
+  ],
+  "provider_modes":[
+    {"provider_id":"xai-subscription","display_name":"Grok subscription","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false},
+    {"provider_id":"xai-api","display_name":"xAI API","funding_source":"api","authentication_method":"api_key","separately_billed":true}
+  ],
+  "execution":{"mode":"structured_headless","argv":["grok","--no-auto-update","-p","{task}","--output-format","streaming-json","--sandbox","strict"],"resume_argv":["grok","--no-auto-update","-p","{task}","--resume","{session_id}","--output-format","streaming-json"],"protocol":"stream_json"},
+  "adapter_id":"grok","certification_profile_id":"grok-v1",
+  "official_source":{"documentation_source":"https://docs.x.ai/build/cli/headless-scripting","package_source":"npm:@xai-official/grok","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"npm-global-xai-official-grok-v1"}
+}

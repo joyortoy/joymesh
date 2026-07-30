@@ -166,9 +166,7 @@ class PolicyEngine:
             item for item in expanded if item in profile.denied or item not in profile.allowed
         )
         if denied:
-            reasons.append(
-                "policy rejected capabilities: " + ", ".join(sorted(denied))
-            )
+            reasons.append("policy rejected capabilities: " + ", ".join(sorted(denied)))
             return PolicyDecision(
                 allowed=False,
                 granted_capabilities=frozenset(),
@@ -180,9 +178,7 @@ class PolicyEngine:
         if candidate is not None:
             missing = expanded - candidate.certified_capabilities
             if missing:
-                reasons.append(
-                    "capabilities not certified: " + ", ".join(sorted(missing))
-                )
+                reasons.append("capabilities not certified: " + ", ".join(sorted(missing)))
                 return PolicyDecision(
                     allowed=False,
                     granted_capabilities=frozenset(),

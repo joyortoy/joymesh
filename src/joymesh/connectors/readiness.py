@@ -75,7 +75,7 @@ class ConnectorReadinessService:
         raw_profile = cert.get("routing_profile")
         profile = raw_profile if isinstance(raw_profile, str) else None
         if state is NodeConnectorState.READY and profile is None:
-            profile = "cursor_read_only" if connector_id == "cursor" else None
+            profile = "read_only_repository"
         return ConnectorReadiness(
             node_id=node_id,
             connector_id=connector_id,

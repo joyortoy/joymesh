@@ -323,7 +323,9 @@ class Database:
         # Import model declarations before materialising metadata. The import is
         # intentionally local to avoid coupling legacy SDK consumers to the
         # browser control-plane package at module import time.
-        import joymesh.control_plane.persistence  # noqa: F401
+        import joymesh.control_plane.persistence
+        import joymesh.runtime_v1.provider_routes.lease_store
+        import joymesh.runtime_v1.store  # noqa: F401
 
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
@@ -334,27 +336,12 @@ class Database:
         await self.engine.dispose()
 
     async def ensure_default_subscription(self) -> None:
-        async with self.sessions() as session:
-            if await session.get(SubscriptionRow, "fake-local"):
-                return
-            session.add(
-                SubscriptionRow(
-                    id="fake-local",
-                    harness_id="fake",
-                    name="Bundled fake harness",
-                    billing_route=BillingRoute.LOCAL.value,
-                    enabled=True,
-                    monthly_limit=None,
-                    used_amount=0,
-                    max_concurrency=8,
-                    cost_weight=0,
-                    quota_reserve=0,
-                    quota_known=True,
-                    state=SubscriptionState.HEALTHY.value,
-                    requires_paid_approval=False,
-                )
-            )
-            await session.commit()
+        """No longer seeds a bundled fake harness subscription.
+
+        Tests that need a local funding profile should create one explicitly.
+        """
+
+        return
 
     async def create_subscription(self, data: SubscriptionCreate) -> SubscriptionProfile:
         row = SubscriptionRow(

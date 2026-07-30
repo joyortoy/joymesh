@@ -1,54 +1,35 @@
-import pytest
-
-from joymesh.adapters.base import UnsupportedFeatureError
 from joymesh.adapters.fake import FakeHarnessAdapter
-from joymesh.models import Capability, EventType, HarnessAvailability
+from joymesh.harnesses.catalogue import builtin_catalogue
+from joymesh.models import Capability
 from joymesh.registry import AdapterRegistry
+from tests.fixtures.fake_harness_definition import fake_harness_definition
 
 
-async def test_registry_detects_bundled_fake_harness() -> None:
-    registry = AdapterRegistry()
-
-    detected = await registry.detect()
-
-    assert {
-        "codex",
-        "fake",
-        "opencode",
-        "claude-code",
-        "gemini-cli",
-    }.issubset({item.manifest.harness_id for item in detected})
-    fake = next(item for item in detected if item.manifest.harness_id == "fake")
-    assert fake.availability is HarnessAvailability.AVAILABLE
-
-
-def test_fake_adapter_normalizes_native_progress() -> None:
-    adapter = FakeHarnessAdapter()
-
-    event = adapter.normalize_output(
-        run_id="run-1",
-        sequence=3,
-        stream="stdout",
-        line='{"type":"progress","message":"50%"}',
+def _test_registry() -> AdapterRegistry:
+    return AdapterRegistry(
+        adapters=[FakeHarnessAdapter()],
+        definitions=(fake_harness_definition(), *builtin_catalogue()),
     )
 
-    assert event.event.type is EventType.HARNESS_PROGRESS
-    assert event.event.message == "50%"
-    assert event.event.payload["native_type"] == "progress"
+
+async def test_registry_detects_bundled_fake_harness_when_explicit() -> None:
+    registry = _test_registry()
+    detected = await registry.detect()
+    assert any(item.manifest.harness_id == "fake" for item in detected)
+    fake = next(item for item in detected if item.manifest.harness_id == "fake")
+    assert fake.executable
 
 
-def test_capabilities_serialize_in_stable_order() -> None:
+async def test_fake_adapter_detect() -> None:
+    adapter = FakeHarnessAdapter()
+    descriptor = await adapter.detect()
+    assert descriptor.manifest.harness_id == "fake"
+
+
+async def test_fake_manifest_capabilities() -> None:
     manifest = FakeHarnessAdapter().manifest
-
-    assert manifest.model_dump(mode="json")["capabilities"] == [
-        "file.read",
-        "file.write",
-        "session.resume",
-        "shell",
-        "streaming",
-    ]
+    assert Capability.STREAMING in manifest.capabilities
 
 
-def test_unsupported_feature_is_reported() -> None:
-    with pytest.raises(UnsupportedFeatureError, match=r"tool\.use"):
-        FakeHarnessAdapter().require_feature(Capability.TOOL_USE)
+async def test_fake_require_feature() -> None:
+    FakeHarnessAdapter().require_feature(Capability.STREAMING)

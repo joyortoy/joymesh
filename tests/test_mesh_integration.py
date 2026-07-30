@@ -7,6 +7,7 @@ from pathlib import Path
 from joymesh.adapters.codex import CodexAdapter
 from joymesh.adapters.fake import FakeHarnessAdapter
 from joymesh.adapters.opencode import OpenCodeAdapter
+from joymesh.harnesses.catalogue import builtin_catalogue
 from joymesh.models import (
     BillingRoute,
     Capability,
@@ -17,6 +18,7 @@ from joymesh.models import (
 )
 from joymesh.registry import AdapterRegistry
 from joymesh.service import JoyMesh
+from tests.fixtures.fake_harness_definition import fake_harness_definition
 
 
 def adapters(
@@ -29,8 +31,15 @@ def adapters(
     )
 
 
+def _registry(adapter_list) -> AdapterRegistry:
+    return AdapterRegistry(
+        adapters=adapter_list,
+        definitions=(fake_harness_definition(), *builtin_catalogue()),
+    )
+
+
 async def register_profiles(mesh: JoyMesh) -> None:
-    for harness_id in ("codex", "opencode"):
+    for harness_id in ("fake", "codex", "opencode"):
         await mesh.create_subscription(
             SubscriptionCreate(
                 harness_id=harness_id,
@@ -38,6 +47,12 @@ async def register_profiles(mesh: JoyMesh) -> None:
                 quota_known=True,
                 monthly_limit=100,
                 max_concurrency=2,
+                billing_route=(
+                    BillingRoute.LOCAL
+                    if harness_id == "fake"
+                    else BillingRoute.SUBSCRIPTION
+                ),
+                cost_weight=0 if harness_id == "fake" else 1,
             )
         )
 
@@ -47,7 +62,7 @@ async def test_same_run_request_works_across_adapters(
 ) -> None:
     mesh = JoyMesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'cross.db'}",
-        registry=AdapterRegistry(adapters(fake_executable_factory)),
+        registry=_registry(adapters(fake_executable_factory)),
     )
     await mesh.initialize()
     await register_profiles(mesh)
@@ -73,7 +88,7 @@ async def test_same_run_request_works_across_adapters(
 async def test_routing_rejections_penalties_and_alternative(
     fake_executable_factory, tmp_path: Path
 ) -> None:
-    registry = AdapterRegistry(adapters(fake_executable_factory))
+    registry = _registry(adapters(fake_executable_factory))
     mesh = JoyMesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'routing.db'}",
         registry=registry,
@@ -98,6 +113,15 @@ async def test_routing_rejections_penalties_and_alternative(
                 cost_weight=0,
             )
         )
+        await mesh.create_subscription(
+            SubscriptionCreate(
+                harness_id="fake",
+                name="test fake",
+                billing_route=BillingRoute.LOCAL,
+                quota_known=True,
+                cost_weight=0,
+            )
+        )
         request = RunRequest(
             task="route",
             workspace=str(tmp_path),
@@ -114,11 +138,10 @@ async def test_routing_rejections_penalties_and_alternative(
             required_capabilities=request.required_capabilities,
         )
         assert first == second
-        reasons = {
-            (candidate.harness_id, candidate.subscription_id): candidate.reasons
-            for candidate in first.candidates
-        }
-        assert any("missing capabilities" in reason for reason in reasons[("fake", "fake-local")])
+        fake_candidate = next(
+            candidate for candidate in first.candidates if candidate.harness_id == "fake"
+        )
+        assert any("missing capabilities" in reason for reason in fake_candidate.reasons)
         codex_reasons = next(
             candidate.reasons for candidate in first.candidates if candidate.harness_id == "codex"
         )
@@ -141,7 +164,7 @@ async def test_unavailable_and_concurrent_harnesses_are_rejected(
     opencode = OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True)
     unavailable = OpenCodeAdapter(str(tmp_path / "missing-opencode"), conformance_passed=True)
     unavailable.executable_name = str(tmp_path / "missing-opencode")
-    unavailable_registry = AdapterRegistry([FakeHarnessAdapter(), unavailable])
+    unavailable_registry = _registry([FakeHarnessAdapter(), unavailable])
     unavailable_mesh = JoyMesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'unavailable.db'}",
         registry=unavailable_registry,
@@ -157,7 +180,7 @@ async def test_unavailable_and_concurrent_harnesses_are_rejected(
 
     mesh = JoyMesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'limits.db'}",
-        registry=AdapterRegistry([codex, opencode]),
+        registry=_registry([codex, opencode]),
     )
     await mesh.initialize()
     try:
@@ -203,7 +226,7 @@ async def test_unavailable_and_concurrent_harnesses_are_rejected(
 async def test_rate_limit_requires_approved_linked_fallback(
     fake_executable_factory, tmp_path: Path
 ) -> None:
-    registry = AdapterRegistry(
+    registry = _registry(
         [
             CodexAdapter(str(fake_executable_factory("codex")), conformance_passed=True),
             OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True),
@@ -261,7 +284,7 @@ async def test_rate_limit_requires_approved_linked_fallback(
 
 
 async def test_concurrent_runs_are_isolated(fake_executable_factory, tmp_path: Path) -> None:
-    registry = AdapterRegistry(
+    registry = _registry(
         [
             CodexAdapter(str(fake_executable_factory("codex")), conformance_passed=True),
             OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True),
@@ -313,7 +336,7 @@ async def test_concurrent_runs_are_isolated(fake_executable_factory, tmp_path: P
 async def test_sdk_first_acceptance(fake_executable_factory, tmp_path: Path) -> None:
     """Primary acceptance test: no CLI or API helpers are used."""
 
-    registry = AdapterRegistry(
+    registry = _registry(
         [
             CodexAdapter(str(fake_executable_factory("codex")), conformance_passed=True),
             OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True),

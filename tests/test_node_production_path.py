@@ -206,7 +206,7 @@ async def test_mocked_cursor_production_path_with_inline_disabled_for_ci(
                         "session_resume_certified": False,
                     },
                     "evidence_digest": "x",
-                    "routing_profile": "cursor_read_only",
+                    "routing_profile": "read_only_repository",
                 },
                 created_at=utc_now(),
                 expires_at=None,

@@ -1,4 +1,8 @@
-"""FireConnect provider bridge discovery and configuration."""
+"""FireConnect provider bridge discovery and configuration.
+
+Mutation plans execute through ``ProviderRouteService`` so every production
+``on``/``off`` acquires a coordinator lease. Status remains a read-only probe.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +30,13 @@ JOYMESH_TARGET_MAP = {
     "codex": "codex",
     "opencode": "opencode",
     "pi": "pi",
+}
+# Provider-route manager connector ids (JoyMesh runtime connectors).
+_PROVIDER_ROUTE_CONNECTOR = {
+    "claude": "claude",
+    "codex": "codex",
+    "opencode": "opencode",
+    "cursor": "cursor",
 }
 
 
@@ -97,6 +108,7 @@ class FireConnectClient:
             notes=(
                 "FireConnect changes provider routing for the selected harness.",
                 "The transformed route may use a different billing mode.",
+                "Deprecated: prefer POST /api/v1/provider-routes/.../enable.",
             ),
         )
 
@@ -108,7 +120,10 @@ class FireConnectClient:
             harness_id=harness_id,
             argv=("fireconnect", harness_id, "off"),
             source=InstallSource.STANDALONE,
-            notes=("FireConnect changes provider routing for the selected harness.",),
+            notes=(
+                "FireConnect changes provider routing for the selected harness.",
+                "Deprecated: prefer POST /api/v1/provider-routes/.../disable.",
+            ),
         )
 
     async def execute_plan(
@@ -116,6 +131,8 @@ class FireConnectClient:
         plan: LifecyclePlan,
         approval: ApprovalToken,
     ) -> FireConnectStatus:
+        """Execute a route transform via the lease-coordinated provider-route service."""
+
         if (
             plan.action is not LifecycleAction.ROUTE_TRANSFORM
             or approval.action is not plan.action
@@ -124,7 +141,6 @@ class FireConnectClient:
         ):
             raise FireConnectError("explicit route-transform approval is required")
         self._validate_target(plan.harness_id)
-        executable = self._require_executable()
         valid_disconnect = plan.argv == ("fireconnect", plan.harness_id, "off")
         valid_connect = (
             len(plan.argv) == 5
@@ -134,7 +150,44 @@ class FireConnectClient:
         )
         if not valid_disconnect and not valid_connect:
             raise FireConnectError("invalid FireConnect plan")
-        await self._run(executable, *plan.argv[1:])
+
+        connector_id = _PROVIDER_ROUTE_CONNECTOR.get(plan.harness_id)
+        if connector_id is None:
+            raise FireConnectError(
+                f"harness {plan.harness_id} has no JoyMesh provider-route connector; "
+                "use /api/v1/provider-routes when supported"
+            )
+
+        from joymesh.runtime_v1.provider_routes.lease_store import ProviderRouteLeaseError
+        from joymesh.runtime_v1.provider_routes.service import ProviderRouteService
+
+        # Ensure manager subprocess uses the same executable when configured for tests.
+        if self._configured_executable:
+            from joymesh.runtime_v1.provider_routes import registry as registry_mod
+            from joymesh.runtime_v1.provider_routes.fireconnect import (
+                FireConnectProviderRouteManager,
+            )
+
+            registry_mod.reset_provider_route_managers_for_tests()
+            registry_mod._MANAGERS = {
+                "fireconnect": FireConnectProviderRouteManager(self._configured_executable)
+            }
+
+        service = ProviderRouteService()
+        try:
+            if valid_connect:
+                model = plan.argv[4]
+                result = await service.enable_permanently(
+                    "fireconnect",
+                    connector_id,
+                    model_id=model,
+                )
+            else:
+                result = await service.disable_permanently("fireconnect", connector_id)
+        except ProviderRouteLeaseError as exc:
+            raise FireConnectError(exc.message) from exc
+        if not result.ok:
+            raise FireConnectError(result.message or "provider-route mutation failed")
         return await self.status()
 
     async def _target_model(self, executable: str, harness_id: str) -> str | None:
@@ -170,6 +223,11 @@ class FireConnectClient:
 
     @staticmethod
     async def _run(executable: str, *args: str) -> str:
+        # Read-only status probes only. Mutations must go through ProviderRouteService.
+        if (args and args[-1] in {"on", "off"}) or (len(args) >= 2 and args[1] in {"on", "off"}):
+            raise FireConnectError(
+                "direct FireConnect mutation is forbidden; use ProviderRouteService"
+            )
         process = await asyncio.create_subprocess_exec(
             executable,
             *args,

@@ -2,6 +2,15 @@
 
 FireConnect is a provider-routing transform, not a harness adapter.
 
+Runtime classification (FireConnect v0.9.0): **Outcome A — provider
+configuration manager**. It is registered via
+`builtin_provider_route_managers()`, not `builtin_connectors()`.
+
+See:
+
+* `docs/adr/0002-provider-route-managers.md`
+* `docs/runtime/provider-routes.md`
+
 Read-only status reports whether the CLI is installed, its reported version,
 sign-in state, enabled targets, and configured model routes. It never returns
 tokens or credential-store contents.

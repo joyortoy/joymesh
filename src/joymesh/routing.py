@@ -145,12 +145,9 @@ class Router:
             score -= profile.cost_weight
             reasons.append(f"cost weight {profile.cost_weight:g}")
         else:
-            if harness_id == "fake":
-                reasons.append("bundled local harness")
-            else:
-                eligible = False
-                score -= 30
-                reasons.append("no funding profile")
+            eligible = False
+            score -= 30
+            reasons.append("no funding profile")
 
         active = await self.database.active_count(
             harness_id=harness_id, subscription_id=subscription_id

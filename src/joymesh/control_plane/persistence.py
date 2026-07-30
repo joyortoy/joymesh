@@ -120,6 +120,8 @@ class NodePresenceRow(Base):
 
 
 class OnboardingProgressRow(Base):
+    """Canonical durable browser onboarding progress (user + workspace scoped)."""
+
     __tablename__ = "onboarding_progress"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -131,6 +133,12 @@ class OnboardingProgressRow(Base):
 
 
 class HarnessInstallationRow(Base):
+    """RESERVED / UNUSED — candidate for later migration.
+
+    Browser onboarding uses connector lifecycle tables (`node_connector_*`).
+    Do not write this table from browser onboarding; it is not an install authority.
+    """
+
     __tablename__ = "harness_installations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     node_id: Mapped[str] = mapped_column(ForeignKey("nodes.id"), index=True)
@@ -142,6 +150,11 @@ class HarnessInstallationRow(Base):
 
 
 class HarnessAccountStateRow(Base):
+    """RESERVED / UNUSED — candidate for later migration.
+
+    Authentication evidence for browser onboarding lives in connector auth tables.
+    """
+
     __tablename__ = "harness_account_states"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     installation_id: Mapped[str] = mapped_column(ForeignKey("harness_installations.id"), index=True)

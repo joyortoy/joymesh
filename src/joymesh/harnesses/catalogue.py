@@ -218,49 +218,19 @@ def _legacy(definition: ConnectorDefinition) -> HarnessDefinition:
     )
 
 
-def _fake() -> HarnessDefinition:
-    capabilities = {
-        Capability.NON_INTERACTIVE: CapabilityState.SUPPORTED,
-        Capability.FILE_READ: CapabilityState.SUPPORTED,
-        Capability.FILE_WRITE: CapabilityState.SUPPORTED,
-        Capability.SHELL: CapabilityState.SUPPORTED,
-        Capability.STREAMING: CapabilityState.SUPPORTED,
-        Capability.SESSION_RESUME: CapabilityState.SUPPORTED,
-        Capability.CANCELLATION: CapabilityState.SUPPORTED,
-        Capability.TIMEOUT_ENFORCEMENT: CapabilityState.SUPPORTED,
-        Capability.PROCESS_TREE_CLEANUP: CapabilityState.SUPPORTED,
-    }
-    return HarnessDefinition(
-        id="fake",
-        display_name="Bundled fake harness",
-        vendor="JoyMesh",
-        website="https://github.com/joyortoy/joymesh",
-        documentation=(),
-        executables=(),
-        headless=CapabilityState.SUPPORTED,
-        protocol=ProtocolKind.JSONL,
-        sessions=CapabilityState.SUPPORTED,
-        usage_reporting=CapabilityState.SUPPORTED,
-        capabilities=capabilities,
-        maturity=AdapterMaturity.STABLE,
-        adapter_certification=CertificationState.ADAPTER_CERTIFIED,
-        onboarding=OnboardingMetadata(
-            description=(
-                "Deterministic local harness for tests; never evidence for binary certification."
-            ),
-            installation_methods=("bundled",),
-            authentication_modes=("none",),
-            supported_platforms=("darwin", "linux", "win32"),
-        ),
-    )
-
-
 def builtin_catalogue() -> tuple[HarnessDefinition, ...]:
-    """Return the legacy SDK projection of the packaged connector catalogue."""
+    """Return the legacy SDK projection of the packaged connector catalogue.
 
-    entries = [_fake()]
-    entries.extend(_legacy(item) for item in ConnectorCatalogue.builtins().all())
-    return tuple(sorted(entries, key=lambda entry: entry.id))
+    The removed ``fake`` / ``joy`` harnesses are never included.
+    """
+
+    entries = [_legacy(item) for item in ConnectorCatalogue.builtins().all()]
+    return tuple(
+        sorted(
+            (entry for entry in entries if entry.id not in {"fake", "joy"}),
+            key=lambda entry: entry.id,
+        )
+    )
 
 
 def render_capability_matrix(

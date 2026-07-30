@@ -112,13 +112,9 @@ def test_scheduler_rejects_offline_and_uncertified_write() -> None:
 
 def test_lease_fencing_rejects_stale_token() -> None:
     leases = LeaseService(ttl_seconds=30)
-    first = leases.acquire(
-        task_id="t1", node_id="n1", connector_id="cursor", attempt_id="a1"
-    )
+    first = leases.acquire(task_id="t1", node_id="n1", connector_id="cursor", attempt_id="a1")
     leases.release("t1", first.fencing_token)
-    second = leases.acquire(
-        task_id="t1", node_id="n1", connector_id="cursor", attempt_id="a2"
-    )
+    second = leases.acquire(task_id="t1", node_id="n1", connector_id="cursor", attempt_id="a2")
     assert second.fencing_token == first.fencing_token + 1
     with pytest.raises(PermissionError, match="stale"):
         leases.validate_event(
@@ -185,7 +181,9 @@ def test_generic_certification_detects_changes(tmp_path: Path) -> None:
 
 def test_cursor_connector_owns_trust_argv() -> None:
     cursor = CursorConnectorRuntime()
-    argv = cursor.build_read_only_cert_argv(executable="/bin/cursor-agent", prompt="hi")
+    argv = cursor.build_read_only_cert_argv(
+        executable="/bin/cursor-agent", prompt="hi", workspace=Path("/tmp/ws")
+    )
     assert argv == (
         "/bin/cursor-agent",
         "--print",
@@ -243,7 +241,7 @@ async def test_scenario_a_successful_read_only_route() -> None:
         lease_id=lease.lease_id,
         fencing_token=lease.fencing_token,
         event_type="task.succeeded",
-        payload={},
+        payload={"verification": {"outcome": "verified", "passed": True}, "sequence": 1},
     )
     assert final.status is RuntimeTaskStatus.SUCCEEDED
     assert runtime.leases.active_lease(task.task_id).status.value == "released"
@@ -267,9 +265,7 @@ async def test_scenario_b_unsupported_write() -> None:
 
 async def test_scenario_c_offline_queues() -> None:
     runtime = RuntimeService()
-    runtime.register_node(
-        build_ready_cursor_node(node_id="mac", workspace_id="ws-1", online=False)
-    )
+    runtime.register_node(build_ready_cursor_node(node_id="mac", workspace_id="ws-1", online=False))
     task = await runtime.create_task(
         CreateRuntimeTaskBody(
             workspace_id="ws-1",
@@ -280,9 +276,7 @@ async def test_scenario_c_offline_queues() -> None:
         user_id="user",
     )
     assert task.status is RuntimeTaskStatus.QUEUED
-    runtime.register_node(
-        build_ready_cursor_node(node_id="mac", workspace_id="ws-1", online=True)
-    )
+    runtime.register_node(build_ready_cursor_node(node_id="mac", workspace_id="ws-1", online=True))
     routed = await runtime.route_task(task.task_id)
     assert routed.status is RuntimeTaskStatus.LEASED
 
@@ -376,3 +370,13 @@ def test_cursor_golden_reference_doc_exists() -> None:
     assert "remote_node" in text
     assert "--trust" in text
     assert "Ready for read-only routed tasks" in text
+
+
+def test_connector_protocol_doc_exists() -> None:
+    path = Path(__file__).resolve().parents[1] / "docs/runtime/connector-protocol.md"
+    text = path.read_text(encoding="utf-8")
+    assert "builtin_connectors()" in text
+    assert "build_read_only_cert_argv" in text
+    assert "How to add connector #6" in text
+    assert "live-test" in text
+    assert "opencode" in text.lower()

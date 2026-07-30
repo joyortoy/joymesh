@@ -36,6 +36,7 @@ def test_catalogue_contains_all_reviewed_harness_families() -> None:
         "gemini-cli",
         "github-copilot",
         "goose",
+        "grok",
         "kiro",
         "opencode",
         "openhands",

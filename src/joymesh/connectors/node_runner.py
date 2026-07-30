@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 import shutil
-import signal
 import stat
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
@@ -24,16 +22,20 @@ from joymesh.connectors.lifecycle_models import (
     EvidenceTrustLevel,
 )
 from joymesh.connectors.planning import ConnectorAction, ConnectorTaskPlan
+from joymesh.connectors.process_utils import executable_fingerprint, terminate_process_tree
 from joymesh.control_plane.security import mock_certify_enabled, production_mode
 from joymesh.harnesses.discovery import DiscoveryPolicy
 from joymesh.harnesses.registry import HarnessRegistry
 from joymesh.models import utc_now
+from joymesh.runtime_v1.connector_protocol import ConnectorExecutionContext, ConnectorRuntime
+from joymesh.runtime_v1.connectors import get_connector
+from joymesh.runtime_v1.connectors.cursor import parse_cursor_auth_status
 
 EvidenceSink = Callable[[ConnectorEvidence], Awaitable[None]]
 EventSink = Callable[[ConnectorTaskEvent], Awaitable[None]]
 
-CURSOR_READ_ONLY_SCOPE = CertificationScope(
-    profile="cursor_read_only",
+READ_ONLY_SCOPE = CertificationScope(
+    profile="read_only_repository",
     structured_execution=True,
     repository_read=True,
     repository_write=False,
@@ -44,6 +46,9 @@ CURSOR_READ_ONLY_SCOPE = CertificationScope(
     workspace_containment=True,
     cancellation=True,
 )
+
+# Backward-compatible alias for older imports/tests.
+CURSOR_READ_ONLY_SCOPE = READ_ONLY_SCOPE
 
 
 class ConnectorNodeRunner:
@@ -184,36 +189,81 @@ class ConnectorNodeRunner:
         plan: ConnectorTaskPlan,
         record_evidence: EvidenceSink,
     ) -> ConnectorTaskStatus:
+        connector = _runtime_connector(plan.connector_id)
+        if connector is not None:
+            discovery = await connector.discover(
+                ConnectorExecutionContext(node_id=self.node_id, task_id=task_id)
+            )
+            if not discovery.usable:
+                details = {
+                    **dict(discovery.details),
+                    "reason_code": discovery.reason_code or "unusable",
+                    "installed": discovery.installed,
+                    "usable": discovery.usable,
+                }
+                status = discovery.reason_code or "unusable"
+                await record_evidence(
+                    self._evidence(
+                        task_id=task_id,
+                        plan=plan,
+                        evidence_type=ConnectorEvidenceType.FAILURE,
+                        status=status,
+                        executable=discovery.executable_path,
+                        version=discovery.version,
+                        details=details,
+                        fingerprint=discovery.fingerprint,
+                    )
+                )
+                await record_evidence(
+                    self._evidence(
+                        task_id=task_id,
+                        plan=plan,
+                        evidence_type=ConnectorEvidenceType.VERSION,
+                        status=status,
+                        executable=discovery.executable_path,
+                        version=None,
+                        details=details,
+                        fingerprint=discovery.fingerprint,
+                    )
+                )
+                return ConnectorTaskStatus.SUCCEEDED
+            await record_evidence(
+                self._evidence(
+                    task_id=task_id,
+                    plan=plan,
+                    evidence_type=ConnectorEvidenceType.DISCOVERY,
+                    status="discovered",
+                    executable=discovery.executable_path,
+                    version=discovery.version,
+                    details={
+                        **dict(discovery.details),
+                        "execution_environment": "host",
+                        "installed": discovery.installed,
+                        "usable": discovery.usable,
+                    },
+                    fingerprint=discovery.fingerprint,
+                )
+            )
+            if discovery.version:
+                await record_evidence(
+                    self._evidence(
+                        task_id=task_id,
+                        plan=plan,
+                        evidence_type=ConnectorEvidenceType.VERSION,
+                        status="ok",
+                        executable=discovery.executable_path,
+                        version=discovery.version,
+                        details={},
+                        fingerprint=discovery.fingerprint,
+                    )
+                )
+            return ConnectorTaskStatus.SUCCEEDED
+
         result = await self._discovery.discover(
             plan.connector_id,
             policy=DiscoveryPolicy(execute_version_commands=True),
         )
         installation = result.installations[0] if result.installations else None
-        broken = await self._detect_broken_executable(plan.connector_id, installation)
-        if broken:
-            await record_evidence(
-                self._evidence(
-                    task_id=task_id,
-                    plan=plan,
-                    evidence_type=ConnectorEvidenceType.FAILURE,
-                    status="broken_executable",
-                    executable=installation.executable if installation else None,
-                    version=installation.version if installation else None,
-                    details=broken,
-                )
-            )
-            await record_evidence(
-                self._evidence(
-                    task_id=task_id,
-                    plan=plan,
-                    evidence_type=ConnectorEvidenceType.VERSION,
-                    status="broken_executable",
-                    executable=installation.executable if installation else None,
-                    version=None,
-                    details=broken,
-                )
-            )
-            return ConnectorTaskStatus.SUCCEEDED
         await record_evidence(
             self._evidence(
                 task_id=task_id,
@@ -313,6 +363,34 @@ class ConnectorNodeRunner:
         plan: ConnectorTaskPlan,
         record_evidence: EvidenceSink,
     ) -> ConnectorTaskStatus:
+        connector = _runtime_connector(plan.connector_id)
+        if connector is not None:
+            evidence = await connector.verify_authentication(
+                ConnectorExecutionContext(node_id=self.node_id, task_id=task_id)
+            )
+            await record_evidence(
+                self._evidence(
+                    task_id=task_id,
+                    plan=plan,
+                    evidence_type=ConnectorEvidenceType.AUTHENTICATION,
+                    status=evidence.status,
+                    executable=evidence.executable_path,
+                    version=evidence.version,
+                    fingerprint=evidence.fingerprint,
+                    details={
+                        "method_id": evidence.method_id,
+                        **dict(evidence.details),
+                        "verified_at": utc_now().isoformat(),
+                        "node_id": self.node_id,
+                    },
+                )
+            )
+            return (
+                ConnectorTaskStatus.SUCCEEDED
+                if evidence.status == "authenticated"
+                else ConnectorTaskStatus.FAILED
+            )
+
         definition = self.catalogue.get(plan.connector_id)
         method = definition.authentication_methods[0]
         status_argv = method.status_argv or method.login_argv
@@ -322,18 +400,18 @@ class ConnectorNodeRunner:
             *status_argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
         )
         self._active_processes[task_id] = process
         stdout, stderr = await process.communicate()
-        output = (stdout.decode() + stderr.decode()).lower()
-        authenticated = parse_cursor_auth_status(
-            output, returncode=process.returncode if process.returncode is not None else 1
+        output = stdout.decode() + stderr.decode()
+        status = _classify_generic_auth_status(
+            output,
+            returncode=process.returncode if process.returncode is not None else 1,
         )
-        if plan.connector_id != "cursor":
-            authenticated = process.returncode == 0 and "not logged" not in output
-        status = "authenticated" if authenticated else "unauthenticated"
+        authenticated = status == "authenticated"
         version = await self._probe_version(status_argv[0])
-        fingerprint = _executable_fingerprint(status_argv[0])
+        fingerprint = executable_fingerprint(status_argv[0])
         await record_evidence(
             self._evidence(
                 task_id=task_id,
@@ -361,6 +439,47 @@ class ConnectorNodeRunner:
         record_evidence: EvidenceSink,
         event: Callable[[str, dict[str, object]], Awaitable[None]],
     ) -> ConnectorTaskStatus:
+        connector = _runtime_connector(plan.connector_id)
+        if connector is not None:
+            notice = connector.adapter_verification_notice()
+            progress: dict[str, object] = {
+                "stage": "adapter_launch",
+                "connector_id": connector.connector_id,
+                "display_name": connector.display_name,
+            }
+            if notice is not None:
+                progress["notice"] = notice.as_payload()
+            await event("task.progress", progress)
+            result = await connector.verify_adapter(
+                ConnectorExecutionContext(node_id=self.node_id, task_id=task_id)
+            )
+            if not result.passed:
+                raise RuntimeError(
+                    str(result.details.get("detail") or "adapter conformance failed")
+                )
+            await record_evidence(
+                self._evidence(
+                    task_id=task_id,
+                    plan=plan,
+                    evidence_type=ConnectorEvidenceType.ADAPTER_CONFORMANCE,
+                    status="passed",
+                    executable=result.executable_path,
+                    version=result.version,
+                    details={
+                        **dict(result.details),
+                        "fingerprint": result.fingerprint,
+                        "secret_redaction": True,
+                        "timeout_enforced": True,
+                        "cancellation_supported": True,
+                        "unknown_events_tolerated": True,
+                        "terminal_events": 1,
+                    },
+                    fingerprint=result.fingerprint,
+                )
+            )
+            return ConnectorTaskStatus.SUCCEEDED
+
+        # Catalogue-only connectors (not in Runtime registry): generic --help probe.
         definition = self.catalogue.get(plan.connector_id)
         executable = (
             definition.executable_names[0] if definition.executable_names else plan.executable
@@ -372,42 +491,23 @@ class ConnectorNodeRunner:
             "task.progress",
             {
                 "stage": "adapter_launch",
-                "notice": (
-                    "This verification may use a small amount of your Cursor plan allowance."
-                    if plan.connector_id == "cursor"
-                    else "Running bounded adapter conformance"
-                ),
+                "connector_id": plan.connector_id,
+                "display_name": definition.display_name,
             },
         )
-        # Prefer structured mode check with --help (no plan usage); for cursor also
-        # confirm stream-json option is advertised.
         process = await asyncio.create_subprocess_exec(
             resolved,
             "--help",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
         )
         self._active_processes[task_id] = process
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
             raise RuntimeError(stderr.decode() or "adapter launch failed")
-        help_text = (stdout.decode() + stderr.decode()).lower()
-        fingerprint = _executable_fingerprint(resolved)
+        fingerprint = executable_fingerprint(resolved)
         version = await self._probe_version(resolved)
-        details = {
-            "help_bytes": len(stdout),
-            "fingerprint": fingerprint,
-            "stdout_captured": True,
-            "stderr_captured": True,
-            "structured_output_supported": (
-                "stream-json" in help_text or "output-format" in help_text
-            ),
-            "secret_redaction": True,
-            "timeout_enforced": True,
-            "cancellation_supported": True,
-            "unknown_events_tolerated": True,
-            "terminal_events": 1,
-        }
         await record_evidence(
             self._evidence(
                 task_id=task_id,
@@ -416,7 +516,17 @@ class ConnectorNodeRunner:
                 status="passed",
                 executable=resolved,
                 version=version,
-                details=details,
+                details={
+                    "help_bytes": len(stdout),
+                    "fingerprint": fingerprint,
+                    "stdout_captured": True,
+                    "stderr_captured": True,
+                    "secret_redaction": True,
+                    "timeout_enforced": True,
+                    "cancellation_supported": True,
+                    "unknown_events_tolerated": True,
+                    "terminal_events": 1,
+                },
                 fingerprint=fingerprint,
             )
         )
@@ -436,47 +546,59 @@ class ConnectorNodeRunner:
             return await self._certify_mock(
                 task_id=task_id, plan=plan, record_evidence=record_evidence
             )
-        if plan.connector_id != "cursor":
+        connector = _runtime_connector(plan.connector_id)
+        if connector is None:
             if production_mode():
                 raise RuntimeError(
-                    f"real certification for {plan.connector_id} is not implemented; "
-                    "mock path refused in production"
+                    f"connector {plan.connector_id} is not registered in builtin_connectors()"
                 )
             return await self._certify_mock(
                 task_id=task_id, plan=plan, record_evidence=record_evidence
             )
-        return await self._certify_cursor_read_only(
-            task_id=task_id, plan=plan, record_evidence=record_evidence, event=event
+        return await self._certify_read_only_repository(
+            task_id=task_id,
+            plan=plan,
+            record_evidence=record_evidence,
+            event=event,
+            connector=connector,
         )
 
-    async def _certify_cursor_read_only(
+    async def _certify_read_only_repository(
         self,
         *,
         task_id: str,
         plan: ConnectorTaskPlan,
         record_evidence: EvidenceSink,
         event: Callable[[str, dict[str, object]], Awaitable[None]],
+        connector: ConnectorRuntime,
     ) -> ConnectorTaskStatus:
         from joymesh.runtime_v1.certification import ReadOnlyRepositoryProfile
-        from joymesh.runtime_v1.cursor import CursorConnectorRuntime
 
-        definition = self.catalogue.get(plan.connector_id)
-        executable = shutil.which(
-            definition.executable_names[0] if definition.executable_names else plan.executable
+        discovery = await connector.discover(
+            ConnectorExecutionContext(node_id=self.node_id, task_id=task_id)
         )
-        if not executable:
-            raise RuntimeError("cursor-agent not found")
-        fingerprint = _executable_fingerprint(executable)
-        version = await self._probe_version(executable)
+        if not discovery.usable or not discovery.executable_path:
+            raise RuntimeError(
+                str(
+                    discovery.details.get("detail")
+                    or discovery.reason_code
+                    or f"{plan.connector_id} executable not usable"
+                )
+            )
+        executable = discovery.executable_path
+        fingerprint = discovery.fingerprint or executable_fingerprint(executable)
+        version = discovery.version
         profile = ReadOnlyRepositoryProfile()
-        cursor = CursorConnectorRuntime(self.catalogue)
-        root = Path.home() / ".joymesh" / "certification" / "cursor"
+        root = Path.home() / ".joymesh" / "certification" / plan.connector_id
         await event("task.progress", {"stage": "preparing_isolated_repository"})
         workspace = profile.build_workspace(task_id=task_id, root=root)
         try:
-            # Cursor-owned argv including --trust; generic profile owns workspace/verification.
-            argv = cursor.build_read_only_cert_argv(
-                executable=executable, prompt=workspace.prompt
+            argv = list(
+                connector.build_read_only_cert_argv(
+                    executable=executable,
+                    prompt=workspace.prompt,
+                    workspace=workspace.path,
+                )
             )
             plan_digest = plan.plan_hash
             await event(
@@ -486,6 +608,8 @@ class ConnectorNodeRunner:
                     "argv": [*list(argv[:-1]), "<PROMPT>"],
                     "workspace": str(workspace.path),
                     "certification_profile": profile.profile_id,
+                    "connector_id": plan.connector_id,
+                    "display_name": connector.display_name,
                 },
             )
             process = await asyncio.create_subprocess_exec(
@@ -493,15 +617,18 @@ class ConnectorNodeRunner:
                 cwd=str(workspace.path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
                 start_new_session=True,
             )
             self._active_processes[task_id] = process
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
             except TimeoutError:
-                await _terminate_process_tree(process)
+                await terminate_process_tree(process)
                 raise RuntimeError("certification timed out") from None
             output = stdout.decode(errors="replace") + stderr.decode(errors="replace")
+            # Connector may parse events; runtime still owns verification/evidence.
+            _ = connector.parse_events(output)
             await event("task.progress", {"stage": "validating_filesystem"})
             verification = profile.verify_result(
                 workspace,
@@ -614,7 +741,7 @@ class ConnectorNodeRunner:
                 "session_resume_certified": False,
             }
             digest = hashlib.sha256(json.dumps(passed, sort_keys=True).encode()).hexdigest()
-            scope = CURSOR_READ_ONLY_SCOPE
+            scope = READ_ONLY_SCOPE
             await record_evidence(
                 self._evidence(
                     task_id=task_id,
@@ -672,41 +799,13 @@ class ConnectorNodeRunner:
                 "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
             )
             stdout, stderr = await process.communicate()
             text = (stdout.decode() + stderr.decode()).strip()
             return text.splitlines()[0][:200] if text else None
         except OSError:
             return None
-
-    async def _detect_broken_executable(
-        self, connector_id: str, installation: object | None
-    ) -> dict[str, str] | None:
-        if connector_id != "codex" or installation is None:
-            return None
-        executable = getattr(installation, "executable", None)
-        if not executable:
-            return None
-        process = await asyncio.create_subprocess_exec(
-            executable,
-            "--version",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        combined = (stdout.decode() + stderr.decode()).lower()
-        if process.returncode != 0 and (
-            "native" in combined
-            or "mach-o" in combined
-            or "wrong architecture" in combined
-            or "cannot find module" in combined
-            or "enoent" in combined
-        ):
-            return {
-                "detail": "Native binary missing or wrong architecture for Codex launcher",
-                "launcher": str(executable),
-            }
-        return None
 
     def _evidence(
         self,
@@ -735,7 +834,7 @@ class ConnectorNodeRunner:
             status=status,
             executable_path=executable,
             executable_fingerprint=fingerprint
-            or (_executable_fingerprint(executable) if executable else None),
+            or (executable_fingerprint(executable) if executable else None),
             harness_version=version,
             provider_mode=None,
             details=enriched,
@@ -746,13 +845,31 @@ class ConnectorNodeRunner:
         )
 
 
-def parse_cursor_auth_status(output: str, *, returncode: int) -> bool:
+def _runtime_connector(connector_id: str) -> ConnectorRuntime | None:
+    try:
+        return get_connector(connector_id)
+    except KeyError:
+        return None
+
+
+def _require_runtime_connector(connector_id: str) -> ConnectorRuntime:
+    connector = _runtime_connector(connector_id)
+    if connector is None:
+        raise RuntimeError(f"connector {connector_id} is not registered in builtin_connectors()")
+    return connector
+
+
+def _classify_generic_auth_status(output: str, *, returncode: int) -> str:
+    """Catalogue-only fallback when no Runtime connector is registered."""
+
     text = output.lower()
-    if "not logged" in text or "not authenticated" in text:
-        return False
-    if returncode != 0:
-        return False
-    return "logged in" in text or "authenticated" in text or "login successful" in text
+    if "expired" in text and ("login" in text or "auth" in text or "token" in text):
+        return "expired"
+    if returncode != 0 or "not logged" in text or "logged out" in text:
+        return "unauthenticated"
+    if "logged in" in text or "authenticated" in text or "login successful" in text:
+        return "authenticated"
+    return "unauthenticated"
 
 
 def _redact_status(text: str) -> str:
@@ -762,25 +879,13 @@ def _redact_status(text: str) -> str:
     return text
 
 
-def _executable_fingerprint(path: str) -> str:
-    target = Path(path)
-    try:
-        if target.is_file():
-            digest = hashlib.sha256()
-            with target.open("rb") as handle:
-                while True:
-                    chunk = handle.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    digest.update(chunk)
-            return digest.hexdigest()
-    except OSError:
-        pass
-    return hashlib.sha256(path.encode()).hexdigest()
+# Compatibility aliases used by older imports/tests.
+_executable_fingerprint = executable_fingerprint
+_terminate_process_tree = terminate_process_tree
 
 
 def _workspace_manifest(workspace: Path) -> dict[str, object]:
-    files: dict[str, str] = {}
+    files_map: dict[str, str] = {}
     symlinks: list[str] = []
     symlink_escape = False
     root = workspace.resolve()
@@ -796,45 +901,21 @@ def _workspace_manifest(workspace: Path) -> dict[str, object]:
                 symlink_escape = True
             continue
         if path.is_file():
-            files[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+            files_map[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
     mode = stat.S_IMODE(workspace.stat().st_mode)
     return {
-        "files": files,
-        "hashes": dict(files),
+        "files": files_map,
+        "hashes": dict(files_map),
         "symlinks": symlinks,
         "symlink_escape": symlink_escape,
         "mode": oct(mode),
     }
 
 
-async def _terminate_process_tree(process: asyncio.subprocess.Process) -> dict[str, object]:
-    if process.returncode is not None:
-        return {"cancelled": True, "lingering": False, "pid": process.pid}
-    pid = process.pid
-    try:
-        os.killpg(pid, signal.SIGINT)
-    except (ProcessLookupError, PermissionError, OSError):
-        process.send_signal(signal.SIGINT)
-    try:
-        await asyncio.wait_for(process.wait(), timeout=2.0)
-        return {"cancelled": True, "lingering": False, "pid": pid, "signal": "SIGINT"}
-    except TimeoutError:
-        pass
-    try:
-        os.killpg(pid, signal.SIGTERM)
-    except (ProcessLookupError, PermissionError, OSError):
-        process.terminate()
-    try:
-        await asyncio.wait_for(process.wait(), timeout=2.0)
-        return {"cancelled": True, "lingering": False, "pid": pid, "signal": "SIGTERM"}
-    except TimeoutError:
-        pass
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError):
-        process.kill()
-    try:
-        await asyncio.wait_for(process.wait(), timeout=2.0)
-    except TimeoutError:
-        return {"cancelled": True, "lingering": True, "pid": pid, "signal": "SIGKILL"}
-    return {"cancelled": True, "lingering": False, "pid": pid, "signal": "SIGKILL"}
+# Re-export for older imports.
+__all__ = [
+    "CURSOR_READ_ONLY_SCOPE",
+    "READ_ONLY_SCOPE",
+    "ConnectorNodeRunner",
+    "parse_cursor_auth_status",
+]

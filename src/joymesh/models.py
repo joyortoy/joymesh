@@ -235,6 +235,7 @@ class RunRequest(BaseModel):
     workspace: str = Field(validation_alias=AliasChoices("workspace", "cwd"))
     route: RouteCandidate | None = None
     required_capabilities: frozenset[Capability] = Field(default_factory=frozenset)
+    preferred_harness: str | None = None
     timeout_seconds: float | None = Field(default=300, gt=0)
     resume_session_id: str | None = None
     allowed_harnesses: frozenset[str] = Field(default_factory=frozenset)

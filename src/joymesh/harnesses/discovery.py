@@ -98,8 +98,8 @@ class HarnessDiscovery:
         overrides: Mapping[str, str],
         policy: DiscoveryPolicy,
     ) -> DiscoveryResult:
-        if definition.id == "fake":
-            return DiscoveryResult(harness_id="fake", installations=())
+        if definition.id in {"fake", "joy"}:
+            return DiscoveryResult(harness_id=definition.id, installations=())
 
         candidates: list[tuple[Path, InstallSource, str]] = []
         if override := overrides.get(definition.id):

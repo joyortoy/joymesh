@@ -147,7 +147,7 @@ async def test_real_cursor_remote_node_lifecycle(
             assert enabled.status_code == 200, enabled.text
             final = enabled.json()
             assert final["state"] == NodeConnectorState.READY.value
-            assert final["routing_profile"] == "cursor_read_only"
+            assert final["routing_profile"] == "read_only_repository"
             assert final["routing_eligible"] is True
             assert session_id
     finally:
