@@ -106,6 +106,8 @@ class FailureKind(StrEnum):
     UNSUPPORTED = "unsupported"
     PROCESS = "process"
     TIMEOUT = "timeout"
+    INVALID_REQUEST = "invalid_request"
+    TURN_LIMIT = "turn_limit"
     UNKNOWN = "unknown"
 
 
@@ -245,6 +247,10 @@ class RunRequest(BaseModel):
     model: str | None = None
     provider: str | None = None
     additional_writable_directories: tuple[str, ...] = ()
+    correlation_id: str | None = None
+    mission_id: str | None = None
+    trace_id: str | None = None
+    execution_id: str | None = None
 
 
 class SubscriptionCreate(BaseModel):

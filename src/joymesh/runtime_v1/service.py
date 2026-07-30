@@ -170,6 +170,18 @@ class RuntimeService:
             max_attempts=body.max_attempts,
             user_id=user_id,
         )
+        correlation_id = body.correlation_id or request.task_id
+        integration_metadata = {
+            key: value
+            for key, value in {
+                "mission_id": body.mission_id,
+                "execution_id": body.execution_id,
+                "trace_id": body.trace_id,
+                "actor_id": body.actor_id,
+                "idempotency_key": body.idempotency_key,
+            }.items()
+            if value is not None
+        }
         self._task_prompts[request.task_id] = body.prompt
         await self.store.audit(
             "task.created",
@@ -180,6 +192,8 @@ class RuntimeService:
                 "policy_profile": request.policy_profile,
                 "requested_capabilities": sorted(request.requested_capabilities),
                 "prohibited_capabilities": sorted(request.prohibited_capabilities),
+                "correlation_id": correlation_id,
+                **integration_metadata,
             },
         )
         decision = self.policy.evaluate(request)
@@ -198,6 +212,10 @@ class RuntimeService:
             self.metrics.policy_rejections += 1
             task = RuntimeTaskRecord(
                 task_id=request.task_id,
+                correlation_id=correlation_id,
+                mission_id=body.mission_id,
+                trace_id=body.trace_id,
+                metadata=integration_metadata,
                 workspace_id=request.workspace_id,
                 user_id=user_id,
                 prompt_digest=request.prompt_digest,
@@ -232,6 +250,10 @@ class RuntimeService:
         approval_required = bool(decision.approval_requirements)
         task = RuntimeTaskRecord(
             task_id=request.task_id,
+            correlation_id=correlation_id,
+            mission_id=body.mission_id,
+            trace_id=body.trace_id,
+            metadata=integration_metadata,
             workspace_id=request.workspace_id,
             user_id=user_id,
             prompt_digest=request.prompt_digest,
@@ -401,13 +423,13 @@ class RuntimeService:
             context=CompletionContext(
                 organisation_id=None,
                 project_id=task.workspace_id,
-                mission_id=task.task_id,
+                mission_id=task.mission_id or task.task_id,
                 execution_id=result.execution_id,
                 attempt_id=attempt_id,
                 authoritative_attempt_id=attempt_id,
                 backend_id=result.backend_id,
                 harness_id=result.harness_id,
-                correlation_id=task.task_id,
+                correlation_id=task.correlation_id or task.task_id,
                 user_id=task.user_id,
                 verification_strategy="backend_success_with_evidence",
             ),
@@ -489,7 +511,8 @@ class RuntimeService:
     ) -> Mapping[str, Any]:
         """Map JoyMeshBackend.submit onto the existing node lease scheduler."""
 
-        task = await self.store.get_task(intent.mission_id)
+        runtime_task_id = str(intent.metadata.get("runtime_task_id") or intent.mission_id)
+        task = await self.store.get_task(runtime_task_id)
         request = _request_from_record(task)
         # Prefer router harness, but only require it when the mission explicitly required one.
         preferred = request.preferred_connectors
@@ -775,13 +798,13 @@ class RuntimeService:
             context=CompletionContext(
                 organisation_id=None,
                 project_id=task.workspace_id,
-                mission_id=task.task_id,
+                mission_id=task.mission_id or task.task_id,
                 execution_id=execution_id,
                 attempt_id=attempt_id,
                 authoritative_attempt_id=authoritative,
                 backend_id=task.selected_backend_id or "joymesh",
                 harness_id=task.selected_harness_id or task.selected_connector_id,
-                correlation_id=task.task_id,
+                correlation_id=task.correlation_id or task.task_id,
                 user_id=task.user_id,
                 cancelled=event_type in {"task.cancelled", "execution.cancelled"},
                 require_evidence=True,
@@ -900,7 +923,7 @@ class RuntimeService:
                 CompletionContext(
                     organisation_id=None,
                     project_id=task.workspace_id,
-                    mission_id=task.task_id,
+                    mission_id=task.mission_id or task.task_id,
                     execution_id=execution_id,
                     attempt_id=attempt_id,
                     authoritative_attempt_id=attempt_id,
@@ -908,6 +931,7 @@ class RuntimeService:
                     harness_id=task.selected_harness_id or task.selected_connector_id,
                     cancelled=True,
                     user_id=task.user_id,
+                    correlation_id=task.correlation_id or task.task_id,
                 ),
                 cleanup_completed=True,
             )

@@ -498,7 +498,22 @@ class JoyMesh:
         )
         await self.database.create_run(run)
         self._requests[run.id] = normalized_request
-        await self._event(run.id, EventType.RUN_QUEUED, "Run queued")
+        correlation_metadata = {
+            key: value
+            for key, value in {
+                "correlation_id": request.correlation_id,
+                "mission_id": request.mission_id,
+                "trace_id": request.trace_id,
+                "execution_id": request.execution_id,
+            }.items()
+            if value is not None
+        }
+        await self._event(
+            run.id,
+            EventType.RUN_QUEUED,
+            "Run queued",
+            {"integration": correlation_metadata} if correlation_metadata else None,
+        )
         handle = asyncio.create_task(self._execute(run.id), name=f"joymesh-run-{run.id}")
         self._tasks[run.id] = handle
         handle.add_done_callback(lambda _task: self._tasks.pop(run.id, None))
@@ -536,7 +551,17 @@ class JoyMesh:
         if prefs.enabled:
             ready = [item for item in ready if item in prefs.enabled]
         override = None if harness == "auto" else harness
+        if override:
+            try:
+                override = self.registry.resolve_id(override)
+            except KeyError:
+                pass
         preferred = selected_request.preferred_harness
+        if preferred:
+            try:
+                preferred = self.registry.resolve_id(preferred)
+            except KeyError:
+                pass
         try:
             resolution = resolve_harness(
                 prefs=prefs,

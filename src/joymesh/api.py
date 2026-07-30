@@ -175,6 +175,21 @@ async def browser_identity(
 BrowserIdentityDependency = Annotated[BrowserIdentity, Depends(browser_identity)]
 
 
+async def require_service_token(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    token = os.getenv("JOYMESH_TOKEN") or os.getenv("JOYMESH_SERVICE_TOKEN")
+    if token is None:
+        return
+    expected = f"Bearer {token}"
+    if authorization is None or not hmac.compare_digest(authorization, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing service token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 def _onboarding_actions(
     state: OnboardingState,
     progress: OnboardingProgress,
@@ -1392,7 +1407,10 @@ def create_app(
         )
 
     @app.post("/api/v1/runs", response_model=Run, status_code=status.HTTP_202_ACCEPTED)
-    async def create_run(request: RunRequest) -> Run:
+    async def create_run(
+        request: RunRequest,
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> Run:
         try:
             route = request.route or await service.resolve_route(request=request)
             return await service.start_run(request=request, route=route)
@@ -1477,7 +1495,10 @@ def create_app(
     # --- JoyMesh Runtime v1 (capability-first) ---
 
     @app.post("/runtime/tasks")
-    async def create_runtime_task(body: dict[str, object]) -> dict[str, object]:
+    async def create_runtime_task(
+        body: dict[str, object],
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
         from joymesh.runtime_v1.models import CreateRuntimeTaskBody
 
         try:
@@ -1508,7 +1529,10 @@ def create_app(
         return task.model_dump(mode="json")
 
     @app.post("/runtime/tasks/{task_id}/cancel")
-    async def cancel_runtime_task(task_id: str) -> dict[str, object]:
+    async def cancel_runtime_task(
+        task_id: str,
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
         try:
             task = await service.runtime_service.cancel_task(task_id)
         except KeyError as exc:
@@ -1516,7 +1540,10 @@ def create_app(
         return task.model_dump(mode="json")
 
     @app.post("/runtime/tasks/{task_id}/retry")
-    async def retry_runtime_task(task_id: str) -> dict[str, object]:
+    async def retry_runtime_task(
+        task_id: str,
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
         from joymesh.runtime_v1.models import FailureClass
 
         try:
