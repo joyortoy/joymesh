@@ -1664,6 +1664,59 @@ def create_app(
             for item in placements
         ]
 
+    @app.post("/runtime/placements")
+    async def register_runtime_placement(
+        body: dict[str, object],
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
+        from joymesh.models import utc_now
+        from joymesh.runtime_v1.models import WorkspacePlacement
+
+        workspace_id = str(body.get("workspace_id") or "")
+        local_path = str(body.get("local_path") or "")
+        node_id = str(body.get("node_id") or "local-codex-worker")
+        if not workspace_id or not local_path:
+            raise HTTPException(status_code=422, detail="workspace_id and local_path required")
+        placement = WorkspacePlacement(
+            workspace_id=workspace_id,
+            node_id=node_id,
+            local_path=local_path,
+            fingerprint=str(body.get("fingerprint") or "registered"),
+            writable=bool(body.get("writable", True)),
+            last_verified_at=utc_now(),
+            expose_path=bool(body.get("expose_path", False)),
+        )
+        saved = await service.runtime_service.register_placement(placement)
+        return {
+            "workspace_id": saved.workspace_id,
+            "node_id": saved.node_id,
+            "writable": saved.writable,
+            "fingerprint": saved.fingerprint,
+        }
+
+    @app.post("/runtime/tasks/{task_id}/heartbeat")
+    async def runtime_task_heartbeat(
+        task_id: str,
+        body: dict[str, object],
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
+        fencing_token = int(body.get("fencing_token") or 0)
+        try:
+            lease = service.runtime_service.leases.heartbeat(task_id, fencing_token)
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "lease_id": lease.lease_id,
+            "task_id": lease.task_id,
+            "fencing_token": lease.fencing_token,
+            "expires_at": lease.expires_at.isoformat(),
+            "status": lease.status.value,
+        }
+
+    @app.get("/runtime/coding-worker/health")
+    async def coding_worker_health() -> dict[str, object]:
+        return service.runtime_service.coding_worker_health()
+
     return app
 
 

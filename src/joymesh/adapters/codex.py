@@ -47,6 +47,7 @@ class CodexAdapter(HarnessAdapter):
             self.executable_name,
             "exec",
             "--json",
+            "--skip-git-repo-check",
             "--sandbox",
             "workspace-write",
             "--cd",
