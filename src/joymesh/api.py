@@ -1379,6 +1379,60 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return route.as_dict()
 
+    class QuotaRefreshRequest(BaseModel):
+        harness_id: str | None = None
+
+    class RuntimeSnapshotRefreshRequest(BaseModel):
+        harness_id: str | None = None
+
+    @app.get("/quota")
+    @app.get("/api/v1/quota")
+    async def list_quota() -> list[dict[str, object]]:
+        snapshots = await service.list_quota(
+            harness_ids=("opencode", "claude-code", "codex", "gemini-cli", "grok")
+        )
+        return service.quota.as_json(snapshots)
+
+    @app.get("/quota/{harness_id}")
+    @app.get("/api/v1/quota/{harness_id}")
+    async def get_quota(harness_id: str) -> dict[str, object]:
+        snapshot = await service.get_quota(harness_id)
+        return snapshot.as_dict()
+
+    @app.post("/quota/refresh")
+    @app.post("/api/v1/quota/refresh")
+    async def refresh_quota(body: QuotaRefreshRequest | None = None) -> list[dict[str, object]]:
+        harness_id = body.harness_id if body is not None else None
+        if harness_id:
+            snapshots = await service.refresh_quota(harness_id)
+        else:
+            snapshots = await service.list_quota(
+                harness_ids=("opencode", "claude-code", "codex", "gemini-cli", "grok"),
+                refresh=True,
+            )
+        return service.quota.as_json(snapshots)
+
+    @app.get("/runtime/snapshot")
+    @app.get("/api/v1/runtime/snapshot")
+    async def get_runtime_snapshot() -> dict[str, object]:
+        snapshot = await service.get_runtime_snapshot()
+        return service.runtime_snapshots.as_json(snapshot)
+
+    @app.get("/runtime/snapshot/{harness_id}")
+    @app.get("/api/v1/runtime/snapshot/{harness_id}")
+    async def get_runtime_snapshot_harness(harness_id: str) -> dict[str, object]:
+        entry = await service.get_harness_runtime_snapshot(harness_id)
+        return entry.as_dict()
+
+    @app.post("/runtime/snapshot/refresh")
+    @app.post("/api/v1/runtime/snapshot/refresh")
+    async def refresh_runtime_snapshot(
+        body: RuntimeSnapshotRefreshRequest | None = None,
+    ) -> dict[str, object]:
+        harness_id = body.harness_id if body is not None else None
+        snapshot = await service.refresh_runtime_snapshot(harness_id)
+        return service.runtime_snapshots.as_json(snapshot)
+
     @app.get("/api/v1/subscriptions", response_model=list[SubscriptionProfile])
     async def subscriptions() -> tuple[SubscriptionProfile, ...]:
         return await service.list_subscriptions()
@@ -1415,7 +1469,17 @@ def create_app(
             route = request.route or await service.resolve_route(request=request)
             return await service.start_run(request=request, route=route)
         except NoRouteError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            detail: dict[str, object] | str
+            if exc.code:
+                detail = {
+                    "message": str(exc),
+                    "code": exc.code,
+                    "remediation": exc.remediation,
+                    "details": exc.details,
+                }
+            else:
+                detail = str(exc)
+            raise HTTPException(status_code=409, detail=detail) from exc
 
     @app.get("/api/v1/runs/{run_id}", response_model=Run)
     async def get_run(run_id: str) -> Run:

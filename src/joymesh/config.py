@@ -39,6 +39,32 @@ class MetricsSettings:
 
 TelemetrySettings = MetricsSettings
 
+_GEMINI_APPROVAL_MODES = frozenset({"default", "auto_edit", "yolo", "plan"})
+
+
+@dataclass(frozen=True)
+class GeminiHarnessSettings:
+    """Operational Gemini CLI preferences — no secrets."""
+
+    executable: str = "gemini"
+    model: str | None = None
+    approval_mode: str = "default"
+    sandbox: bool = False
+    skip_trust: bool = False
+    include_directories: tuple[str, ...] = ()
+    extra_args: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "executable": self.executable,
+            "model": self.model,
+            "approval_mode": self.approval_mode,
+            "sandbox": self.sandbox,
+            "skip_trust": self.skip_trust,
+            "include_directories": list(self.include_directories),
+            "extra_args": list(self.extra_args),
+        }
+
 
 @dataclass(frozen=True)
 class CustomHarnessConfig:
@@ -75,6 +101,7 @@ class HarnessPreferences:
     enabled: tuple[str, ...] = ()
     default: str | None = None  # None => ask each run
     custom: dict[str, CustomHarnessConfig] = field(default_factory=dict)
+    gemini: GeminiHarnessSettings = field(default_factory=GeminiHarnessSettings)
     selection_required: bool = False
     migration_message: str | None = None
 
@@ -84,7 +111,22 @@ class HarnessPreferences:
             "default": self.default,
             "selection_required": self.selection_required,
             "migration_message": self.migration_message,
+            "gemini": self.gemini.as_dict(),
             "custom": {key: value.as_dict() for key, value in sorted(self.custom.items())},
+        }
+
+
+@dataclass(frozen=True)
+class DeliveryConfig:
+    """JoyMesh → JoyCLI runtime-update delivery preferences."""
+
+    transport: str | None = None
+    socket_path: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "transport": self.transport,
+            "socket_path": self.socket_path,
         }
 
 
@@ -92,6 +134,7 @@ class HarnessPreferences:
 class UserConfig:
     metrics: MetricsSettings = field(default_factory=MetricsSettings)
     harnesses: HarnessPreferences = field(default_factory=HarnessPreferences)
+    delivery: DeliveryConfig = field(default_factory=DeliveryConfig)
 
     @property
     def telemetry(self) -> MetricsSettings:
@@ -101,6 +144,7 @@ class UserConfig:
         return {
             "metrics": self.metrics.as_dict(),
             "harnesses": self.harnesses.as_dict(),
+            "delivery": self.delivery.as_dict(),
         }
 
 
@@ -187,6 +231,37 @@ def _custom_from_raw(harness_id: str, raw: dict[str, Any]) -> CustomHarnessConfi
     )
 
 
+def _gemini_settings_from_raw(raw: dict[str, Any] | None) -> GeminiHarnessSettings:
+    if not isinstance(raw, dict):
+        return GeminiHarnessSettings()
+    include_raw = raw.get("include_directories") or ()
+    if isinstance(include_raw, str):
+        include = tuple(part for part in include_raw.replace(",", " ").split() if part)
+    elif isinstance(include_raw, list):
+        include = tuple(str(item) for item in include_raw)
+    else:
+        include = ()
+    extra_raw = raw.get("extra_args") or ()
+    if isinstance(extra_raw, list):
+        extra = tuple(str(item) for item in extra_raw)
+    else:
+        extra = ()
+    approval = str(raw.get("approval_mode") or "default")
+    if approval not in _GEMINI_APPROVAL_MODES:
+        approval = "default"
+    model_raw = raw.get("model")
+    model = str(model_raw) if model_raw not in (None, "", "null") else None
+    return GeminiHarnessSettings(
+        executable=str(raw.get("executable") or "gemini"),
+        model=model,
+        approval_mode=approval,
+        sandbox=bool(raw.get("sandbox", False)),
+        skip_trust=bool(raw.get("skip_trust", False)),
+        include_directories=include,
+        extra_args=extra,
+    )
+
+
 def _harness_prefs_from_raw(data: dict[str, Any]) -> HarnessPreferences:
     harnesses_raw = data.get("harnesses")
     raw: dict[str, Any] = harnesses_raw if isinstance(harnesses_raw, dict) else {}
@@ -207,10 +282,12 @@ def _harness_prefs_from_raw(data: dict[str, Any]) -> HarnessPreferences:
         for key, value in (custom_raw or {}).items()
     }
     default = str(default_raw) if default_raw not in (None, "", "null") else None
+    gemini_raw = raw.get("gemini") if isinstance(raw.get("gemini"), dict) else None
     return HarnessPreferences(
         enabled=enabled,
         default=default,
         custom=custom,
+        gemini=_gemini_settings_from_raw(gemini_raw),
         selection_required=bool(raw.get("selection_required", False)),
         migration_message=(
             str(raw["migration_message"]) if raw.get("migration_message") is not None else None
@@ -270,11 +347,23 @@ def migrate_legacy_harness_preferences(
             enabled=tuple(enabled),
             default=default,
             custom=dict(prefs.custom),
+            gemini=prefs.gemini,
             selection_required=selection_required,
             migration_message=message,
         ),
     )
     return updated, True
+
+
+def _delivery_from_raw(raw: dict[str, Any] | None) -> DeliveryConfig:
+    if not isinstance(raw, dict):
+        return DeliveryConfig()
+    transport_raw = raw.get("transport")
+    socket_raw = raw.get("socket_path")
+    return DeliveryConfig(
+        transport=str(transport_raw) if transport_raw not in (None, "", "null") else None,
+        socket_path=str(socket_raw) if socket_raw not in (None, "", "null") else None,
+    )
 
 
 def user_config_from_mapping(data: dict[str, Any]) -> UserConfig:
@@ -287,7 +376,12 @@ def user_config_from_mapping(data: dict[str, Any]) -> UserConfig:
     else:
         metrics = MetricsSettings()
     harnesses = _harness_prefs_from_raw(data)
-    return UserConfig(metrics=metrics, harnesses=harnesses)
+    delivery_raw = data.get("delivery") if isinstance(data.get("delivery"), dict) else None
+    return UserConfig(
+        metrics=metrics,
+        harnesses=harnesses,
+        delivery=_delivery_from_raw(delivery_raw),
+    )
 
 
 def set_metrics_mode(

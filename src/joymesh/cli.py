@@ -39,6 +39,10 @@ connector_app = typer.Typer(help="Validate, inspect, and certify versioned conne
 provider_route_app = typer.Typer(help="Inspect and manage provider routes (not harnesses).")
 telemetry_app = typer.Typer(help="Manage anonymous execution metrics preferences (alias).")
 metrics_app = typer.Typer(help="Manage anonymous execution metrics consent preferences.")
+quota_app = typer.Typer(
+    help="Inspect local harness quota and availability.",
+    invoke_without_command=True,
+)
 app.add_typer(harness_app, name="harness")
 app.add_typer(subscription_app, name="subscription")
 app.add_typer(route_app, name="route")
@@ -48,6 +52,14 @@ app.add_typer(connector_app, name="connector")
 app.add_typer(provider_route_app, name="provider-route")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(telemetry_app, name="telemetry")
+app.add_typer(quota_app, name="quota")
+runtime_app = typer.Typer(
+    help="Inspect factual harness runtime snapshots for JoyCLI.",
+    invoke_without_command=True,
+)
+app.add_typer(runtime_app, name="runtime")
+delivery_app = typer.Typer(help="JoyCLI runtime-state delivery intake (Unix socket).")
+app.add_typer(delivery_app, name="delivery")
 
 
 @app.command("init")
@@ -153,6 +165,183 @@ def telemetry_preview() -> None:
     """Alias for ``joymesh metrics preview``."""
 
     _metrics_preview()
+
+
+def _quota_ids() -> tuple[str, ...]:
+    return ("opencode", "claude-code", "codex", "gemini-cli", "grok")
+
+
+def _print_quota_table(mesh: JoyMesh, snapshots: tuple[object, ...]) -> None:
+    typer.echo(mesh.quota.format_table(snapshots))  # type: ignore[arg-type]
+
+
+@quota_app.callback(invoke_without_command=True)
+def quota_root(ctx: typer.Context) -> None:
+    """Show local harness quota and availability (not telemetry)."""
+
+    if ctx.invoked_subcommand is not None:
+        return
+    quota_status()
+
+
+@quota_app.command("status")
+def quota_status() -> None:
+    """Display harness availability in a human-readable table."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshots = await mesh.list_quota(harness_ids=_quota_ids())
+        _print_quota_table(mesh, snapshots)
+
+    _run(operation)
+
+
+@quota_app.command("refresh")
+def quota_refresh(
+    harness: str | None = typer.Option(None, "--harness", help="Refresh one harness only"),
+) -> None:
+    """Invalidate cache and re-probe harness quota."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        if harness:
+            snapshots = await mesh.refresh_quota(harness)
+        else:
+            snapshots = await mesh.list_quota(harness_ids=_quota_ids(), refresh=True)
+        _print_quota_table(mesh, snapshots)
+
+    _run(operation)
+
+
+@quota_app.command("json")
+def quota_json() -> None:
+    """Print quota snapshots as JSON (local routing data only)."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshots = await mesh.list_quota(harness_ids=_quota_ids())
+        typer.echo(json.dumps(mesh.quota.as_json(snapshots), indent=2, sort_keys=True))
+
+    _run(operation)
+
+
+def _runtime_ids() -> tuple[str, ...]:
+    return _quota_ids()
+
+
+@runtime_app.callback(invoke_without_command=True)
+def runtime_root(ctx: typer.Context) -> None:
+    """Show factual harness runtime status for JoyCLI."""
+
+    if ctx.invoked_subcommand is not None:
+        return
+    runtime_status()
+
+
+@runtime_app.command("status")
+def runtime_status() -> None:
+    """Display harness runtime availability (facts only)."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshot = await mesh.get_runtime_snapshot()
+        # Prefer the canonical five when present.
+        wanted = set(_runtime_ids())
+        filtered = type(snapshot)(
+            snapshot_id=snapshot.snapshot_id,
+            observed_at=snapshot.observed_at,
+            harnesses=tuple(
+                item for item in snapshot.harnesses if item.harness_id in wanted
+            ),
+            schema_version=snapshot.schema_version,
+        )
+        if filtered.harnesses:
+            typer.echo(mesh.runtime_snapshots.format_table(filtered), nl=False)
+        else:
+            typer.echo(mesh.runtime_snapshots.format_table(snapshot), nl=False)
+
+    _run(operation)
+
+
+@runtime_app.command("json")
+def runtime_json() -> None:
+    """Print the immutable runtime snapshot as JSON."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshot = await mesh.get_runtime_snapshot()
+        typer.echo(json.dumps(mesh.runtime_snapshots.as_json(snapshot), indent=2, sort_keys=True))
+
+    _run(operation)
+
+
+@runtime_app.command("refresh")
+def runtime_refresh(
+    harness: str | None = typer.Option(None, "--harness", help="Refresh one harness only"),
+) -> None:
+    """Invalidate cache and rebuild the runtime snapshot."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshot = await mesh.refresh_runtime_snapshot(harness)
+        typer.echo(mesh.runtime_snapshots.format_table(snapshot), nl=False)
+
+    _run(operation)
+
+
+@delivery_app.command("intake")
+def delivery_intake(
+    socket: str | None = typer.Option(
+        None,
+        "--socket",
+        help="Unix socket path (default: XDG runtime joymesh-delivery.sock)",
+    ),
+    store: str | None = typer.Option(
+        None,
+        "--store",
+        help="Durable intake SQLite path",
+    ),
+) -> None:
+    """DEPRECATED: reference/test intake only.
+
+    Production ownership is JoyCLI:
+      joyctl runtime intake-serve
+    """
+
+    import warnings
+
+    warnings.warn(
+        "joymesh delivery intake is deprecated; use `joyctl runtime intake-serve` "
+        "(JoyCLI owns the canonical Unix socket receiver).",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    typer.echo(
+        "DEPRECATED: use `joyctl runtime intake-serve` for production intake.",
+        err=True,
+    )
+
+    async def _serve() -> None:
+        from joymesh.delivery import UnixSocketDeliveryServer, default_socket_path
+
+        path = Path(socket) if socket else default_socket_path()
+        server = UnixSocketDeliveryServer(path, intake_path=store)
+        await server.start()
+        typer.echo(f"delivery intake listening on {path} (deprecated reference)", err=True)
+        stop = asyncio.Event()
+        try:
+            await stop.wait()
+        finally:
+            await server.stop()
+
+    try:
+        asyncio.run(_serve())
+    except KeyboardInterrupt:
+        raise typer.Exit(0) from None
+
+
+@delivery_app.command("health")
+def delivery_health() -> None:
+    """Show local delivery transport health from a JoyMesh composition root."""
+
+    async def operation(mesh: JoyMesh) -> dict[str, object]:
+        return mesh.delivery_health()
+
+    _print(_run(operation))
 
 
 def _maybe_prompt_telemetry_consent() -> None:

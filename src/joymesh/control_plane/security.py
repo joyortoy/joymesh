@@ -58,6 +58,14 @@ def generate_node_keypair() -> tuple[str, str]:
     return _encode(private_bytes), _encode(public_bytes)
 
 
+def public_key_from_private(private_key: str) -> str:
+    public_bytes = Ed25519PrivateKey.from_private_bytes(_decode(private_key)).public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return _encode(public_bytes)
+
+
 def sign_envelope(envelope: RemoteTaskEnvelope, private_key: str) -> RemoteTaskEnvelope:
     signature = Ed25519PrivateKey.from_private_bytes(_decode(private_key)).sign(
         canonical_json(envelope, exclude={"signature"})
