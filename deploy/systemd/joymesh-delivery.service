@@ -22,7 +22,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/joymesh /run/joymesh /run/joycli /etc/joymesh/keys
+ReadWritePaths=/var/lib/joymesh /run/joymesh /run/joymux /run/joycli /etc/joymesh/keys
 LimitNOFILE=4096
 
 [Install]

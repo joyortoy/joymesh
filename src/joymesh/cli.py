@@ -12,7 +12,6 @@ from uuid import uuid4
 
 import typer
 
-from joymesh.api import create_app
 from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
@@ -1440,6 +1439,8 @@ def api_server(
     """Run the local REST API."""
 
     import uvicorn
+
+    from joymesh.api import create_app
 
     uvicorn.run(create_app(), host=host, port=port)
 

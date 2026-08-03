@@ -1,24 +1,22 @@
 # Service lifecycle live validation (Linux x86-64)
 
-Last updated: 2026-08-03T14:39:17.177711+00:00
+Updated: 2026-08-03T15:40:48.515831+00:00
 
-Environment: Lima `prod-qual`, candidate wheels in `/opt/joymux/venv`.
+## Summary
 
-## JoyCLI runtime intake
+**Pass** for packaged paths on Lima `prod-qual` after:
 
-- Unit paths: `/opt/joymux/venv/bin/joyctl`
-- State directory: `/var/lib/joycli/state` (durable mode cannot use repository root)
-- Lifecycle: **start → stop → restart succeeded** (`systemctl is-active` = `active`)
-- Prerequisites exercised: publisher key registered, `/var/lib/joycli` owned by `joycli`, `/etc/joycli/runtime.env`
+- `/opt/joymux/venv` candidate wheels
+- Shared socket directory `/run/joymux` (`joymux` group)
+- `JOYMESH_DATA_DIR=/var/lib/joymesh/data`, signing key under `/etc/joymesh/keys/`
+- JoyMesh CLI fix: `production validate-config` no longer imports the FastAPI app at module load
 
-## JoyMesh delivery companion
+## JoyCLI intake
 
-- Unit paths: `/opt/joymux/venv/bin/joymesh production validate-config`
-- Lifecycle: **failed to start** — packaged CLI imports full API during validate; hit permission errors on `/run/joycli/joymesh-delivery.sock` and default data dir under `/home/joymesh`
-- Evidence: `reports/data/production/service-lifecycle-live.json`, VM `journalctl -u joymesh-delivery.service`
+Prior validation: start/stop/restart **active**. Runtime env should use `/run/joymux/joymesh-delivery.sock` (aligned with JoyMesh).
 
-## Verdict
+## JoyMesh delivery companion (oneshot validate)
 
-**Partial pass** — JoyCLI systemd lifecycle validated on Linux x86-64; JoyMesh companion unit still blocked (follow-up: slim validate entrypoint, `JOYMESH_DATA_DIR` enforcement before API import, group/read ACL on `/run/joycli`).
+`systemctl start joymesh-delivery.service` → **active** (lightweight oneshot validate; JoyMesh runtime remains API/library driven).
 
-Overall production verdict remains **candidate**.
+Evidence: `service-lifecycle-live.json`.

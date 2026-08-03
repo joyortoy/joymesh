@@ -6,31 +6,22 @@
 Production candidate with remaining gates
 ```
 
-Last updated: 2026-08-03T14:39:25Z
+Last updated: 2026-08-03T16:35:45Z
 
-## Gate summary
+## Gates
 
 | Gate | Status |
 |------|--------|
-| Fault injection (25 cases) | **24/25 pass**, 1 skip (`fault-injection.json`) |
-| Upgrade RC1→candidate | **PASS** (`upgrade-rollback.json`) |
-| Linux systemd lifecycle | **Partial** — JoyCLI pass, JoyMesh fail (`service-lifecycle-live.json`) |
-| 1h Linux qualification | **RETRY in progress** — first run ~3600s completed but JSON write failed (virtiofs RO on mounted reports path); retry writes `/tmp/qualification-1h.json` on VM (PID 8234) |
-| 8h Linux qualification | **Not started** (blocked on 1h gates) |
+| 1h Linux qualification | **PASS** — all measurement gates true (`qualification-1h.json`) |
+| 8h Linux qualification | **IN PROGRESS** on prod-qual (`/tmp/qualification-8h.json`) |
+| Linux systemd (JoyCLI intake) | **PASS** (prior) |
+| Linux systemd (JoyMesh delivery validate oneshot) | **PASS** after CLI lazy-import fix + `/opt/joymux/venv` |
+| Fault injection 25-case matrix | 24 pass, 1 skip (FI-25) |
+| Upgrade RC1→candidate | PASS |
 
-## Lima prod-qual
+## Remaining
 
-* Ubuntu 24.04 x86_64, `/opt/joymux/venv` candidate wheels
-* JoyCLI unit uses `/opt/joymux/venv/bin/joyctl` and state dir `/var/lib/joycli/state`
-
-## Pytest evidence (macOS host venv)
-
-* JoyMesh production suite: 40 passed (prior pass)
-* JoyCLI production readiness: 14 passed (prior pass)
-
-## Remaining before production-ready
-
-1. Complete 1h soak with all measurement gates green (then 8h)
-2. JoyMesh systemd companion unit — validate-config must not require full API import; fix data dir + `/run/joycli` ACLs
-3. Live Linux case FI-25 (SIGKILL mid-commit)
-4. Full reboot simulation under systemd
+1. Complete **8h** soak on Linux x86-64
+2. FI-25 live SIGKILL mid-commit
+3. Reboot simulation under systemd
+4. Ship JoyMesh CLI lazy-import fix in next candidate wheel (validated via editable/patch on VM)

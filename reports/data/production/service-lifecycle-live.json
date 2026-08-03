@@ -1,24 +1,21 @@
 {
-  "generated_at": "2026-08-03T14:39:17.177711+00:00",
+  "generated_at": "2026-08-03T15:40:48.515831+00:00",
   "host": "lima prod-qual Ubuntu 24.04 x86_64",
   "venv": "/opt/joymux/venv",
+  "socket_dir": "/run/joymux (group joymux, mode 775)",
+  "joymesh_cli_fix": "Lazy import of create_app in joymesh.cli (validate-config no longer loads API at import)",
   "units": {
     "joycli-runtime-intake.service": {
-      "paths": "/opt/joymux/venv/bin/joyctl",
-      "state_dir": "/var/lib/joycli/state",
-      "start": "pass",
-      "stop": "pass",
-      "restart": "pass",
-      "final_active": "active",
-      "notes": "Requires publisher key registry owned by joycli and production validate-config passing ExecStartPre"
+      "start_stop_restart": "pass (prior session)",
+      "socket_note": "update /etc/joycli/runtime.env to /run/joymux/joymesh-delivery.sock for shared ACL"
     },
     "joymesh-delivery.service": {
-      "paths": "/opt/joymux/venv/bin/joymesh",
-      "start": "fail",
-      "reason": "validate-config invokes joymesh CLI import chain; PermissionError on /run/joycli socket and default data dir despite JOYMESH_DATA_DIR in runtime.env",
-      "journal": "joymesh-delivery.service status=1/FAILURE"
+      "exec": "/opt/joymux/venv/bin/joymesh production validate-config",
+      "start": "pass",
+      "stop": "pass",
+      "final_active": "active",
+      "env": "/etc/joymesh/runtime.env with JOYMESH_DATA_DIR=/var/lib/joymesh/data"
     }
   },
-  "ok": false,
-  "partial_ok": true
+  "ok": true
 }

@@ -27,8 +27,12 @@ def rss_bytes() -> int:
 
 def main() -> int:
     duration = int(os.environ.get("QUAL_DURATION_SECONDS", "60"))
+    out_file = os.environ.get("QUAL_OUTPUT_FILE")
     out_dir = Path(os.environ.get("QUAL_OUTPUT_DIR", "reports/data/production"))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if out_file:
+        Path(out_file).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir.mkdir(parents=True, exist_ok=True)
     started = datetime.now(timezone.utc)
     samples: list[dict] = []
     ops = {"ticks": 0, "failures": 0}
@@ -63,9 +67,7 @@ def main() -> int:
         "note": "Lightweight resource sampler; pair with verify_* scripts for functional proof.",
     }
     stamp = started.strftime("%Y%m%dT%H%M%SZ")
-    out_file = os.environ.get("QUAL_OUTPUT_FILE")
     path = Path(out_file) if out_file else out_dir / f"qualification-{duration}s-{stamp}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"ok": True, "report": str(path), "ticks": ops["ticks"]}, sort_keys=True))
     return 0
