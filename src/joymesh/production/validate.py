@@ -88,6 +88,9 @@ def validate_production_config(config: ProductionConfig | None = None) -> Valida
     if cfg.maximum_frame_size < 1024 or cfg.max_outbox_entries < 1:
         issues.append(ValidationIssue("invalid_bounds", "frame size / outbox limits invalid"))
 
+    if cfg.queue_limits < 1:
+        issues.append(ValidationIssue("invalid_queue_limits", "queue_limits must be >= 1"))
+
     errors = [i for i in issues if i.severity == "error"]
     return ValidationResult(ok=not errors, issues=issues, config=cfg.as_dict(redact=True))
 

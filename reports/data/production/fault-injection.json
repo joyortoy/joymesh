@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "ok": true,
+      "returncode": 0,
+      "stderr_tail": [],
+      "stdout_tail": [
+        "......                                                                   [100%]"
+      ],
+      "target": "tests/test_fault_injection_production.py"
+    },
+    {
+      "ok": true,
+      "returncode": 0,
+      "stderr_tail": [],
+      "stdout_tail": [
+        "....                                                                     [100%]"
+      ],
+      "target": "tests/test_production_readiness.py"
+    }
+  ],
+  "generated_at": "2026-08-03T14:15:25.205036+00:00",
+  "ok": true
+}

@@ -54,7 +54,9 @@ def main() -> int:
         "note": "Lightweight resource sampler; pair with verify_* scripts for functional proof.",
     }
     stamp = started.strftime("%Y%m%dT%H%M%SZ")
-    path = out_dir / f"qualification-{duration}s-{stamp}.json"
+    out_file = os.environ.get("QUAL_OUTPUT_FILE")
+    path = Path(out_file) if out_file else out_dir / f"qualification-{duration}s-{stamp}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"ok": True, "report": str(path), "ticks": ops["ticks"]}, sort_keys=True))
     return 0

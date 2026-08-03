@@ -1,0 +1,69 @@
+{
+  "artifacts_dir": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts",
+  "candidate_wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/candidate/joymesh-0.1.0-py3-none-any.whl",
+  "generated_at": "2026-08-03T14:22:35.414846+00:00",
+  "ok": false,
+  "rc1_wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/rc1/joymesh-0.1.0-py3-none-any.whl",
+  "steps": [
+    {
+      "ok": true,
+      "step": "create_venv"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [
+        "",
+        "[notice] A new release of pip is available: 25.0.1 -> 26.2",
+        "[notice] To update, run: /var/folders/br/9x47s9s10bngnx91nd_nz_pr0000gn/T/joymesh-upgrade-l2l_gv80/venv/bin/python -m pip install --upgrade pip"
+      ],
+      "step": "install_rc1",
+      "wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/rc1/joymesh-0.1.0-py3-none-any.whl"
+    },
+    {
+      "ok": false,
+      "stderr_tail": [
+        "Traceback (most recent call last):",
+        "  File \"<string>\", line 1, in <module>",
+        "ModuleNotFoundError: No module named 'joymesh.production'"
+      ],
+      "stdout": "",
+      "step": "verify_rc1"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [
+        "",
+        "[notice] A new release of pip is available: 25.0.1 -> 26.2",
+        "[notice] To update, run: /var/folders/br/9x47s9s10bngnx91nd_nz_pr0000gn/T/joymesh-upgrade-l2l_gv80/venv/bin/python -m pip install --upgrade pip"
+      ],
+      "step": "upgrade_candidate",
+      "wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/candidate/joymesh-0.1.0-py3-none-any.whl"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [],
+      "stdout": "2000",
+      "step": "verify_candidate"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [
+        "",
+        "[notice] A new release of pip is available: 25.0.1 -> 26.2",
+        "[notice] To update, run: /var/folders/br/9x47s9s10bngnx91nd_nz_pr0000gn/T/joymesh-upgrade-l2l_gv80/venv/bin/python -m pip install --upgrade pip"
+      ],
+      "step": "rollback_rc1",
+      "wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/rc1/joymesh-0.1.0-py3-none-any.whl"
+    },
+    {
+      "ok": false,
+      "stderr_tail": [
+        "Traceback (most recent call last):",
+        "  File \"<string>\", line 1, in <module>",
+        "ModuleNotFoundError: No module named 'joymesh.production'"
+      ],
+      "stdout": "",
+      "step": "verify_rollback"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-# Fault injection validation
+# Multitenancy negative validation
 
 Last updated: 2026-08-03T14:28:59Z (production qualification pass)
 
@@ -9,8 +9,4 @@ Last updated: 2026-08-03T14:28:59Z (production qualification pass)
 - Editable venv (macOS scripts): `joymesh-rc1-verify/venv-joymesh-src`
 
 
-Automated: `scripts/production/verify_fault_injection.py` → **PASS** (`fault-injection.json`).
-
-Covers pytest targets `test_fault_injection_production.py` and `test_production_readiness.py`.
-
-Extended matrix (SIGKILL mid-commit, disk full, live corruption): still **open** for a future soak environment.
+Same run as multitenancy audit: `multitenancy-negative.json` → **PASS**.
