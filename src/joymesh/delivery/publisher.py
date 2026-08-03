@@ -49,6 +49,14 @@ class RuntimeDeliveryPublisher:
                 self._private_key = configured_key.strip()
                 public_key = public_key_from_private(self._private_key)
             else:
+                from joymesh.control_plane.security import production_mode
+
+                if production_mode():
+                    raise RuntimeError(
+                        "production signing key required: set JOYMESH_RUNTIME_SIGNING_KEY "
+                        "or JOYMESH_RUNTIME_SIGNING_KEY_PATH"
+                    )
+                # Non-production: preserve RC1 ephemeral fallback for local/dev tests.
                 self._private_key, public_key = generate_node_keypair()
         self.key_id = key_id or os.environ.get("JOYMESH_RUNTIME_SIGNING_KEY_ID") or (
             f"ed25519:{hashlib.sha256(public_key.encode()).hexdigest()[:16]}"

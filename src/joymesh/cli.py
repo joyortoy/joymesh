@@ -60,6 +60,10 @@ runtime_app = typer.Typer(
 app.add_typer(runtime_app, name="runtime")
 delivery_app = typer.Typer(help="JoyCLI runtime-state delivery intake (Unix socket).")
 app.add_typer(delivery_app, name="delivery")
+production_app = typer.Typer(help="Production readiness utilities.")
+app.add_typer(production_app, name="production")
+runtime_key_app = typer.Typer(help="Runtime signing key lifecycle.")
+runtime_app.add_typer(runtime_key_app, name="key")
 
 
 @app.command("init")
@@ -342,6 +346,97 @@ def delivery_health() -> None:
         return mesh.delivery_health()
 
     _print(_run(operation))
+
+
+@delivery_app.command("backup")
+def delivery_backup(
+    destination: str = typer.Option(..., "--destination", help="Empty directory for backup"),
+    outbox: str | None = typer.Option(None, "--outbox", help="Outbox SQLite path"),
+    include_private_key: bool = typer.Option(
+        False,
+        "--include-private-key",
+        help="Include signing private key (explicit and dangerous)",
+    ),
+) -> None:
+    """Backup durable delivery outbox with checksums."""
+
+    from joymesh.delivery.backup import backup_delivery_outbox
+    from joymesh.delivery.outbox import default_outbox_path
+    from joymesh.production.config import load_production_config
+
+    cfg = load_production_config()
+    outbox_path = Path(outbox) if outbox else Path(cfg.outbox_path or default_outbox_path())
+    key_path = Path(cfg.signing_key_path).expanduser() if cfg.signing_key_path else None
+    manifest = backup_delivery_outbox(
+        outbox_path=outbox_path,
+        destination=Path(destination),
+        signing_key_path=key_path,
+        include_private_key=include_private_key,
+    )
+    _print(manifest.as_dict())
+
+
+@delivery_app.command("restore")
+def delivery_restore(
+    source: str = typer.Option(..., "--source", help="Backup directory"),
+    outbox: str | None = typer.Option(None, "--outbox", help="Destination outbox path"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing outbox"),
+) -> None:
+    """Restore delivery outbox from a checksummed backup."""
+
+    from joymesh.delivery.backup import restore_delivery_outbox
+    from joymesh.delivery.outbox import default_outbox_path
+    from joymesh.production.config import load_production_config
+
+    cfg = load_production_config()
+    outbox_path = Path(outbox) if outbox else Path(cfg.outbox_path or default_outbox_path())
+    manifest = restore_delivery_outbox(
+        backup_dir=Path(source),
+        outbox_path=outbox_path,
+        force=force,
+    )
+    _print(manifest.as_dict())
+
+
+@production_app.command("validate-config")
+def production_validate_config() -> None:
+    """Validate production configuration without starting services."""
+
+    from joymesh.production import validate_production_config
+
+    result = validate_production_config()
+    _print(result.as_dict())
+    if not result.ok:
+        raise typer.Exit(2)
+
+
+@runtime_key_app.command("generate")
+def runtime_key_generate(
+    destination: str = typer.Option(..., "--destination", help="Private key output path"),
+    key_id: str | None = typer.Option(None, "--key-id", help="Optional key id"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Generate a runtime signing keypair; never prints the private key."""
+
+    from joymesh.delivery.key_lifecycle import generate_runtime_signing_key
+
+    generated = generate_runtime_signing_key(
+        destination=Path(destination),
+        key_id=key_id,
+        overwrite=overwrite,
+    )
+    _print(generated.as_dict(include_private=False))
+
+
+@runtime_key_app.command("inspect")
+def runtime_key_inspect(
+    path: str = typer.Option(..., "--path", help="Private key path"),
+) -> None:
+    """Inspect a signing key file without printing private material."""
+
+    from joymesh.delivery.key_lifecycle import inspect_runtime_signing_key
+
+    _print(inspect_runtime_signing_key(Path(path)))
 
 
 def _maybe_prompt_telemetry_consent() -> None:
