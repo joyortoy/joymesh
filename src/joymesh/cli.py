@@ -61,6 +61,16 @@ delivery_app = typer.Typer(help="JoyCLI runtime-state delivery intake (Unix sock
 app.add_typer(delivery_app, name="delivery")
 production_app = typer.Typer(help="Production readiness utilities.")
 app.add_typer(production_app, name="production")
+legal_app = typer.Typer(help="JoyLegal contract emission (evidence only; JoyLegal owns verdicts).")
+legal_cert_app = typer.Typer(help="Producer certification observations.")
+legal_evidence_app = typer.Typer(help="Producer evidence export.")
+legal_bundle_app = typer.Typer(help="JoyLegal bundle materialization.")
+legal_compat_app = typer.Typer(help="Schema compatibility checks.")
+app.add_typer(legal_app, name="legal")
+legal_app.add_typer(legal_cert_app, name="certification")
+legal_app.add_typer(legal_evidence_app, name="evidence")
+legal_app.add_typer(legal_bundle_app, name="bundle")
+legal_app.add_typer(legal_compat_app, name="compatibility")
 runtime_key_app = typer.Typer(help="Runtime signing key lifecycle.")
 runtime_app.add_typer(runtime_key_app, name="key")
 
@@ -395,6 +405,218 @@ def delivery_restore(
         force=force,
     )
     _print(manifest.as_dict())
+
+
+def _legal_repo_root(repo: str | None) -> Path:
+    from joymesh.legal.identity import repo_root_from_module
+
+    return Path(repo).resolve() if repo else repo_root_from_module()
+
+
+def _legal_identity(repo: str | None):
+    from joymesh.legal.identity import collect_source_identity
+
+    root = _legal_repo_root(repo)
+    return collect_source_identity(root, producer_system="joymesh")
+
+
+@legal_cert_app.command("export")
+def legal_certification_export(
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+    output: str | None = typer.Option(None, "--output", help="Optional JSON output path"),
+    environment: str = typer.Option("local", "--environment"),
+    workspace_id: str = typer.Option("ws-joymesh", "--workspace-id"),
+    profile_id: str = typer.Option("joymesh-production-readiness-v1", "--profile-id"),
+    claim_type: str = typer.Option("production_ready", "--claim-type"),
+) -> None:
+    """Export a producer certification observation (never an ALLOW/DENY verdict)."""
+
+    from joymesh.legal import (
+        build_certification_observation_v2,
+        build_claim_v2,
+        build_connector_evidence,
+        build_soak_evidence,
+        validate_against_schema,
+    )
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    soak = build_soak_evidence(identity=identity, repo_root=root)
+    connector = build_connector_evidence(identity=identity, repo_root=root)
+    evidence_items = [soak, connector]
+    evidence_ids = [str(item["id"]) for item in evidence_items]
+    limitations = list(soak.get("limitations") or [])
+    claim = build_claim_v2(
+        identity=identity,
+        claim_type=claim_type,
+        environment=environment,
+        workspace_id=workspace_id,
+        claimant="joymesh-producer",
+        requested_profile=profile_id,
+        supporting_evidence=evidence_ids,
+        limitations=limitations,
+    )
+    known_gaps = list(soak.get("soak_8h", {}).get("limitations") or [])
+    certification = build_certification_observation_v2(
+        identity=identity,
+        claim=claim,
+        evidence_items=evidence_items,
+        profile_id=profile_id,
+        environment=environment,
+        workspace_id=workspace_id,
+        known_gaps=known_gaps,
+    )
+    payload = {
+        "claim": claim,
+        "certification": certification,
+        "schema_validation": {
+            "claim": validate_against_schema(claim, "claim-v2.json"),
+            "certification": validate_against_schema(certification, "certification-v2.json"),
+        },
+    }
+    if output:
+        out = Path(output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _print(payload)
+
+
+@legal_evidence_app.command("export")
+def legal_evidence_export(
+    output: str = typer.Option(..., "--output", help="Evidence output directory"),
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+) -> None:
+    """Export producer soak and connector evidence pack."""
+
+    from joymesh.legal import export_evidence
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    _print(export_evidence(identity=identity, output_dir=Path(output), evidence_items=[], repo_root=root))
+
+
+@legal_bundle_app.command("create")
+def legal_bundle_create(
+    output: str = typer.Option(..., "--output", help="Bundle output directory"),
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+    evidence_dir: str | None = typer.Option(None, "--evidence-dir"),
+    environment: str = typer.Option("local", "--environment"),
+    workspace_id: str = typer.Option("ws-joymesh", "--workspace-id"),
+    claim_type: str = typer.Option("production_ready", "--claim-type"),
+) -> None:
+    """Create a joylegal.bundle/v2 directory with claim, certification, and evidence."""
+
+    from joymesh.legal import (
+        build_certification_observation_v2,
+        build_claim_v2,
+        compatibility_check,
+        create_bundle_directory,
+        export_evidence,
+    )
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    out = Path(output)
+    pack_dir = Path(evidence_dir) if evidence_dir else out.parent / "evidence-pack"
+    exported = export_evidence(
+        identity=identity,
+        output_dir=pack_dir,
+        evidence_items=[],
+        repo_root=root,
+    )
+    evidence_items = exported["items"]
+    evidence_ids = [str(item["id"]) for item in evidence_items]
+    limitations: list[str] = []
+    for item in evidence_items:
+        limitations.extend(item.get("limitations") or [])
+    claim = build_claim_v2(
+        identity=identity,
+        claim_type=claim_type,
+        environment=environment,
+        workspace_id=workspace_id,
+        claimant="joymesh-producer",
+        requested_profile="joymesh-production-readiness-v1",
+        supporting_evidence=evidence_ids,
+        limitations=limitations or ["Awaiting JoyLegal evidence admission and decision."],
+    )
+    certification = build_certification_observation_v2(
+        identity=identity,
+        claim=claim,
+        evidence_items=evidence_items,
+        environment=environment,
+        workspace_id=workspace_id,
+        known_gaps=list(exported["pack"].get("limitations") or []),
+    )
+    result = create_bundle_directory(
+        identity=identity,
+        output_dir=out,
+        claim=claim,
+        certification=certification,
+        evidence_dir=pack_dir,
+    )
+    result["schema_validation"] = compatibility_check(
+        [
+            (claim, "claim-v2.json"),
+            (certification, "certification-v2.json"),
+            (result["manifest"], "bundle-v2.json"),
+        ]
+    )
+    _print(result)
+
+
+@legal_compat_app.command("check")
+def legal_compatibility_check(
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+) -> None:
+    """Validate sample emitted documents against vendored JoyLegal schemas."""
+
+    from joymesh.legal import (
+        build_certification_observation_v2,
+        build_claim_v2,
+        build_connector_evidence,
+        build_soak_evidence,
+        compatibility_check,
+        create_bundle_directory,
+    )
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    soak = build_soak_evidence(identity=identity, repo_root=root)
+    connector = build_connector_evidence(identity=identity, repo_root=root)
+    evidence_items = [soak, connector]
+    claim = build_claim_v2(
+        identity=identity,
+        claim_type="release_candidate",
+        environment="local",
+        workspace_id="ws-joymesh",
+        claimant="joymesh-producer",
+        requested_profile="joymesh-production-readiness-v1",
+        supporting_evidence=[str(item["id"]) for item in evidence_items],
+        limitations=["compatibility_check_fixture"],
+    )
+    certification = build_certification_observation_v2(
+        identity=identity,
+        claim=claim,
+        evidence_items=evidence_items,
+        known_gaps=["compatibility_check_fixture_gap"],
+    )
+    bundle = create_bundle_directory(
+        identity=identity,
+        output_dir=root / "reports" / "legal" / "compatibility-tmp-bundle",
+        claim=claim,
+        certification=certification,
+        evidence_dir=None,
+    )["manifest"]
+    result = compatibility_check(
+        [
+            (claim, "claim-v2.json"),
+            (certification, "certification-v2.json"),
+            (bundle, "bundle-v2.json"),
+        ]
+    )
+    _print(result)
+    if not result["ok"]:
+        raise typer.Exit(2)
 
 
 @production_app.command("validate-config")

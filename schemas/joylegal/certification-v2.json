@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "IntegrationSystem": {
+      "enum": [
+        "joycli",
+        "joymesh",
+        "joymux",
+        "joypay",
+        "joyui",
+        "joyview"
+      ],
+      "title": "IntegrationSystem",
+      "type": "string"
+    }
+  },
+  "$id": "https://joyuniverse.dev/schemas/joylegal/certification-v2.json",
+  "additionalProperties": false,
+  "properties": {
+    "canonical_content_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Canonical Content Hash",
+      "type": "string"
+    },
+    "claim_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Claim Id",
+      "type": "string"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "decision": {
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Decision",
+      "type": "string"
+    },
+    "decision_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "environment": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Environment",
+      "type": "string"
+    },
+    "evaluator_version": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Evaluator Version",
+      "type": "string"
+    },
+    "evidence_admitted": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Evidence Admitted",
+      "type": "array"
+    },
+    "evidence_missing": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Missing",
+      "type": "array"
+    },
+    "evidence_rejected": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Evidence Rejected",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "producer_system": {
+      "$ref": "#/$defs/IntegrationSystem",
+      "default": "joymesh"
+    },
+    "profile_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_version": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "reason_codes": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "report_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Report Id",
+      "type": "string"
+    },
+    "report_status": {
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Report Status",
+      "type": "string"
+    },
+    "source_repository_ids": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Source Repository Ids",
+      "type": "array"
+    },
+    "subject": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Subject",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^joylegal\\.certification/v2$",
+      "title": "Version",
+      "type": "string"
+    },
+    "workspace_id": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Id"
+    }
+  },
+  "required": [
+    "version",
+    "report_id",
+    "profile_id",
+    "profile_version",
+    "subject",
+    "claim_id",
+    "environment",
+    "decision_id",
+    "decision",
+    "evaluator_version",
+    "generated_at",
+    "report_status",
+    "canonical_content_hash"
+  ],
+  "title": "CertificationReportV2",
+  "type": "object"
+}

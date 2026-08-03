@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "IntegrationSystem": {
+      "enum": [
+        "joycli",
+        "joymesh",
+        "joymux",
+        "joypay",
+        "joyui",
+        "joyview"
+      ],
+      "title": "IntegrationSystem",
+      "type": "string"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://joyuniverse.dev/schemas/joylegal/authority-v2.json",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Action",
+      "type": "string"
+    },
+    "authority_decision_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Authority Decision Id",
+      "type": "string"
+    },
+    "canonical_content_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Canonical Content Hash",
+      "type": "string"
+    },
+    "context": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Context",
+      "type": "object"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "delegation_chain": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Delegation Chain",
+      "type": "array"
+    },
+    "environment": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Environment",
+      "type": "string"
+    },
+    "evaluated_at": {
+      "format": "date-time",
+      "title": "Evaluated At",
+      "type": "string"
+    },
+    "evaluator_version": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Evaluator Version",
+      "type": "string"
+    },
+    "explanation": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Explanation",
+      "type": "string"
+    },
+    "grant_ids": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Grant Ids",
+      "type": "array"
+    },
+    "outcome": {
+      "maxLength": 40,
+      "minLength": 1,
+      "title": "Outcome",
+      "type": "string"
+    },
+    "principal": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Principal",
+      "type": "string"
+    },
+    "producer_system": {
+      "$ref": "#/$defs/IntegrationSystem",
+      "default": "joypay"
+    },
+    "reason_codes": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "required_approvals": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Approvals",
+      "type": "array"
+    },
+    "resource": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Resource",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^joylegal\\.authority/v2$",
+      "title": "Version",
+      "type": "string"
+    },
+    "workspace": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "authority_decision_id",
+    "principal",
+    "action",
+    "resource",
+    "workspace",
+    "environment",
+    "outcome",
+    "explanation",
+    "evaluated_at",
+    "evaluator_version",
+    "canonical_content_hash"
+  ],
+  "title": "AuthorityDecisionV2",
+  "type": "object"
+}
