@@ -44,11 +44,20 @@ def main() -> int:
         )
         time.sleep(min(5.0, max(0.5, duration / 120)))
     ended = datetime.now(timezone.utc)
+    elapsed = (ended - started).total_seconds()
+    min_ticks = max(1, int(duration / 10))
+    gates = {
+        "duration_met": elapsed >= (duration - 5),
+        "zero_failures": ops["failures"] == 0,
+        "min_ticks": ops["ticks"] >= min_ticks,
+    }
     report = {
-        "ok": True,
+        "ok": all(gates.values()),
+        "gates": gates,
         "started_at": started.isoformat(),
         "ended_at": ended.isoformat(),
         "duration_seconds": duration,
+        "elapsed_seconds": elapsed,
         "operations": ops,
         "samples": samples[-120:],
         "note": "Lightweight resource sampler; pair with verify_* scripts for functional proof.",

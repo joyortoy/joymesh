@@ -1,24 +1,344 @@
 {
   "cases": [
     {
-      "ok": true,
+      "evidence": "tests/test_fault_injection_production.py::test_production_missing_signing_key_fails",
+      "id": "FI-01",
+      "nodeid": "tests/test_fault_injection_production.py::test_production_missing_signing_key_fails",
+      "repo": "joymesh",
       "returncode": 0,
+      "status": "pass",
       "stderr_tail": [],
       "stdout_tail": [
-        "......                                                                   [100%]"
+        ".                                                                        [100%]"
       ],
-      "target": "tests/test_fault_injection_production.py"
+      "title": "Production missing signing key fails closed"
     },
     {
-      "ok": true,
+      "evidence": "tests/test_fault_injection_production.py::test_invalid_signature_rejected_by_verifier",
+      "id": "FI-02",
+      "nodeid": "tests/test_fault_injection_production.py::test_invalid_signature_rejected_by_verifier",
+      "repo": "joymesh",
       "returncode": 0,
+      "status": "pass",
       "stderr_tail": [],
       "stdout_tail": [
-        "....                                                                     [100%]"
+        ".                                                                        [100%]"
       ],
-      "target": "tests/test_production_readiness.py"
+      "title": "Invalid signature rejected"
+    },
+    {
+      "evidence": "tests/test_fault_injection_production.py::test_outbox_restore_checksum_mismatch",
+      "id": "FI-03",
+      "nodeid": "tests/test_fault_injection_production.py::test_outbox_restore_checksum_mismatch",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Outbox restore checksum mismatch"
+    },
+    {
+      "evidence": "tests/test_fault_injection_production.py::test_backup_interrupt_corrupt_manifest",
+      "id": "FI-04",
+      "nodeid": "tests/test_fault_injection_production.py::test_backup_interrupt_corrupt_manifest",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Backup interrupt corrupt manifest"
+    },
+    {
+      "evidence": "tests/test_fault_injection_production.py::test_outbox_max_entries_from_production_config",
+      "id": "FI-05",
+      "nodeid": "tests/test_fault_injection_production.py::test_outbox_max_entries_from_production_config",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Outbox max entries from production config"
+    },
+    {
+      "evidence": "tests/test_fault_injection_production.py::test_revoked_key_rejected_on_joycli_side",
+      "id": "FI-06",
+      "nodeid": "tests/test_fault_injection_production.py::test_revoked_key_rejected_on_joycli_side",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Revoked key rejected on JoyCLI side"
+    },
+    {
+      "evidence": "tests/test_fault_injection_intake.py::test_commit_durable_before_ack_semantics",
+      "id": "FI-07",
+      "nodeid": "tests/test_fault_injection_intake.py::test_commit_durable_before_ack_semantics",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "1 passed, 1 warning in 0.06s"
+      ],
+      "title": "Commit durable before ack semantics"
+    },
+    {
+      "evidence": "tests/test_fault_injection_intake.py::test_receive_without_commit_not_visible",
+      "id": "FI-08",
+      "nodeid": "tests/test_fault_injection_intake.py::test_receive_without_commit_not_visible",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]",
+        "1 passed in 0.05s"
+      ],
+      "title": "Receive without commit not visible"
+    },
+    {
+      "evidence": "tests/test_fault_injection_intake.py::test_listener_rejects_oversized_frame",
+      "id": "FI-09",
+      "nodeid": "tests/test_fault_injection_intake.py::test_listener_rejects_oversized_frame",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "1 passed, 1 warning in 0.05s"
+      ],
+      "title": "Listener rejects oversized frame"
+    },
+    {
+      "evidence": "tests/test_fault_injection_intake.py::test_restore_rejects_future_schema_version",
+      "id": "FI-10",
+      "nodeid": "tests/test_fault_injection_intake.py::test_restore_rejects_future_schema_version",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]",
+        "1 passed in 0.06s"
+      ],
+      "title": "Restore rejects future schema version"
+    },
+    {
+      "evidence": "tests/test_fault_injection_intake.py::test_restore_refuses_overwrite_without_force",
+      "id": "FI-11",
+      "nodeid": "tests/test_fault_injection_intake.py::test_restore_refuses_overwrite_without_force",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]",
+        "1 passed in 0.05s"
+      ],
+      "title": "Restore refuses overwrite without force"
+    },
+    {
+      "evidence": "tests/test_fault_injection_intake.py::test_revoked_publisher_key_rejected",
+      "id": "FI-12",
+      "nodeid": "tests/test_fault_injection_intake.py::test_revoked_publisher_key_rejected",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]",
+        "1 passed in 0.05s"
+      ],
+      "title": "Revoked publisher key rejected"
+    },
+    {
+      "evidence": "tests/test_production_readiness.py::test_production_validate_requires_signing_key",
+      "id": "FI-13",
+      "nodeid": "tests/test_production_readiness.py::test_production_validate_requires_signing_key",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Production validate requires signing key"
+    },
+    {
+      "evidence": "tests/test_production_readiness.py::test_publisher_fails_closed_in_production",
+      "id": "FI-14",
+      "nodeid": "tests/test_production_readiness.py::test_publisher_fails_closed_in_production",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Publisher fails closed in production"
+    },
+    {
+      "evidence": "tests/test_production_readiness.py::test_key_generate_never_returns_private",
+      "id": "FI-15",
+      "nodeid": "tests/test_production_readiness.py::test_key_generate_never_returns_private",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Key generate never returns private material"
+    },
+    {
+      "evidence": "tests/test_production_readiness.py::test_delivery_backup_restore",
+      "id": "FI-16",
+      "nodeid": "tests/test_production_readiness.py::test_delivery_backup_restore",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Delivery backup restore roundtrip"
+    },
+    {
+      "evidence": "tests/test_node_production_path.py::test_challenge_signature_roundtrip",
+      "id": "FI-17",
+      "nodeid": "tests/test_node_production_path.py::test_challenge_signature_roundtrip",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Node challenge signature roundtrip"
+    },
+    {
+      "evidence": "tests/test_node_production_path.py::test_inline_refused_in_production",
+      "id": "FI-18",
+      "nodeid": "tests/test_node_production_path.py::test_inline_refused_in_production",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Inline transport refused in production"
+    },
+    {
+      "evidence": "tests/test_node_production_path.py::test_node_journal_survives_restart_and_blocks_duplicate",
+      "id": "FI-19",
+      "nodeid": "tests/test_node_production_path.py::test_node_journal_survives_restart_and_blocks_duplicate",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Node journal survives restart; blocks duplicate"
+    },
+    {
+      "evidence": "tests/test_node_production_path.py::test_connector_envelope_signing",
+      "id": "FI-20",
+      "nodeid": "tests/test_node_production_path.py::test_connector_envelope_signing",
+      "repo": "joymesh",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "title": "Connector envelope signing"
+    },
+    {
+      "evidence": "tests/test_multitenancy_negatives.py::test_foreign_org_cannot_use_wrong_tenant_key",
+      "id": "FI-21",
+      "nodeid": "tests/test_multitenancy_negatives.py::test_foreign_org_cannot_use_wrong_tenant_key",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]",
+        "1 passed in 0.06s"
+      ],
+      "title": "Foreign org cannot use wrong tenant key"
+    },
+    {
+      "evidence": "tests/test_multitenancy_negatives.py::test_cross_tenant_publish_rejected",
+      "id": "FI-22",
+      "nodeid": "tests/test_multitenancy_negatives.py::test_cross_tenant_publish_rejected",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "1 passed, 1 warning in 0.05s"
+      ],
+      "title": "Cross-tenant publish rejected"
+    },
+    {
+      "evidence": "tests/test_multitenancy_negatives.py::test_list_harnesses_org_scoped_projection_filter",
+      "id": "FI-23",
+      "nodeid": "tests/test_multitenancy_negatives.py::test_list_harnesses_org_scoped_projection_filter",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "1 passed, 1 warning in 0.05s"
+      ],
+      "title": "Harness list org-scoped projection filter"
+    },
+    {
+      "evidence": "tests/test_multitenancy_negatives.py::test_key_id_alone_does_not_authorize_without_matching_org",
+      "id": "FI-24",
+      "nodeid": "tests/test_multitenancy_negatives.py::test_key_id_alone_does_not_authorize_without_matching_org",
+      "repo": "joycli",
+      "returncode": 0,
+      "status": "pass",
+      "stderr_tail": [],
+      "stdout_tail": [
+        ".                                                                        [100%]",
+        "1 passed in 0.06s"
+      ],
+      "title": "Key id alone does not authorize without org"
+    },
+    {
+      "evidence": "docs/production-deployment.md#walkthrough; requires live systemd intake \u2014 not executed on prod-qual",
+      "id": "FI-25",
+      "status": "skip",
+      "title": "SIGKILL mid-commit on live Linux intake"
     }
   ],
-  "generated_at": "2026-08-03T14:15:25.205036+00:00",
-  "ok": true
+  "generated_at": "2026-08-03T14:31:16.915951+00:00",
+  "ok": true,
+  "summary": {
+    "fail": 0,
+    "pass": 24,
+    "skip": 1,
+    "total": 25
+  }
 }

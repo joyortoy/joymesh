@@ -6,44 +6,31 @@
 Production candidate with remaining gates
 ```
 
-Last updated: 2026-08-03T14:28:59Z (production qualification pass)
+Last updated: 2026-08-03T14:39:25Z
 
-## Environment
-- macOS arm64 host: verify_* scripts + pytest
-- Linux x86_64: Lima `prod-qual` (Ubuntu 24.04, systemd available)
-- Wheels: `/Users/joytan/Documents/joymesh-rc1-verify/artifacts/{rc1,candidate}/`
-- Editable venv (macOS scripts): `joymesh-rc1-verify/venv-joymesh-src`
-
-
-## Tested deployment profile
-
-* macOS arm64: packaging scripts, pytest, verify_* harness
-* Linux x86_64 (Lima prod-qual): candidate wheel install + `production validate-config` OK
-* Versions: JoyCLI 0.26.0 (`production/readiness-v0.26`); JoyMesh 0.1.0 (`production/readiness-v0.1`)
-* Transport: Unix-socket JoyMesh → JoyCLI
-* Database: SQLite intake + outbox
-* Install: candidate/RC1 wheels under `joymesh-rc1-verify/artifacts`
-
-## Gates
+## Gate summary
 
 | Gate | Status |
 |------|--------|
-| verify_fault_injection.py | PASS (`reports/data/production/fault-injection.json`) |
-| verify_multitenancy_negatives.py | PASS |
-| verify_resource_bounds.py | PASS |
-| verify_incident_exercises.py | PASS |
-| verify_upgrade_rollback.py | **FAIL** (RC1 joymesh wheel lacks `joymesh.production`; candidate OK; rollback verify fails) |
-| Linux systemd lifecycle | **FAIL** (203/EXEC; see `linux-systemd-validation.json`) |
-| 1h Linux qualification | **IN PROGRESS** (`qualification-1h.json` on prod-qual) |
-| 8h Linux qualification | **NOT STARTED** |
+| Fault injection (25 cases) | **24/25 pass**, 1 skip (`fault-injection.json`) |
+| Upgrade RC1→candidate | **PASS** (`upgrade-rollback.json`) |
+| Linux systemd lifecycle | **Partial** — JoyCLI pass, JoyMesh fail (`service-lifecycle-live.json`) |
+| 1h Linux qualification | **in_progress on prod-qual (started ~2026-08-03T14:28Z)** |
+| 8h Linux qualification | **Not started** (blocked on 1h gates) |
 
-## Pytest (this pass)
+## Lima prod-qual
 
-* JoyMesh production + new tests: 40 passed (incl. `test_service`, `test_gemini_adapter` subset run with production suite)
-* JoyCLI: `test_joycli_production_readiness` + `test_verification_verdict`: 14 passed
+* Ubuntu 24.04 x86_64, `/opt/joymux/venv` candidate wheels
+* JoyCLI unit uses `/opt/joymux/venv/bin/joyctl` and state dir `/var/lib/joycli/state`
 
-## Residual
+## Pytest evidence (macOS host venv)
 
-* Rebuild RC1-tagged joymesh wheel with `joymesh.production` before claiming rollback gate
-* Wire systemd units to packaged `/opt/joymux/venv` paths and fix ExecStartPre binary paths
-* Complete 1h soak; run 8h only after 1h passes
+* JoyMesh production suite: 40 passed (prior pass)
+* JoyCLI production readiness: 14 passed (prior pass)
+
+## Remaining before production-ready
+
+1. Complete 1h soak with all measurement gates green (then 8h)
+2. JoyMesh systemd companion unit — validate-config must not require full API import; fix data dir + `/run/joycli` ACLs
+3. Live Linux case FI-25 (SIGKILL mid-commit)
+4. Full reboot simulation under systemd

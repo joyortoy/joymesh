@@ -15,14 +15,14 @@ User=joymesh
 Group=joymesh
 WorkingDirectory=/var/lib/joymesh
 EnvironmentFile=-/etc/joymesh/runtime.env
-ExecStart=/usr/bin/joymesh production validate-config
+ExecStart=/opt/joymux/venv/bin/joymesh production validate-config
 ExecStartPost=/bin/true
 UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/joymesh /run/joymesh
+ReadWritePaths=/var/lib/joymesh /run/joymesh /run/joycli /etc/joymesh/keys
 LimitNOFILE=4096
 
 [Install]

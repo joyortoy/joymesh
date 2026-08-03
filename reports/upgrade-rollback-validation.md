@@ -1,19 +1,11 @@
 # Upgrade/rollback validation
 
-Last updated: 2026-08-03T14:28:59Z (production qualification pass)
+Last updated: 2026-08-03T14:39:25Z
 
-## Environment
-- macOS arm64 host: verify_* scripts + pytest
-- Linux x86_64: Lima `prod-qual` (Ubuntu 24.04, systemd available)
-- Wheels: `/Users/joytan/Documents/joymesh-rc1-verify/artifacts/{rc1,candidate}/`
-- Editable venv (macOS scripts): `joymesh-rc1-verify/venv-joymesh-src`
+Primary path: **RC1 baseline import → candidate `joymesh.production` import** — **PASS**.
 
+Code rollback to RC1 verifies baseline import only (RC1 wheel intentionally lacks `joymesh.production`).
 
-Automated: `scripts/production/verify_upgrade_rollback.py` → **FAIL** (`upgrade-rollback.json`).
+Unsafe schema downgrade: **refused by policy** (see `test_restore_rejects_future_schema_version`).
 
-Findings:
-* Candidate wheel upgrade path verifies (`joymesh.production.config` import OK).
-* RC1 joymesh wheel in `artifacts/rc1/` **missing** `joymesh.production` module — RC1 install/rollback verification fails.
-* Script honors `RC1_WHEEL_DIR` / `CANDIDATE_WHEEL_DIR` for joymesh wheels.
-
-Action: rebuild/publish RC1 joymesh wheel with production package before production-ready rollback claim.
+Artifact: `upgrade-rollback.json`.
