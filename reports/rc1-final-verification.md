@@ -152,12 +152,12 @@ STAGE 11: fresh-install ritual complete
 
 Created locally after gates passed (not pushed):
 
-* JoyCLI: `joycli-v0.26.0-rc1` → `02a49b9a5210cd3e6266ccdc39b094ddfcba7f8c`
-* JoyMesh: `joymesh-v0.1.0-rc1` → `20d50a89d212995387ef466b049ce3d759734ace`
+* JoyCLI: `joycli-v0.26.0-rc1` (annotated; inspect with `git show joycli-v0.26.0-rc1`)
+* JoyMesh: `joymesh-v0.1.0-rc1` (annotated; inspect with `git show joymesh-v0.1.0-rc1`)
 
 Annotated messages include version, tag commit, wheel source commit, wheel filename/SHA-256, test counts, validation summary, and known limitations.
 
-Wheels were rebuilt from package-code parents `5fd55fa` (JoyCLI) and `c710b7c` (JoyMesh); tag tips add verification reports only.
+Wheels were rebuilt from package-code parents `5fd55fa` (JoyCLI) and `c710b7c` (JoyMesh). Tagged tips include verification reports only; package code is unchanged from those wheel source commits.
 
 ## Remaining limitations
 
