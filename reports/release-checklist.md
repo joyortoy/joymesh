@@ -10,12 +10,16 @@
 - [x] Canonical routing + ExecutionDirective from projection
 - [x] Cross-repo signed intake script pass
 - [x] Runtime routing E2E pass
+- [x] Live OpenCode crash recovery pass (packaged)
+- [x] Fresh install pass
 - [x] JoyCLI full suite 451 passed
+- [x] JoyMesh full suite 467 passed, 6 skipped
 - [x] Release docs present (INSTALL/RELEASE/OPERATIONS/UPGRADE/SECURITY/ARCHITECTURE)
 - [x] Reports generated under `reports/`
+- [x] Exact artifact hashes recorded
 - [x] Git commits logically separated (no website/frontend)
+- [x] Local RC1 annotated tags created
 - [ ] Push (forbidden this phase)
-- [ ] Official RC tag (not created this phase)
 
 ## Operational checklist before RC promote
 

@@ -1,7 +1,7 @@
 # Release Readiness Report — JoyMux / JoyCLI RC1
 
 **Date:** 2026-08-03  
-**Verdict:** **Suitable for Release Candidate (RC1)** with documented limitations.
+**Verdict:** **RC1 verified and tagged locally** (not pushed).
 
 ## Architecture freeze
 
@@ -14,37 +14,30 @@ JoyMesh observe/execute/publish/sign
   → JoyMesh launch revalidation
 ```
 
-No protocol expansion. No authority redesign.
-
-## Packaging defects fixed this phase
-
-1. JoyCLI production cryptography import was undeclared → now required runtime dependency + Requires-Dist.
-2. JoyCLI wheel accidentally packaged `__pycache__` → build backend ignore rules.
-
-## Verification summary
+## Clean-worktree verification summary
 
 | Gate | Result |
 |------|--------|
+| JoyCLI clean HEAD | `5fd55fa` (integrity-manifest fix after `13e6d51`) |
+| JoyMesh clean HEAD (wheel source) | `c710b7c` (quota incompleteness fix after `79ae462`) |
 | JoyCLI `pytest -q` | 451 passed |
-| Clean wheel install script | Pass |
-| Cross-repo signed intake | Pass |
-| Runtime routing E2E | Pass |
-| pip-audit (cryptography pin) | No known vulnerabilities |
-| JoyMesh pip-audit | Only bootstrap `pip` advisories in local venv after ensurepip; package deps not flagged beyond unauditable local joymesh |
+| JoyMesh `pytest -q` | 467 passed, 6 skipped, 0 failed |
+| Clean wheel install | Pass (exact rebuilt wheels) |
+| Cross-repo signed intake | `{"ok": true, "selected": "opencode"}` |
+| Runtime routing E2E | `runtime routing e2e: ok` |
+| Live OpenCode crash recovery | Pass (`clean_retry`, cancel, no orphans, drain) |
+| Fresh install | Pass |
+| pip-audit (packaged runtime env) | No known vulnerabilities (local packages unauditable on PyPI) |
 
 ## Remaining known limitations
 
 1. JoyMesh hatchling builds are not claimed bit-reproducible across hosts.
 2. Key distribution/rotation is operator-manual (no KMS).
-3. Worktrees still contain unrelated dirty files (website/frontend/experiments) that must not ship in RC commits.
-4. Live OpenCode crash-recovery and full fresh-install rituals should be re-run on the exact RC artifacts immediately before tagging.
-5. JoyMesh local venv historically lacked `pip`; audit tooling depends on environment bootstrap.
-6. Crash-recovery helper still may inject checkout `PYTHONPATH` for child processes; production path is wheel-based (`verify_clean_wheel_install.sh` / `verify_fresh_install.sh`).
+3. Upstream crash-recovery helper may still inject checkout `PYTHONPATH`; RC1 packaged validation ran without that injection successfully.
+4. Deprecated JoyMesh intake remains test/reference only.
+5. Dirty original worktrees still exist and must stay isolated from RC.
+6. Live OpenCode availability is environment-dependent.
 
 ## Recommendation
 
-Promote **RC1** for controlled integration after:
-
-* logically scoped commits (no website/frontend),
-* final artifact SHA recording,
-* one more clean-wheel + crash-recovery run against those exact SHAs.
+Local RC1 tags only. Do not push until explicitly instructed.
