@@ -13,7 +13,7 @@
 - [x] JoyCLI full suite 451 passed
 - [x] Release docs present (INSTALL/RELEASE/OPERATIONS/UPGRADE/SECURITY/ARCHITECTURE)
 - [x] Reports generated under `reports/`
-- [ ] Git commits logically separated (in progress)
+- [x] Git commits logically separated (no website/frontend)
 - [ ] Push (forbidden this phase)
 - [ ] Official RC tag (not created this phase)
 
