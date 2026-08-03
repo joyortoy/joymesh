@@ -15,7 +15,7 @@ Last updated: 2026-08-03T14:39:25Z
 | Fault injection (25 cases) | **24/25 pass**, 1 skip (`fault-injection.json`) |
 | Upgrade RC1→candidate | **PASS** (`upgrade-rollback.json`) |
 | Linux systemd lifecycle | **Partial** — JoyCLI pass, JoyMesh fail (`service-lifecycle-live.json`) |
-| 1h Linux qualification | **in_progress on prod-qual (started ~2026-08-03T14:28Z)** |
+| 1h Linux qualification | **RETRY in progress** — first run ~3600s completed but JSON write failed (virtiofs RO on mounted reports path); retry writes `/tmp/qualification-1h.json` on VM (PID 8234) |
 | 8h Linux qualification | **Not started** (blocked on 1h gates) |
 
 ## Lima prod-qual
