@@ -16,8 +16,9 @@ from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
-from joymesh.models import BillingRoute, Run, SubscriptionCreate
+from joymesh.models import BillingRoute, Run, RunRequest, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
+from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
 from joymesh.telemetry import (
     MetricsMode,
     TelemetryMode,
@@ -1617,7 +1618,40 @@ def run_launch(
     _maybe_prompt_telemetry_consent()
 
     async def operation(mesh: JoyMesh) -> Run:
-        run = await mesh.run(task=task, workspace=workspace, harness=harness)
+        # Phase 3.5: attach JoyMux context placement before execution.
+        try:
+            placement = fetch_context_placement(
+                harness=harness,
+                workspace=workspace,
+                task=task,
+                client_name="joymesh-cli",
+            )
+        except JoyMuxPlacementError as exc:
+            typer.echo(str(exc), err=True)
+            typer.echo(
+                "Ensure JoyMux is running (`joymux daemon start`) and JOYMUX_SOCKET points at runtime.sock.",
+                err=True,
+            )
+            raise typer.Exit(2) from exc
+
+        selected_harness = str(placement.get("selected_harness") or harness)
+        requirements = {
+            "requirements_id": placement.get("requirements_id"),
+        }
+        request = RunRequest(
+            task=task,
+            workspace=workspace,
+            preferred_harness=selected_harness,
+            allowed_harnesses=frozenset({selected_harness}),
+            context_placement=placement,
+            strategic_requirements=requirements,
+            strategic_requirements_id=str(placement.get("requirements_id") or ""),
+            runtime_snapshot_revision=str(placement.get("runtime_snapshot_revision") or "")
+            or None,
+            correlation_id=str(placement.get("correlation_id") or "") or None,
+            mission_id=str(placement.get("mission_id") or "") or None,
+        )
+        run = await mesh.run(request=request, harness=selected_harness)
         return await mesh.wait(run.id)
 
     try:
