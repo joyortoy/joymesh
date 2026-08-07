@@ -74,6 +74,188 @@ legal_app.add_typer(legal_bundle_app, name="bundle")
 legal_app.add_typer(legal_compat_app, name="compatibility")
 runtime_key_app = typer.Typer(help="Runtime signing key lifecycle.")
 runtime_app.add_typer(runtime_key_app, name="key")
+secrets_app = typer.Typer(
+    help="OS Keychain vault for provider API keys (never stored in JoyMesh DB).",
+)
+app.add_typer(secrets_app, name="secrets")
+
+
+@secrets_app.command("backend")
+def secrets_backend() -> None:
+    """Show which credential backend is active."""
+
+    from joymesh.secrets import backend_name, keychain_available
+
+    _print({"backend": backend_name(), "keychain_available": keychain_available()})
+
+
+@secrets_app.command("set")
+def secrets_set(
+    name: str = typer.Argument(..., help="Provider id, e.g. opencode-go, openrouter, openai"),
+    value: str | None = typer.Option(
+        None,
+        "--value",
+        help="Secret value; if omitted, prompts with hidden input",
+    ),
+) -> None:
+    """Store a provider API key in the OS Keychain (preferred) or secure file."""
+
+    from joymesh.secrets import SecretsError, mask_secret, set_secret
+
+    secret = value
+    if secret is None:
+        secret = typer.prompt("API key", hide_input=True)
+    try:
+        meta = set_secret(name, secret)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({**meta.as_dict(), "masked": mask_secret(secret)})
+
+
+@secrets_app.command("get")
+def secrets_get(
+    name: str = typer.Argument(...),
+    show: bool = typer.Option(False, "--show", help="Print full secret (dangerous)"),
+) -> None:
+    """Fetch a secret; default output is masked."""
+
+    from joymesh.secrets import SecretsError, get_secret, mask_secret
+
+    value = get_secret(name)
+    if value is None:
+        typer.echo(f"missing: {name}", err=True)
+        raise typer.Exit(1)
+    if show:
+        typer.echo(value)
+        return
+    _print({"name": name.lower(), "masked": mask_secret(value), "present": True})
+
+
+@secrets_app.command("list")
+def secrets_list() -> None:
+    """List stored secret names (never prints values)."""
+
+    from joymesh.secrets import list_secrets
+
+    _print({"secrets": [item.as_dict() for item in list_secrets()]})
+
+
+@secrets_app.command("delete")
+def secrets_delete(name: str = typer.Argument(...)) -> None:
+    """Delete a secret from the vault."""
+
+    from joymesh.secrets import delete_secret
+
+    ok = delete_secret(name)
+    _print({"deleted": ok, "name": name.lower()})
+    if not ok:
+        raise typer.Exit(1)
+
+
+@secrets_app.command("import-opencode")
+def secrets_import_opencode(
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="OpenCode auth.json path (default: ~/.local/share/opencode/auth.json)",
+    ),
+) -> None:
+    """Import API keys from OpenCode auth.json into Keychain."""
+
+    from pathlib import Path as P
+
+    from joymesh.secrets import SecretsError, import_opencode_auth
+
+    try:
+        imported = import_opencode_auth(P(path) if path else None)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({"imported": imported, "count": len(imported)})
+
+
+@secrets_app.command("sync-opencode")
+def secrets_sync_opencode(
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="OpenCode auth.json path to rewrite from Keychain",
+    ),
+) -> None:
+    """Rebuild OpenCode auth.json from Keychain so restarts keep working."""
+
+    from pathlib import Path as P
+
+    from joymesh.secrets import SecretsError, sync_opencode_auth
+
+    try:
+        out = sync_opencode_auth(P(path) if path else None)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({"synced": str(out), "mode": 0o600})
+
+
+@secrets_app.command("ensure")
+def secrets_ensure(
+    name: str = typer.Argument(..., help="Provider id required for the upcoming task"),
+) -> None:
+    """Ensure a provider key exists in the vault; prompt to store it if missing.
+
+    Use this before a task so the same API key is reused after restart::
+
+        joymesh secrets ensure opencode-go
+        joymesh secrets sync-opencode
+    """
+
+    from joymesh.secrets import SecretsError, get_secret, mask_secret, set_secret
+
+    existing = get_secret(name)
+    if existing:
+        _print(
+            {
+                "name": name.lower(),
+                "present": True,
+                "masked": mask_secret(existing),
+                "action": "reused_existing",
+                "hint": "joymesh secrets sync-opencode  # if OpenCode needs auth.json refreshed",
+            }
+        )
+        return
+    typer.echo(
+        f"No Keychain secret for {name!r}. Store it once so restarts keep the same API.",
+        err=True,
+    )
+    secret = typer.prompt(f"Paste API key for {name}", hide_input=True)
+    try:
+        meta = set_secret(name, secret)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print(
+        {
+            **meta.as_dict(),
+            "masked": mask_secret(secret),
+            "action": "stored_new",
+            "hint": "joymesh secrets sync-opencode",
+        }
+    )
+
+
+@secrets_app.command("export-env")
+def secrets_export_env() -> None:
+    """Print export lines for env-backed providers (eval carefully)."""
+
+    from joymesh.secrets import export_env_lines
+
+    lines = export_env_lines()
+    if not lines:
+        typer.echo("# no env-mapped secrets present", err=True)
+        raise typer.Exit(1)
+    for line in lines:
+        typer.echo(line)
+
 
 
 @app.command("init")
