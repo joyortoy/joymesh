@@ -189,6 +189,55 @@ async def browser_identity(
 BrowserIdentityDependency = Annotated[BrowserIdentity, Depends(browser_identity)]
 
 
+async def _build_node_snapshot(
+    service: JoyMesh,
+    *,
+    node_id: str,
+    online: bool,
+) -> Any:
+    """Build a SchedulerNodeSnapshot from connector readiness data for runtime registration."""
+    from joymesh.runtime_v1.scheduler import SchedulerConnectorSnapshot, SchedulerNodeSnapshot
+    
+    node = service.control_plane.store.nodes.get(node_id)
+    revoked = node.revoked_at is not None if node else False
+    
+    # Fetch connector readiness for this node
+    try:
+        readiness_list = await service.list_connector_readiness(node_id=node_id)
+    except Exception:
+        readiness_list = ()
+    
+    # Convert readiness to connector snapshots
+    connectors: dict[str, SchedulerConnectorSnapshot] = {}
+    for readiness in readiness_list:
+        connectors[readiness.connector_id] = SchedulerConnectorSnapshot(
+            connector_id=readiness.connector_id,
+            installed=readiness.installed,
+            readiness=readiness.state,
+            authenticated=readiness.authenticated,
+            routing_enabled=readiness.routing_enabled,
+            certified_capabilities=frozenset(readiness.certified_capabilities),
+            trust_level=readiness.evidence_trust_level,
+            execution_origin=readiness.evidence_execution_origin,
+        )
+    
+    # Fetch workspace placements for this node
+    placements: list[Any] = []
+    for workspace_id, placement_list in service.runtime_service.store.placements.items():
+        for placement in placement_list:
+            if placement.node_id == node_id:
+                placements.append(placement)
+    
+    return SchedulerNodeSnapshot(
+        node_id=node_id,
+        online=online,
+        revoked=revoked,
+        session_authenticated=online and not revoked,
+        connectors=connectors,
+        placements=tuple(placements),
+    )
+
+
 def _onboarding_actions(
     state: OnboardingState,
     progress: OnboardingProgress,
@@ -1159,6 +1208,9 @@ def create_app(
                 runtime_version=str(hello.payload.get("runtime_version", node.version)),
                 remote_address=websocket.client.host if websocket.client else None,
             )
+            # Register the online node session with RuntimeService
+            snapshot = await _build_node_snapshot(service, node_id=node_id, online=True)
+            service.runtime_service.register_node(snapshot)
             await service.connector_lifecycle.offer_queued_tasks(node_id=node_id)
             while True:
                 message = ProtocolMessage.model_validate_json(await websocket.receive_text())
@@ -1211,6 +1263,9 @@ def create_app(
         finally:
             if node_id is not None:
                 gateway.disconnect(node_id, websocket)
+                # Unregister the offline node session from RuntimeService
+                snapshot = await _build_node_snapshot(service, node_id=node_id, online=False)
+                service.runtime_service.register_node(snapshot)
 
     @app.get("/api/v1/fireconnect", response_model=FireConnectStatus)
     async def fireconnect_status() -> FireConnectStatus:
