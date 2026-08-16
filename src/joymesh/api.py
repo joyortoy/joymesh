@@ -1695,11 +1695,91 @@ def create_app(
     async def joycli_create_execution(
         execution_request: JoyCliExecutionRequest,
     ) -> dict[str, str]:
-        """JoyCLI compatibility: submit an execution request."""
-        from joymesh.runtime_v1.models import CreateRuntimeTaskBody
+        """JoyCLI compatibility: submit an execution request.
+        
+        Returns immediately with execution_id, queuing the task if no nodes are connected.
+        """
+        from joymesh.runtime_v1.capabilities import expand_capabilities
+        from joymesh.runtime_v1.models import (
+            CreateRuntimeTaskBody,
+            RuntimeTaskRecord,
+            RuntimeTaskRequest,
+            RuntimeTaskStatus,
+        )
 
         caps = execution_request.capabilities
         policy_profile = _extract_policy_profile(execution_request.policy_grant)
+        
+        # Check if there are any connected nodes
+        has_nodes = service.runtime_service.metrics.connected_nodes > 0
+        
+        if not has_nodes:
+            # Fast path: no nodes available, queue immediately without routing
+            request = RuntimeTaskRequest(
+                workspace_id=execution_request.repository_path,
+                prompt=execution_request.instruction,
+                requested_capabilities=frozenset(caps) if caps else frozenset(),
+                policy_profile=policy_profile,
+                timeout_seconds=execution_request.timeout_seconds,
+                user_id="joycli",
+            )
+            
+            service.runtime_service._task_prompts[request.task_id] = execution_request.instruction
+            
+            # Evaluate policy
+            decision = service.runtime_service.policy.evaluate(request)
+            if not decision.allowed:
+                service.runtime_service.metrics.policy_rejections += 1
+                task = RuntimeTaskRecord(
+                    task_id=request.task_id,
+                    workspace_id=request.workspace_id,
+                    user_id="joycli",
+                    prompt_digest=request.prompt_digest,
+                    prompt_size=len(request.prompt),
+                    requested_capabilities=tuple(sorted(request.requested_capabilities)),
+                    prohibited_capabilities=tuple(sorted(request.prohibited_capabilities)),
+                    expanded_capabilities=(),
+                    policy_profile=request.policy_profile,
+                    timeout_seconds=request.timeout_seconds,
+                    max_attempts=2,
+                    status=RuntimeTaskStatus.REJECTED,
+                    detail="; ".join(decision.reasons),
+                )
+                await service.runtime_service.store.save_task(task)
+                return {"execution_id": task.task_id}
+            
+            # Expand capabilities
+            expanded = expand_capabilities(
+                request.requested_capabilities,
+                prohibited=request.prohibited_capabilities,
+            )
+            
+            # Create task in QUEUED state
+            task = RuntimeTaskRecord(
+                task_id=request.task_id,
+                workspace_id=request.workspace_id,
+                user_id="joycli",
+                prompt_digest=request.prompt_digest,
+                prompt_size=len(request.prompt),
+                requested_capabilities=tuple(sorted(request.requested_capabilities)),
+                prohibited_capabilities=tuple(sorted(request.prohibited_capabilities)),
+                expanded_capabilities=tuple(sorted(expanded)),
+                policy_profile=request.policy_profile,
+                timeout_seconds=request.timeout_seconds,
+                max_attempts=2,
+                status=RuntimeTaskStatus.QUEUED,
+                detail="Queued: no workers currently available",
+            )
+            service.runtime_service.metrics.queued_tasks += 1
+            await service.runtime_service.store.save_task(task)
+            await service.runtime_service.store.audit(
+                "task.queued",
+                task_id=task.task_id,
+                payload={"reason": "no_workers_available"},
+            )
+            return {"execution_id": task.task_id}
+        
+        # Normal path: nodes available, use full routing
         body = CreateRuntimeTaskBody(
             workspace_id=execution_request.repository_path,
             prompt=execution_request.instruction,

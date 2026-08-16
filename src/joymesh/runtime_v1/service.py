@@ -535,25 +535,12 @@ class RuntimeService:
         )
         eligible = next((item for item in candidates if item.eligible), None)
         if eligible is None:
-            reasons = candidates[0].rejection_reasons if candidates else ("no candidates",)
+            reasons = candidates[0].rejection_reasons if candidates else ("no workers available",)
             detail = "; ".join(reasons)
-            if any("offline" in reason for reason in reasons):
-                queued = task.model_copy(
-                    update={
-                        "status": RuntimeTaskStatus.QUEUED,
-                        "detail": detail,
-                        "updated_at": utc_now(),
-                        "execution_id": intent.execution_id,
-                        "selected_backend_id": decision.selected_backend_id,
-                        "selected_harness_id": decision.selected_harness_id,
-                    }
-                )
-                self.metrics.queued_tasks += 1
-                await self.store.save_task(queued)
-                return {"status": "queued", "message": detail, "ok": False}
-            rejected = task.model_copy(
+            # Always queue when no eligible candidates - workers may come online later
+            queued = task.model_copy(
                 update={
-                    "status": RuntimeTaskStatus.REJECTED,
+                    "status": RuntimeTaskStatus.QUEUED,
                     "detail": detail,
                     "updated_at": utc_now(),
                     "execution_id": intent.execution_id,
@@ -561,8 +548,9 @@ class RuntimeService:
                     "selected_harness_id": decision.selected_harness_id,
                 }
             )
-            await self.store.save_task(rejected)
-            return {"status": "rejected", "message": detail, "ok": False}
+            self.metrics.queued_tasks += 1
+            await self.store.save_task(queued)
+            return {"status": "queued", "message": detail, "ok": False}
 
         attempt_id = f"execution_attempt_{uuid4().hex}"
         attempt_number = len(self.store.attempts.get(task.task_id, [])) + 1
