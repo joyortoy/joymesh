@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import (
+    Body,
     Depends,
     FastAPI,
     Header,
@@ -86,6 +87,20 @@ TERMINAL_STATUSES = {
     RunStatus.CANCELLED,
     RunStatus.TIMED_OUT,
 }
+
+
+class JoyCliExecutionRequest(BaseModel):
+    """JoyCLI execution request model for compatibility layer."""
+
+    mission_id: str
+    step_id: str | None = None
+    repository_path: str
+    instruction: str
+    policy_grant: str = "read_only"
+    capabilities: list[str] = Field(default_factory=list)
+    timeout_seconds: int = Field(default=300, ge=1, le=86_400)
+    constraints: dict[str, object] = Field(default_factory=dict)
+    context: dict[str, object] = Field(default_factory=dict)
 
 
 class DiscoveryRequest(BaseModel):
@@ -1643,7 +1658,151 @@ def create_app(
             for item in placements
         ]
 
+    # --- JoyCLI Compatibility Routes ---
+
+    @app.get("/ready")
+    async def joycli_ready() -> dict[str, object]:
+        """JoyCLI compatibility: check if JoyMesh is ready to accept executions."""
+        health = service.runtime_service.health()
+        return {
+            "ready": True,
+            "status": "ok",
+            "detail": "JoyMesh runtime ready",
+            "routes": {
+                "executions": "/executions",
+                "health": "/runtime/health",
+            },
+            "connected_nodes": health.get("active_node_sessions", 0),
+            "queued_tasks": health.get("task_queue", 0),
+        }
+
+    @app.post("/executions")
+    async def joycli_create_execution(execution_request: JoyCliExecutionRequest = Body(...)) -> dict[str, str]:
+        """JoyCLI compatibility: submit an execution request."""
+        from joymesh.runtime_v1.models import CreateRuntimeTaskBody
+
+        body = CreateRuntimeTaskBody(
+            workspace_id=execution_request.repository_path,
+            prompt=execution_request.instruction,
+            policy_profile=execution_request.policy_grant,
+            requested_capabilities=tuple(execution_request.capabilities) if execution_request.capabilities else (),
+            timeout_seconds=execution_request.timeout_seconds,
+        )
+        task = await service.runtime_service.create_task(body, user_id="joycli")
+        return {"execution_id": task.task_id}
+
+    @app.get("/executions/{execution_id}/events")
+    async def joycli_execution_events(execution_id: str) -> dict[str, list[dict[str, object]]]:
+        """JoyCLI compatibility: retrieve normalized events for an execution."""
+        try:
+            task = await service.runtime_service.store.get_task(execution_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Execution not found") from exc
+
+        raw_events = service.runtime_service.store.events.get(execution_id, [])
+        normalized = []
+
+        for event in raw_events:
+            event_type = str(event.get("event_type", "unknown"))
+            payload = event.get("payload", {})
+            
+            # Map internal event types to JoyCLI event types
+            joycli_type = _map_to_joycli_event_type(event_type, task.status.value)
+            
+            normalized.append({
+                "event_type": joycli_type,
+                "timestamp": event.get("timestamp", ""),
+                "sequence": event.get("sequence", 0),
+                "payload": payload,
+                "original_type": event_type,
+            })
+
+        # Add a synthetic status event based on current task status
+        if task.status.value in ["queued", "leased", "offered"]:
+            if not any(e["event_type"] == "queued" for e in normalized):
+                normalized.append({
+                    "event_type": "queued",
+                    "payload": {"status": task.status.value},
+                })
+        elif task.status.value in ["accepted", "running"]:
+            if not any(e["event_type"] == "started" for e in normalized):
+                normalized.append({
+                    "event_type": "started",
+                    "payload": {"status": task.status.value},
+                })
+        elif task.status.value == "succeeded":
+            if not any(e["event_type"] == "completed" for e in normalized):
+                normalized.append({
+                    "event_type": "completed",
+                    "payload": {"status": task.status.value},
+                })
+        elif task.status.value == "failed":
+            if not any(e["event_type"] == "failed" for e in normalized):
+                normalized.append({
+                    "event_type": "failed",
+                    "payload": {"status": task.status.value, "detail": task.detail},
+                })
+        elif task.status.value == "cancelled":
+            if not any(e["event_type"] == "cancelled" for e in normalized):
+                normalized.append({
+                    "event_type": "cancelled",
+                    "payload": {"status": task.status.value},
+                })
+
+        return {"events": normalized}
+
+    @app.post("/executions/{execution_id}/cancel")
+    async def joycli_cancel_execution(execution_id: str) -> dict[str, str]:
+        """JoyCLI compatibility: cancel an execution."""
+        try:
+            task = await service.runtime_service.cancel_task(execution_id)
+            return {"status": task.status.value, "execution_id": execution_id}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Execution not found") from exc
+
     return app
+
+
+def _map_to_joycli_event_type(internal_type: str, task_status: str) -> str:
+    """Map JoyMesh internal event types to JoyCLI event types."""
+    mapping = {
+        "task.created": "accepted",
+        "task.queued": "queued",
+        "task.offered": "queued",
+        "task.accepted": "accepted",
+        "task.started": "started",
+        "task.succeeded": "completed",
+        "task.failed": "failed",
+        "task.cancelled": "cancelled",
+        "execution.completed": "completed",
+        "execution.failed": "failed",
+        "execution.cancelled": "cancelled",
+        "backend.selected": "accepted",
+        "route.selected": "started",
+    }
+    
+    # Try exact match first
+    if internal_type in mapping:
+        return mapping[internal_type]
+    
+    # Check for partial matches
+    for key, value in mapping.items():
+        if key in internal_type:
+            return value
+    
+    # Default based on task status
+    if task_status in ["succeeded", "completed"]:
+        return "completed"
+    elif task_status in ["failed", "rejected"]:
+        return "failed"
+    elif task_status in ["cancelled"]:
+        return "cancelled"
+    elif task_status in ["running", "accepted"]:
+        return "started"
+    elif task_status in ["queued", "leased", "offered"]:
+        return "queued"
+    
+    return "output"
 
 
 def _problem(status_code: int, detail: str) -> JSONResponse:
