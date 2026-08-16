@@ -46,6 +46,27 @@ Submit an execution request to JoyMesh.
 }
 ```
 
+**Note:** `policy_grant` can be either a string or a dict object:
+- **String:** Direct policy profile name (e.g., `"read_only"`)
+- **Dict:** Object containing policy metadata. The policy profile is extracted from keys in this order:
+  1. `profile`
+  2. `mode`
+  3. `policy_profile`
+  4. If none found, defaults to `"read_only"`
+
+Example with dict policy_grant:
+```json
+{
+  "mission_id": "mission_abc123",
+  "step_id": "step_001",
+  "repository_path": "/path/to/repository",
+  "instruction": "Write tests for the authentication module",
+  "policy_grant": {"profile": "read_only", "metadata": "example"},
+  "capabilities": ["repository.read"],
+  "timeout_seconds": 300
+}
+```
+
 **Response:**
 ```json
 {
