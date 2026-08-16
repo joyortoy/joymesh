@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title description">
+  <title id="title">JoyMesh social preview</title>
+  <description id="description">One local interface for discovering, routing, and supervising coding agents.</description>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="0.55" stop-color="#10243b"/>
+      <stop offset="1" stop-color="#142c35"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#65e2ff"/>
+      <stop offset="1" stop-color="#8ef0a7"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" rx="28" fill="url(#background)"/>
+  <circle cx="1100" cy="90" r="260" fill="#25b8c8" opacity="0.08"/>
+  <circle cx="1040" cy="550" r="310" fill="#4bd27d" opacity="0.06"/>
+
+  <g stroke="#75dfe7" stroke-width="3" opacity="0.48">
+    <path d="M930 160 L1080 105 L1175 215 L1095 335 L940 300 Z" fill="none"/>
+    <path d="M930 160 L1095 335 M1080 105 L940 300 M1175 215 L930 160" fill="none"/>
+    <path d="M940 300 L1015 455 L1160 475 L1095 335" fill="none"/>
+    <path d="M1015 455 L1095 335 L1160 475" fill="none"/>
+  </g>
+  <g fill="url(#accent)" filter="url(#glow)">
+    <circle cx="930" cy="160" r="10"/>
+    <circle cx="1080" cy="105" r="12"/>
+    <circle cx="1175" cy="215" r="10"/>
+    <circle cx="1095" cy="335" r="15"/>
+    <circle cx="940" cy="300" r="11"/>
+    <circle cx="1015" cy="455" r="10"/>
+    <circle cx="1160" cy="475" r="12"/>
+  </g>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="96" y="230" fill="#f5fbff" font-size="84" font-weight="750" letter-spacing="-2">JoyMesh</text>
+    <rect x="96" y="262" width="116" height="7" rx="3.5" fill="url(#accent)"/>
+    <text x="96" y="340" fill="#d6e8f1" font-size="34" font-weight="520">One local interface for coding agents.</text>
+    <text x="96" y="402" fill="#91adba" font-size="25">Discover  ·  Route  ·  Supervise</text>
+    <text x="96" y="522" fill="#75dfe7" font-size="22" font-weight="600">OPEN SOURCE  /  PYTHON SDK  /  CLI  /  API</text>
+  </g>
+</svg>

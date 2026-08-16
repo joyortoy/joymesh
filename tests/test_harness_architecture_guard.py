@@ -48,9 +48,7 @@ def test_production_modules_do_not_default_construct_fake_adapter() -> None:
                     offenders.append(f"{path}:{node.lineno}")
     # adapters/fake.py defines the class; instantiation in production code is forbidden.
     production_offenders = [
-        item
-        for item in offenders
-        if "/adapters/fake.py" not in item and "fake_worker" not in item
+        item for item in offenders if "/adapters/fake.py" not in item and "fake_worker" not in item
     ]
     assert production_offenders == []
 

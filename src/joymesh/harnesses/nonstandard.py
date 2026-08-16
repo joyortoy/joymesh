@@ -89,9 +89,7 @@ def validate_custom_harness_config(config: CustomHarnessConfig) -> CustomHarness
             )
         )
     if not config.executable or not str(config.executable).strip():
-        issues.append(
-            CustomHarnessValidationIssue("missing_executable", "executable is required")
-        )
+        issues.append(CustomHarnessValidationIssue("missing_executable", "executable is required"))
     else:
         executable = str(config.executable)
         if any(ch in executable for ch in _SHELL_METACHARS) or "|" in executable:
@@ -236,9 +234,7 @@ def assess_custom_harness_readiness(config: CustomHarnessConfig) -> CustomHarnes
 
 def custom_harness_definition(config: CustomHarnessConfig) -> HarnessDefinition:
     declared = custom_capability_set(config)
-    capability_states = {
-        capability: CapabilityState.SUPPORTED for capability in declared
-    }
+    capability_states = {capability: CapabilityState.SUPPORTED for capability in declared}
     return HarnessDefinition(
         id=config.harness_id,
         display_name=config.display_name,
@@ -299,9 +295,7 @@ class CustomHarnessAdapter(HarnessAdapter):
                 HarnessAvailability.AVAILABLE if available else HarnessAvailability.UNAVAILABLE
             ),
             executable=executable if available else None,
-            support_status=(
-                SupportStatus.EXPERIMENTAL if available else SupportStatus.UNAVAILABLE
-            ),
+            support_status=(SupportStatus.EXPERIMENTAL if available else SupportStatus.UNAVAILABLE),
             detail=None if available else "custom harness not ready",
         )
 

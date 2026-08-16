@@ -58,6 +58,18 @@ No lifecycle-changing command runs silently. JoyMesh generates a plan first and
 requires approval before applying installation, authentication, or routing
 changes.
 
+### 60-second discovery demo
+
+Run the credential-free example to see the catalogue size and the harnesses
+available on your machine:
+
+```sh
+uv run python examples/discovery.py
+```
+
+The example uses a temporary SQLite database and does not read provider
+credentials or launch an agent.
+
 ## Python SDK
 
 ```python
@@ -151,6 +163,9 @@ Current limitations:
 Near-term priorities are a clean continuous-integration baseline, a reproducible
 end-to-end demo, connector certification evidence, packaged releases, and
 newcomer-friendly issues.
+
+See the public [roadmap](ROADMAP.md) for current engineering priorities and the
+[30-day traction plan](docs/traction-plan.md) for the adoption work around them.
 
 ## Contributing
 

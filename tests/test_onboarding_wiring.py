@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from joymesh.connectors import ConnectorCatalogue
+from joymesh.connectors.lifecycle_models import ConnectorReadiness, NodeConnectorState
 from joymesh.control_plane.contracts import OnboardingState, PaidRoutePolicy
 from joymesh.control_plane.onboarding_flow import derive_wizard_state
 from joymesh.control_plane.onboarding_store import (
@@ -17,7 +18,6 @@ from joymesh.control_plane.onboarding_store import (
 )
 from joymesh.control_plane.security import generate_node_keypair, pkce_pair
 from joymesh.control_plane.service import ControlPlane
-from joymesh.connectors.lifecycle_models import ConnectorReadiness, NodeConnectorState
 from joymesh.persistence import Database
 
 
@@ -146,13 +146,20 @@ def test_frontend_catalogue_ids_resolve_to_backend_connectors() -> None:
         assert isinstance(item.get("harness_id"), str)
         assert item["harness_id"]
     # Every production-selectable backend-mapped ID must exist when maturity claims installable+.
+    production_maturities = {
+        "installable",
+        "authenticatable",
+        "adapter_conformant",
+        "certified",
+        "production_ready",
+    }
     installable = [
-        item["harness_id"]
-        for item in frontend
-        if item.get("maturity") in {"installable", "authenticatable", "adapter_conformant", "certified", "production_ready"}
+        item["harness_id"] for item in frontend if item.get("maturity") in production_maturities
     ]
     unresolved = [item for item in installable if item not in backend]
-    assert unresolved == [], f"unresolved frontend connectors: {unresolved}; backend={sorted(backend)}"
+    assert unresolved == [], (
+        f"unresolved frontend connectors: {unresolved}; backend={sorted(backend)}"
+    )
     assert not any(item == "MESH-7F2A" for item in missing)
 
 
@@ -174,6 +181,8 @@ def test_derive_auth_and_ready_states() -> None:
         catalogue_maturity="installable",
         updated_at=utc_now(),
     )
-    assert derive_wizard_state(progress, readiness=(auth,)) is OnboardingState.AUTHENTICATION_REQUIRED
+    assert (
+        derive_wizard_state(progress, readiness=(auth,)) is OnboardingState.AUTHENTICATION_REQUIRED
+    )
     ready = auth.model_copy(update={"state": NodeConnectorState.READY, "routing_eligible": True})
     assert derive_wizard_state(progress, readiness=(ready,)) is OnboardingState.ROUTING_SETUP

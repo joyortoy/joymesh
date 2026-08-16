@@ -196,7 +196,6 @@ def _maybe_send_run_telemetry(run: Run, *, task: str | None = None) -> None:
         return
 
 
-
 @node_app.command("init")
 def node_init(
     private_key_path: Path | None = typer.Option(None, "--private-key-path"),  # noqa: B008
@@ -778,18 +777,14 @@ def harness_select() -> None:
 
     defs = _run_value(lambda mesh: mesh.list_harnesses())
     detected = {
-        item.manifest.harness_id: item
-        for item in _run(lambda mesh: mesh.detect_harnesses())
+        item.manifest.harness_id: item for item in _run(lambda mesh: mesh.detect_harnesses())
     }
     typer.echo("Choose the harnesses JoyMesh may use (comma-separated ids):")
     for definition in defs:
         if definition.id in FORBIDDEN_PRODUCTION_HARNESS_IDS:
             continue
         descriptor = detected.get(definition.id)
-        ready = (
-            descriptor is not None
-            and descriptor.availability is HarnessAvailability.AVAILABLE
-        )
+        ready = descriptor is not None and descriptor.availability is HarnessAvailability.AVAILABLE
         state = "ready" if ready else "not ready"
         typer.echo(f"  [ ] {definition.id:20} {definition.display_name} ({state})")
     prefs = load_user_config().harnesses

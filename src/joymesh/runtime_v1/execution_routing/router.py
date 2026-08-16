@@ -137,9 +137,10 @@ class ExecutionRouter:
             select_backends = candidates
         else:
             select_harnesses = list(harness_order)
-            select_backends = self._backends_for_harnesses(
-                intent, harness_order, provider_needed=provider_needed
-            ) or candidates
+            select_backends = (
+                self._backends_for_harnesses(intent, harness_order, provider_needed=provider_needed)
+                or candidates
+            )
 
         selection = self.route_selector.select(
             analysis=analysis,
@@ -179,9 +180,7 @@ class ExecutionRouter:
                     (
                         c
                         for c in selection.candidates
-                        if c.eligible
-                        and c.backend_id == selected_id
-                        and c.harness_id == harness_id
+                        if c.eligible and c.backend_id == selected_id and c.harness_id == harness_id
                     ),
                     None,
                 )
@@ -194,9 +193,7 @@ class ExecutionRouter:
                 (
                     c
                     for c in selection.candidates
-                    if c.eligible
-                    and c.backend_id == selected_id
-                    and c.harness_id == harness_id
+                    if c.eligible and c.backend_id == selected_id and c.harness_id == harness_id
                 ),
                 None,
             )
@@ -259,9 +256,7 @@ class ExecutionRouter:
             selected_connector_id=selected_connector,
             selected_model_id=selected_model,
             route_score=route.score if route else score,
-            route_candidates=tuple(
-                c.as_dict() for c in selection.candidates[:10] if c.eligible
-            ),
+            route_candidates=tuple(c.as_dict() for c in selection.candidates[:10] if c.eligible),
             task_analysis=analysis.as_dict(),
         )
 
