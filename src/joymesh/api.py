@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import (
-    Body,
     Depends,
     FastAPI,
     Header,
@@ -1677,15 +1676,18 @@ def create_app(
         }
 
     @app.post("/executions")
-    async def joycli_create_execution(execution_request: JoyCliExecutionRequest = Body(...)) -> dict[str, str]:
+    async def joycli_create_execution(
+        execution_request: JoyCliExecutionRequest,
+    ) -> dict[str, str]:
         """JoyCLI compatibility: submit an execution request."""
         from joymesh.runtime_v1.models import CreateRuntimeTaskBody
 
+        caps = execution_request.capabilities
         body = CreateRuntimeTaskBody(
             workspace_id=execution_request.repository_path,
             prompt=execution_request.instruction,
             policy_profile=execution_request.policy_grant,
-            requested_capabilities=tuple(execution_request.capabilities) if execution_request.capabilities else (),
+            requested_capabilities=tuple(caps) if caps else (),
             timeout_seconds=execution_request.timeout_seconds,
         )
         task = await service.runtime_service.create_task(body, user_id="joycli")
