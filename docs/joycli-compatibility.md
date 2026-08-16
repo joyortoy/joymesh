@@ -89,22 +89,26 @@ Retrieve normalized events for an execution.
 {
   "events": [
     {
-      "event_type": "accepted",
+      "event_type": "queued",
+      "execution_id": "task-uuid-here",
+      "mission_id": "mission_abc123",
+      "step_id": "step_001",
       "timestamp": "2026-08-16T18:00:00Z",
       "sequence": 1,
-      "payload": {},
-      "original_type": "task.created"
-    },
-    {
-      "event_type": "started",
-      "timestamp": "2026-08-16T18:00:01Z",
-      "sequence": 2,
-      "payload": {"status": "running"},
-      "original_type": "task.started"
+      "payload": {"status": "queued"}
     }
   ]
 }
 ```
+
+**Important:** Every event MUST include:
+- `execution_id` - The task UUID returned from POST /executions
+- `mission_id` - The mission_id from the original execution request
+- `step_id` - The step_id from the original execution request (can be null)
+- `event_type` - One of the valid JoyCLI event types
+- `payload` - Event-specific data
+
+JoyCLI's `MissionExecutionCoordinator._reconcile_events` validates that every event has these IDs and will reject events that don't match the authorized execution.
 
 **Event Type Mapping:**
 
@@ -116,6 +120,18 @@ JoyMesh internal events are mapped to JoyCLI event types:
 - `task.succeeded`, `execution.completed` → `completed`
 - `task.failed`, `execution.failed` → `failed`
 - `task.cancelled`, `execution.cancelled` → `cancelled`
+
+**Terminal Events:**
+
+JoyCLI expects exactly one terminal event: `blocked`, `failed`, `cancelled`, or `completed`.
+
+When no workers are connected:
+- Task is created in QUEUED state
+- GET /executions/{id}/events returns `queued` event
+- **No terminal event is emitted** (task is genuinely queued, not completed)
+- JoyCLI will fall back to JoyClaw for actual execution if no terminal event appears
+
+This is honest behavior - we don't fake `completed` when no work was done.
 
 ### POST `/executions/{execution_id}/cancel`
 

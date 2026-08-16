@@ -293,6 +293,61 @@ async def test_create_execution_with_dict_policy_grant_no_known_keys(tmp_path: P
             assert task.policy_profile == "read_only"
 
 
+async def test_execution_events_include_mission_and_step_ids(tmp_path: Path) -> None:
+    """Test that events include execution_id, mission_id, and step_id as JoyCLI requires."""
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+    
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # Create execution with mission_id and step_id
+            create_response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "mission_abc123",
+                    "step_id": "step_xyz789",
+                    "repository_path": str(tmp_path),
+                    "instruction": "Test mission and step tracking",
+                    "policy_grant": "read_only",
+                    "capabilities": ["repository.read"],
+                },
+            )
+            assert create_response.status_code == 200
+            execution_id = create_response.json()["execution_id"]
+            
+            # Get events
+            events_response = await client.get(f"/executions/{execution_id}/events")
+            assert events_response.status_code == 200
+            data = events_response.json()
+            assert "events" in data
+            events = data["events"]
+            
+            # Every event MUST have execution_id, mission_id, step_id
+            assert len(events) > 0, "Should have at least one event"
+            for event in events:
+                assert "execution_id" in event, f"Event missing execution_id: {event}"
+                assert "mission_id" in event, f"Event missing mission_id: {event}"
+                assert "step_id" in event, f"Event missing step_id: {event}"
+                assert "event_type" in event, f"Event missing event_type: {event}"
+                assert "payload" in event, f"Event missing payload: {event}"
+                
+                # Verify correct IDs
+                assert event["execution_id"] == execution_id
+                assert event["mission_id"] == "mission_abc123"
+                assert event["step_id"] == "step_xyz789"
+                
+                # Verify event_type is valid for JoyCLI
+                valid_types = [
+                    "accepted", "queued", "started", "output", "tool", "file",
+                    "evidence", "blocked", "failed", "cancelled", "completed",
+                    "usage", "fallback"
+                ]
+                assert event["event_type"] in valid_types, (
+                    f"Invalid event_type: {event['event_type']}"
+                )
+
+
 async def test_create_execution_returns_immediately_with_no_nodes(tmp_path: Path) -> None:
     """Test that POST /executions returns quickly even when no nodes are connected."""
     import time
