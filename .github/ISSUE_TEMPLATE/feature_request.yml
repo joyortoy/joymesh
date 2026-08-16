@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a focused improvement to JoyMesh
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user or developer problem before proposing the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become possible, simpler, or safer?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note any workarounds or alternative designs you considered.
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Would you like to work on this?
+      options:
+        - "Yes"
+        - "Maybe, with guidance"
+        - "No"
+    validations:
+      required: true
