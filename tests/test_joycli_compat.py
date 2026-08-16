@@ -291,3 +291,48 @@ async def test_create_execution_with_dict_policy_grant_no_known_keys(tmp_path: P
             task = await mesh.runtime_service.store.get_task(execution_id)
             # Should default to read_only when no recognized keys found
             assert task.policy_profile == "read_only"
+
+
+async def test_create_execution_returns_immediately_with_no_nodes(tmp_path: Path) -> None:
+    """Test that POST /executions returns quickly even when no nodes are connected."""
+    import time
+    
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+    
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # Verify no nodes connected
+            ready_response = await client.get("/ready")
+            assert ready_response.json()["connected_nodes"] == 0
+            
+            # Time the execution creation
+            start_time = time.time()
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "probe",
+                    "step_id": "probe",
+                    "repository_path": "/tmp",
+                    "instruction": "probe only",
+                    "policy_grant": {"mode": "read_only"},
+                    "capabilities": [],
+                },
+            )
+            elapsed_time = time.time() - start_time
+            
+            # Should return quickly (under 2 seconds)
+            assert elapsed_time < 2.0, f"Request took {elapsed_time:.2f}s, expected < 2s"
+            
+            # Should return 200 with execution_id
+            assert response.status_code == 200
+            data = response.json()
+            assert "execution_id" in data
+            
+            # Task should be queued (not rejected)
+            execution_id = data["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            assert task.task_id == execution_id
+            assert task.status in [RuntimeTaskStatus.QUEUED, RuntimeTaskStatus.ROUTING, 
+                                   RuntimeTaskStatus.PENDING, RuntimeTaskStatus.APPROVAL_REQUIRED]

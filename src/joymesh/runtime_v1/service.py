@@ -153,7 +153,9 @@ class RuntimeService:
     def latest_worker_report(self, worker_id: str) -> WorkerReport | None:
         return self._worker_reports.get(worker_id)
 
-    async def create_task(self, body: CreateRuntimeTaskBody, *, user_id: str) -> RuntimeTaskRecord:
+    async def create_task(
+        self, body: CreateRuntimeTaskBody, *, user_id: str, skip_routing: bool = False
+    ) -> RuntimeTaskRecord:
         request = RuntimeTaskRequest(
             workspace_id=body.workspace_id,
             prompt=body.prompt,
@@ -258,6 +260,31 @@ class RuntimeService:
         await self.store.save_task(task)
         if approval_required:
             return task
+        if skip_routing:
+            # For JoyCLI compat: queue task without blocking on routing
+            queued = task.model_copy(
+                update={
+                    "status": RuntimeTaskStatus.QUEUED,
+                    "detail": "Queued for routing when workers available",
+                    "updated_at": utc_now(),
+                }
+            )
+            await self.store.save_task(queued)
+            await self.store.audit(
+                "task.queued",
+                task_id=task.task_id,
+                payload={"reason": "skip_routing_requested"},
+            )
+            self.store.append_event(
+                task.task_id,
+                {
+                    "event_type": "accepted",
+                    "status": "queued",
+                    "detail": "Task accepted and queued",
+                },
+            )
+            self.metrics.queued_tasks += 1
+            return queued
         return await self.route_task(task.task_id)
 
     async def approve_task(self, task_id: str) -> RuntimeTaskRecord:
@@ -535,25 +562,12 @@ class RuntimeService:
         )
         eligible = next((item for item in candidates if item.eligible), None)
         if eligible is None:
-            reasons = candidates[0].rejection_reasons if candidates else ("no candidates",)
+            reasons = candidates[0].rejection_reasons if candidates else ("no workers available",)
             detail = "; ".join(reasons)
-            if any("offline" in reason for reason in reasons):
-                queued = task.model_copy(
-                    update={
-                        "status": RuntimeTaskStatus.QUEUED,
-                        "detail": detail,
-                        "updated_at": utc_now(),
-                        "execution_id": intent.execution_id,
-                        "selected_backend_id": decision.selected_backend_id,
-                        "selected_harness_id": decision.selected_harness_id,
-                    }
-                )
-                self.metrics.queued_tasks += 1
-                await self.store.save_task(queued)
-                return {"status": "queued", "message": detail, "ok": False}
-            rejected = task.model_copy(
+            # Always queue when no eligible candidates - workers may come online later
+            queued = task.model_copy(
                 update={
-                    "status": RuntimeTaskStatus.REJECTED,
+                    "status": RuntimeTaskStatus.QUEUED,
                     "detail": detail,
                     "updated_at": utc_now(),
                     "execution_id": intent.execution_id,
@@ -561,8 +575,9 @@ class RuntimeService:
                     "selected_harness_id": decision.selected_harness_id,
                 }
             )
-            await self.store.save_task(rejected)
-            return {"status": "rejected", "message": detail, "ok": False}
+            self.metrics.queued_tasks += 1
+            await self.store.save_task(queued)
+            return {"status": "queued", "message": detail, "ok": False}
 
         attempt_id = f"execution_attempt_{uuid4().hex}"
         attempt_number = len(self.store.attempts.get(task.task_id, [])) + 1

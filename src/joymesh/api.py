@@ -1695,11 +1695,18 @@ def create_app(
     async def joycli_create_execution(
         execution_request: JoyCliExecutionRequest,
     ) -> dict[str, str]:
-        """JoyCLI compatibility: submit an execution request."""
+        """JoyCLI compatibility: submit an execution request.
+        
+        Returns immediately with execution_id. Task is queued and will be routed
+        when workers become available.
+        """
         from joymesh.runtime_v1.models import CreateRuntimeTaskBody
 
         caps = execution_request.capabilities
         policy_profile = _extract_policy_profile(execution_request.policy_grant)
+        
+        # Create task with skip_routing=True to return immediately
+        # Task will be queued and can be routed later when workers connect
         body = CreateRuntimeTaskBody(
             workspace_id=execution_request.repository_path,
             prompt=execution_request.instruction,
@@ -1707,7 +1714,9 @@ def create_app(
             requested_capabilities=tuple(caps) if caps else (),
             timeout_seconds=execution_request.timeout_seconds,
         )
-        task = await service.runtime_service.create_task(body, user_id="joycli")
+        task = await service.runtime_service.create_task(
+            body, user_id="joycli", skip_routing=True
+        )
         return {"execution_id": task.task_id}
 
     @app.get("/executions/{execution_id}/events")
