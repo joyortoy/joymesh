@@ -41,22 +41,24 @@ async def test_gateway_connection_increments_connected_nodes(tmp_path: Path) -> 
     node_id = node.id
     
     # Add a connector for this node so it can route
-    from joymesh.connectors.lifecycle_models import ConnectorReadiness, NodeConnectorState
     from joymesh.connectors.lifecycle_models import (
+        ConnectorReadiness,
+        NodeConnectorState,
         ConnectorExecutionOrigin,
         EvidenceTrustLevel,
+        RecommendedConnectorAction,
     )
     
     readiness = ConnectorReadiness(
         node_id=node_id,
         connector_id="cursor",
-        installed=True,
         state=NodeConnectorState.READY,
-        authenticated=True,
-        routing_enabled=True,
-        certified_capabilities=("repository.read",),
+        routing_eligible=True,
+        catalogue_maturity="stable",
+        installed_version="1.0.0",
         evidence_trust_level=EvidenceTrustLevel.NODE_ATTESTED,
-        evidence_execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+        execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+        recommended_action=RecommendedConnectorAction.NONE,
     )
     await mesh.connector_lifecycle.store.save_readiness(readiness)
     
@@ -151,18 +153,19 @@ async def test_multiple_nodes_increment_counter_correctly(tmp_path: Path) -> Non
             NodeConnectorState,
             ConnectorExecutionOrigin,
             EvidenceTrustLevel,
+            RecommendedConnectorAction,
         )
         
         readiness = ConnectorReadiness(
             node_id=node.id,
             connector_id="cursor",
-            installed=True,
             state=NodeConnectorState.READY,
-            authenticated=True,
-            routing_enabled=True,
-            certified_capabilities=("repository.read",),
+            routing_eligible=True,
+            catalogue_maturity="stable",
+            installed_version="1.0.0",
             evidence_trust_level=EvidenceTrustLevel.NODE_ATTESTED,
-            evidence_execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+            execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+            recommended_action=RecommendedConnectorAction.NONE,
         )
         await mesh.connector_lifecycle.store.save_readiness(readiness)
     
@@ -231,6 +234,75 @@ async def test_multiple_nodes_increment_counter_correctly(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_build_snapshot_with_real_readiness_fields(tmp_path: Path) -> None:
+    """Verify _build_node_snapshot doesn't crash with actual ConnectorReadiness fields."""
+    from joymesh.api import _build_node_snapshot
+    from joymesh.connectors.lifecycle_models import (
+        ConnectorReadiness,
+        NodeConnectorState,
+        ConnectorExecutionOrigin,
+        EvidenceTrustLevel,
+        RecommendedConnectorAction,
+    )
+    
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'snapshot.db'}")
+    await mesh.initialize()
+    
+    private_key, public_key = generate_node_keypair()
+    pairing, device_code = await mesh.control_plane.begin_pairing(
+        organisation_id="org1",
+        workspace_id="ws1",
+        code_challenge="challenge",
+    )
+    await mesh.control_plane.approve_pairing(pairing.id, user_id="user1")
+    node = await mesh.control_plane.register_node(
+        pairing.id,
+        device_code=device_code,
+        name="TestNode",
+        public_key=public_key,
+        key_id="test-key",
+        platform="darwin",
+        version="0.1.0",
+    )
+    
+    # Create a ConnectorReadiness with ONLY real fields
+    readiness = ConnectorReadiness(
+        node_id=node.id,
+        connector_id="cursor",
+        state=NodeConnectorState.READY,
+        routing_eligible=True,
+        catalogue_maturity="stable",
+        installed_version="1.0.0",
+        executable_path="/usr/local/bin/cursor",
+        routing_profile="read_only",
+        evidence_trust_level=EvidenceTrustLevel.NODE_ATTESTED,
+        execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+        recommended_action=RecommendedConnectorAction.NONE,
+        blocking_reason=None,
+        active_task_id=None,
+        latest_evidence_id=None,
+    )
+    await mesh.connector_lifecycle.store.save_readiness(readiness)
+    
+    # This should not AttributeError
+    snapshot = await _build_node_snapshot(mesh, node_id=node.id, online=True)
+    
+    assert snapshot.node_id == node.id
+    assert snapshot.online is True
+    assert "cursor" in snapshot.connectors
+    
+    connector = snapshot.connectors["cursor"]
+    assert connector.connector_id == "cursor"
+    assert connector.installed is True  # Derived from installed_version
+    assert connector.readiness == NodeConnectorState.READY
+    assert connector.authenticated is True  # Derived from READY state
+    assert connector.routing_enabled is True  # Derived from routing_eligible
+    assert isinstance(connector.certified_capabilities, frozenset)
+    assert connector.trust_level == EvidenceTrustLevel.NODE_ATTESTED
+    assert connector.execution_origin == ConnectorExecutionOrigin.REMOTE_NODE
+
+
+@pytest.mark.asyncio
 async def test_reconnect_does_not_double_count(tmp_path: Path) -> None:
     """Reconnecting the same node should not double-count."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'reconnect.db'}")
@@ -258,18 +330,19 @@ async def test_reconnect_does_not_double_count(tmp_path: Path) -> None:
         NodeConnectorState,
         ConnectorExecutionOrigin,
         EvidenceTrustLevel,
+        RecommendedConnectorAction,
     )
     
     readiness = ConnectorReadiness(
         node_id=node.id,
         connector_id="cursor",
-        installed=True,
         state=NodeConnectorState.READY,
-        authenticated=True,
-        routing_enabled=True,
-        certified_capabilities=("repository.read",),
+        routing_eligible=True,
+        catalogue_maturity="stable",
+        installed_version="1.0.0",
         evidence_trust_level=EvidenceTrustLevel.NODE_ATTESTED,
-        evidence_execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+        execution_origin=ConnectorExecutionOrigin.REMOTE_NODE,
+        recommended_action=RecommendedConnectorAction.NONE,
     )
     await mesh.connector_lifecycle.store.save_readiness(readiness)
     

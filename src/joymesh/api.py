@@ -196,6 +196,7 @@ async def _build_node_snapshot(
     online: bool,
 ) -> Any:
     """Build a SchedulerNodeSnapshot from connector readiness data for runtime registration."""
+    from joymesh.connectors.lifecycle_models import NodeConnectorState
     from joymesh.runtime_v1.scheduler import SchedulerConnectorSnapshot, SchedulerNodeSnapshot
     
     node = service.control_plane.store.nodes.get(node_id)
@@ -210,15 +211,47 @@ async def _build_node_snapshot(
     # Convert readiness to connector snapshots
     connectors: dict[str, SchedulerConnectorSnapshot] = {}
     for readiness in readiness_list:
+        # Derive installed from installed_version or state
+        installed = bool(readiness.installed_version) or readiness.state in {
+            NodeConnectorState.INSTALLED,
+            NodeConnectorState.AUTHENTICATION_REQUIRED,
+            NodeConnectorState.AUTHENTICATION_IN_PROGRESS,
+            NodeConnectorState.AUTHENTICATED,
+            NodeConnectorState.AUTHENTICATION_FAILED,
+            NodeConnectorState.VERIFICATION_REQUIRED,
+            NodeConnectorState.VERIFICATION_IN_PROGRESS,
+            NodeConnectorState.VERIFIED,
+            NodeConnectorState.CERTIFICATION_REQUIRED,
+            NodeConnectorState.CERTIFICATION_IN_PROGRESS,
+            NodeConnectorState.CERTIFIED,
+            NodeConnectorState.CERTIFICATION_FAILED,
+            NodeConnectorState.NEEDS_REPAIR,
+            NodeConnectorState.ROUTING_DISABLED,
+            NodeConnectorState.READY,
+        }
+        
+        # Derive authenticated from state
+        authenticated = readiness.state in {
+            NodeConnectorState.AUTHENTICATED,
+            NodeConnectorState.VERIFIED,
+            NodeConnectorState.CERTIFIED,
+            NodeConnectorState.READY,
+        }
+        
+        # Fetch certified capabilities from database
+        certified_capabilities = await _fetch_certified_capabilities(
+            service, node_id=node_id, connector_id=readiness.connector_id
+        )
+        
         connectors[readiness.connector_id] = SchedulerConnectorSnapshot(
             connector_id=readiness.connector_id,
-            installed=readiness.installed,
+            installed=installed,
             readiness=readiness.state,
-            authenticated=readiness.authenticated,
-            routing_enabled=readiness.routing_enabled,
-            certified_capabilities=frozenset(readiness.certified_capabilities),
+            authenticated=authenticated,
+            routing_enabled=readiness.routing_eligible,
+            certified_capabilities=certified_capabilities,
             trust_level=readiness.evidence_trust_level,
-            execution_origin=readiness.evidence_execution_origin,
+            execution_origin=readiness.execution_origin,
         )
     
     # Fetch workspace placements for this node
@@ -236,6 +269,37 @@ async def _build_node_snapshot(
         connectors=connectors,
         placements=tuple(placements),
     )
+
+
+async def _fetch_certified_capabilities(
+    service: JoyMesh,
+    *,
+    node_id: str,
+    connector_id: str,
+) -> frozenset[str]:
+    """Fetch certified capabilities for a connector from the runtime store database."""
+    from sqlalchemy import select
+    from joymesh.runtime_v1.store import CertifiedCapabilityRow
+    
+    db = service.runtime_service.store.database
+    if db is None:
+        # No database, return empty set (safe default for in-memory testing)
+        return frozenset()
+    
+    try:
+        async with db.session() as session:
+            stmt = (
+                select(CertifiedCapabilityRow.capability_id)
+                .where(CertifiedCapabilityRow.node_id == node_id)
+                .where(CertifiedCapabilityRow.connector_id == connector_id)
+                .where(CertifiedCapabilityRow.invalidation_reason.is_(None))
+            )
+            result = await session.execute(stmt)
+            capabilities = [row[0] for row in result.fetchall()]
+            return frozenset(capabilities)
+    except Exception:
+        # Database error, return empty set (safe default)
+        return frozenset()
 
 
 def _onboarding_actions(
