@@ -1717,15 +1717,43 @@ def create_app(
         task = await service.runtime_service.create_task(
             body, user_id="joycli", skip_routing=True
         )
+        
+        # Store mission_id and step_id for JoyCLI event reconciliation
+        # These are required on every event returned by GET /executions/{id}/events
+        await service.runtime_service.store.audit(
+            "joycli.execution_metadata",
+            task_id=task.task_id,
+            payload={
+                "mission_id": execution_request.mission_id,
+                "step_id": execution_request.step_id,
+                "execution_id": task.task_id,
+            },
+        )
+        
         return {"execution_id": task.task_id}
 
     @app.get("/executions/{execution_id}/events")
     async def joycli_execution_events(execution_id: str) -> dict[str, list[dict[str, object]]]:
-        """JoyCLI compatibility: retrieve normalized events for an execution."""
+        """JoyCLI compatibility: retrieve normalized events for an execution.
+        
+        Every event MUST include execution_id, mission_id, step_id for JoyCLI reconciliation.
+        """
         try:
             task = await service.runtime_service.store.get_task(execution_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Execution not found") from exc
+
+        # Extract mission_id and step_id from audit log
+        mission_id = None
+        step_id = None
+        for audit in service.runtime_service.store.audits:
+            if (
+                audit.task_id == execution_id
+                and audit.event_type == "joycli.execution_metadata"
+            ):
+                mission_id = audit.payload.get("mission_id")
+                step_id = audit.payload.get("step_id")
+                break
 
         raw_events = service.runtime_service.store.events.get(execution_id, [])
         normalized = []
@@ -1739,41 +1767,59 @@ def create_app(
             
             normalized.append({
                 "event_type": joycli_type,
+                "execution_id": execution_id,
+                "mission_id": mission_id,
+                "step_id": step_id,
                 "timestamp": event.get("timestamp", ""),
                 "sequence": event.get("sequence", 0),
                 "payload": payload,
-                "original_type": event_type,
             })
 
         # Add a synthetic status event based on current task status
+        # JoyCLI requires execution_id, mission_id, step_id on EVERY event
         if task.status.value in ["queued", "leased", "offered"]:
             if not any(e["event_type"] == "queued" for e in normalized):
                 normalized.append({
                     "event_type": "queued",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
                     "payload": {"status": task.status.value},
                 })
         elif task.status.value in ["accepted", "running"]:
             if not any(e["event_type"] == "started" for e in normalized):
                 normalized.append({
                     "event_type": "started",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
                     "payload": {"status": task.status.value},
                 })
         elif task.status.value == "succeeded":
             if not any(e["event_type"] == "completed" for e in normalized):
                 normalized.append({
                     "event_type": "completed",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
                     "payload": {"status": task.status.value},
                 })
         elif task.status.value == "failed":
             if not any(e["event_type"] == "failed" for e in normalized):
                 normalized.append({
                     "event_type": "failed",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
                     "payload": {"status": task.status.value, "detail": task.detail},
                 })
         elif task.status.value == "cancelled":
             if not any(e["event_type"] == "cancelled" for e in normalized):
                 normalized.append({
                     "event_type": "cancelled",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
                     "payload": {"status": task.status.value},
                 })
 
