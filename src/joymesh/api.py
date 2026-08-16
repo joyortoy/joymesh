@@ -95,7 +95,7 @@ class JoyCliExecutionRequest(BaseModel):
     step_id: str | None = None
     repository_path: str
     instruction: str
-    policy_grant: str = "read_only"
+    policy_grant: str | dict[str, object] = "read_only"
     capabilities: list[str] = Field(default_factory=list)
     timeout_seconds: int = Field(default=300, ge=1, le=86_400)
     constraints: dict[str, object] = Field(default_factory=dict)
@@ -1675,6 +1675,22 @@ def create_app(
             "queued_tasks": health.get("task_queue", 0),
         }
 
+    def _extract_policy_profile(policy_grant: str | dict[str, object]) -> str:
+        """Extract policy profile from JoyCLI policy_grant (string or dict)."""
+        if isinstance(policy_grant, str):
+            return policy_grant
+        
+        # Try common keys that might hold the profile
+        for key in ("profile", "mode", "policy_profile"):
+            if key in policy_grant:
+                value = policy_grant[key]
+                if isinstance(value, str):
+                    return value
+        
+        # If we have a dict but no recognized keys, try JSON serialization
+        # or default to read_only
+        return "read_only"
+
     @app.post("/executions")
     async def joycli_create_execution(
         execution_request: JoyCliExecutionRequest,
@@ -1683,10 +1699,11 @@ def create_app(
         from joymesh.runtime_v1.models import CreateRuntimeTaskBody
 
         caps = execution_request.capabilities
+        policy_profile = _extract_policy_profile(execution_request.policy_grant)
         body = CreateRuntimeTaskBody(
             workspace_id=execution_request.repository_path,
             prompt=execution_request.instruction,
-            policy_profile=execution_request.policy_grant,
+            policy_profile=policy_profile,
             requested_capabilities=tuple(caps) if caps else (),
             timeout_seconds=execution_request.timeout_seconds,
         )

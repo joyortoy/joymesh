@@ -203,3 +203,91 @@ async def test_create_execution_with_no_connected_nodes(tmp_path: Path) -> None:
             execution_id = data["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
             assert task.task_id == execution_id
+
+
+async def test_create_execution_with_dict_policy_grant(tmp_path: Path) -> None:
+    """Test POST /executions accepts policy_grant as dict (JoyCLI format)."""
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+    
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # Test with policy_grant as dict with "profile" key
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "test_mission_dict_policy",
+                    "step_id": "step_dict",
+                    "repository_path": str(tmp_path),
+                    "instruction": "Test with dict policy grant",
+                    "policy_grant": {"profile": "read_only", "other_metadata": "value"},
+                    "capabilities": ["repository.read"],
+                },
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "execution_id" in data
+            
+            # Verify task was created with correct policy profile
+            execution_id = data["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            assert task.task_id == execution_id
+            assert task.policy_profile == "read_only"
+
+
+async def test_create_execution_with_dict_policy_grant_mode_key(tmp_path: Path) -> None:
+    """Test policy_grant dict with 'mode' key instead of 'profile'."""
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+    
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "test_mission_mode_key",
+                    "step_id": "step_mode",
+                    "repository_path": str(tmp_path),
+                    "instruction": "Test with mode key",
+                    "policy_grant": {"mode": "read_only"},
+                    "capabilities": [],
+                },
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "execution_id" in data
+            
+            execution_id = data["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            assert task.policy_profile == "read_only"
+
+
+async def test_create_execution_with_dict_policy_grant_no_known_keys(tmp_path: Path) -> None:
+    """Test policy_grant dict without recognized keys defaults to read_only."""
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+    
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "test_mission_unknown_keys",
+                    "step_id": "step_unknown",
+                    "repository_path": str(tmp_path),
+                    "instruction": "Test with unknown keys",
+                    "policy_grant": {"some_key": "some_value", "other": 123},
+                    "capabilities": [],
+                },
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "execution_id" in data
+            
+            execution_id = data["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            # Should default to read_only when no recognized keys found
+            assert task.policy_profile == "read_only"
