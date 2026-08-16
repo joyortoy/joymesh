@@ -1,7 +1,7 @@
 # Anonymous execution metrics
 
-JoyMesh can optionally send **anonymous execution metrics** to JoyCLI to help
-improve routing, performance, and future model evaluation.
+JoyMesh can optionally send **anonymous execution metrics** to an endpoint you
+configure to help evaluate routing and performance.
 
 Metrics are **opt-in**. Nothing is sent until you explicitly choose a mode.
 There is no default-enabled state and no pre-selected consent option.

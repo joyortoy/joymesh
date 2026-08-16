@@ -1,13 +1,15 @@
 # JoyMesh roadmap
 
-JoyMesh is building a trustworthy interoperability layer for coding-agent
-harnesses. The roadmap favors verifiable execution and a small number of
-complete workflows over broad but unproven compatibility claims.
+JoyMesh is building a trustworthy layered delegation system for coding agents.
+The roadmap favors measurable context isolation, verifiable execution, and a
+small number of complete parallel workflows over broad compatibility claims.
 
 ## Now: trustworthy alpha
 
 - Keep tests, lint, type-checking, and package builds green in CI.
-- Provide a credential-free discovery demo and one reproducible execution demo.
+- Provide credential-free discovery and parallel-delegation demos.
+- Connect `ParallelDelegator` to route preview, execution, and compact result
+  normalization through the public SDK.
 - Record version-specific certification evidence for Codex and OpenCode.
 - Publish a support matrix that separates catalogue, detected, conformant, and
   certified states.
@@ -16,7 +18,10 @@ complete workflows over broad but unproven compatibility claims.
 ## Next: useful integrations
 
 - Publish focused Codex and OpenCode integration examples.
+- Publish a reproducible OpenCode + DeepSeek delegation example.
 - Make route decisions easier to inspect and explain.
+- Measure planner context, worker tokens, elapsed time, and feedback size so
+  users can verify whether delegation actually saves resources.
 - Improve platform coverage and installation guidance for Linux and Windows.
 - Add generated reference documentation for the Python SDK and REST API.
 - Turn recurring setup failures into `joymesh doctor` diagnostics.

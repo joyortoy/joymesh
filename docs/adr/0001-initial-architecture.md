@@ -8,8 +8,8 @@
 JoyMesh needs to expose a stable harness-neutral interface through a Python SDK,
 CLI, and local API. Native harness processes differ in installation detection,
 capabilities, command syntax, output, sessions, billing, and failure behavior.
-The first slice must prove the boundary without coupling the project to JoyCLI
-or prematurely implementing every target harness.
+The first slice must prove the boundary without coupling the project to a
+specific planning product or prematurely implementing every target harness.
 
 ## Decision
 

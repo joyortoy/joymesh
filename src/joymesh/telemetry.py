@@ -32,10 +32,10 @@ from joymesh.config import (
     set_telemetry_mode,
 )
 
-# Extensible schema version for internal tracking; not part of JoyCLI metrics allowlist.
+# Extensible schema version for internal tracking; not part of the metrics allowlist.
 REPORT_SCHEMA_VERSION = 1
 
-# JoyCLI anonymous execution metrics — only these top-level keys may be transmitted.
+# Anonymous execution metrics — only these top-level keys may be transmitted.
 METRICS_PAYLOAD_ALLOWLIST: frozenset[str] = frozenset(
     {
         "task_type",
@@ -69,7 +69,7 @@ TOKENS_ALLOWLIST: frozenset[str] = frozenset({"input", "output"})
 CONSENT_TITLE = "Help improve JoyMesh?"
 
 CONSENT_BODY = """\
-JoyMesh can optionally send anonymous execution statistics to JoyCLI.
+JoyMesh can optionally send anonymous execution statistics to a configured endpoint.
 
 These reports help improve routing, performance, and future model evaluation.
 
@@ -105,7 +105,7 @@ _CHOICE_LABELS = {
 
 @dataclass(frozen=True)
 class AnonymousExecutionMetrics:
-    """Allowlisted anonymous execution metrics for JoyCLI — safe to transmit."""
+    """Allowlisted anonymous execution metrics that are safe to transmit."""
 
     task_type: str | None = None
     duration_ms: int | None = None
@@ -147,7 +147,7 @@ class AnonymousExecutionReport:
     extras: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        """Serialize legacy fields with an explicit allowlist (not for JoyCLI send)."""
+        """Serialize legacy fields with an explicit allowlist."""
 
         tokens: dict[str, int] | None = None
         if self.tokens:
@@ -215,7 +215,7 @@ def preview_metrics_placeholder() -> dict[str, Any]:
 
 
 def preview_report_placeholder() -> dict[str, Any]:
-    """Legacy placeholder; prefer preview_metrics_placeholder for JoyCLI metrics."""
+    """Legacy placeholder; prefer preview_metrics_placeholder for metrics."""
 
     return preview_metrics_placeholder()
 
@@ -361,7 +361,7 @@ def build_metrics_from_run(
     usage: Mapping[str, Any] | None = None,
     task_type: str | None = None,
 ) -> AnonymousExecutionMetrics:
-    """Build JoyCLI metrics from a Run without reading prompts or paths."""
+    """Build anonymous metrics from a Run without reading prompts or paths."""
 
     status = getattr(run, "status", None)
     if status is None:
