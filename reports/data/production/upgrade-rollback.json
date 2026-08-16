@@ -1,0 +1,69 @@
+{
+  "artifacts_dir": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts",
+  "candidate_wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/candidate/joymesh-0.1.0-py3-none-any.whl",
+  "generated_at": "2026-08-03T14:31:02.966527+00:00",
+  "ok": true,
+  "primary_path": "RC1 baseline import -> candidate production import",
+  "rc1_wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/rc1/joymesh-0.1.0-py3-none-any.whl",
+  "rollback_policy": "Code rollback to RC1 verified via baseline import only; schema downgrade unsafe and refused operationally",
+  "steps": [
+    {
+      "ok": true,
+      "step": "create_venv"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [
+        "",
+        "[notice] A new release of pip is available: 25.0.1 -> 26.2",
+        "[notice] To update, run: /var/folders/br/9x47s9s10bngnx91nd_nz_pr0000gn/T/joymesh-upgrade-45nq5158/venv/bin/python -m pip install --upgrade pip"
+      ],
+      "step": "install_rc1",
+      "wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/rc1/joymesh-0.1.0-py3-none-any.whl"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [],
+      "stdout": "unknown",
+      "step": "verify_rc1_baseline_import"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [
+        "",
+        "[notice] A new release of pip is available: 25.0.1 -> 26.2",
+        "[notice] To update, run: /var/folders/br/9x47s9s10bngnx91nd_nz_pr0000gn/T/joymesh-upgrade-45nq5158/venv/bin/python -m pip install --upgrade pip"
+      ],
+      "step": "upgrade_candidate",
+      "wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/candidate/joymesh-0.1.0-py3-none-any.whl"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [],
+      "stdout": "2000",
+      "step": "verify_candidate_production"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [
+        "",
+        "[notice] A new release of pip is available: 25.0.1 -> 26.2",
+        "[notice] To update, run: /var/folders/br/9x47s9s10bngnx91nd_nz_pr0000gn/T/joymesh-upgrade-45nq5158/venv/bin/python -m pip install --upgrade pip"
+      ],
+      "step": "rollback_rc1_code",
+      "wheel": "/Users/joytan/Documents/joymesh-rc1-verify/artifacts/rc1/joymesh-0.1.0-py3-none-any.whl"
+    },
+    {
+      "ok": true,
+      "stderr_tail": [],
+      "stdout": "production_module=False",
+      "step": "verify_rollback_baseline_import"
+    },
+    {
+      "note": "Operational rollback to RC1 code is supported only with compatible DB backups; future-schema restore remains fail-closed (see joycli test_restore_rejects_future_schema_version).",
+      "ok": true,
+      "stdout": "unsafe_schema_downgrade: refused by policy; use backup restore with matching schema",
+      "step": "schema_downgrade_policy"
+    }
+  ]
+}

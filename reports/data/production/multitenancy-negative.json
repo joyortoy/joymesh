@@ -1,0 +1,17 @@
+{
+  "detail": {
+    "joycli_repo": "/Users/joytan/intexta-buildweek/joycli",
+    "returncode": 0,
+    "stderr_tail": [],
+    "stdout_tail": [
+      "  /Users/joytan/intexta-buildweek/joycli/tests/test_multitenancy_negatives.py:144: RuntimeWarning: runtime intake accepts unsigned envelopes; insecure test mode is active",
+      "    intake = RuntimeStateIntakeService(",
+      "",
+      "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+      "4 passed, 2 warnings in 0.07s"
+    ],
+    "target": "/Users/joytan/intexta-buildweek/joycli/tests/test_multitenancy_negatives.py"
+  },
+  "generated_at": "2026-08-03T14:15:25.463686+00:00",
+  "ok": true
+}

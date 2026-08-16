@@ -170,6 +170,18 @@ class RuntimeService:
             max_attempts=body.max_attempts,
             user_id=user_id,
         )
+        correlation_id = body.correlation_id or request.task_id
+        integration_metadata = {
+            key: value
+            for key, value in {
+                "mission_id": body.mission_id,
+                "execution_id": body.execution_id,
+                "trace_id": body.trace_id,
+                "actor_id": body.actor_id,
+                "idempotency_key": body.idempotency_key,
+            }.items()
+            if value is not None
+        }
         self._task_prompts[request.task_id] = body.prompt
         await self.store.audit(
             "task.created",
@@ -180,6 +192,8 @@ class RuntimeService:
                 "policy_profile": request.policy_profile,
                 "requested_capabilities": sorted(request.requested_capabilities),
                 "prohibited_capabilities": sorted(request.prohibited_capabilities),
+                "correlation_id": correlation_id,
+                **integration_metadata,
             },
         )
         decision = self.policy.evaluate(request)
@@ -198,6 +212,10 @@ class RuntimeService:
             self.metrics.policy_rejections += 1
             task = RuntimeTaskRecord(
                 task_id=request.task_id,
+                correlation_id=correlation_id,
+                mission_id=body.mission_id,
+                trace_id=body.trace_id,
+                metadata=integration_metadata,
                 workspace_id=request.workspace_id,
                 user_id=user_id,
                 prompt_digest=request.prompt_digest,
@@ -232,6 +250,10 @@ class RuntimeService:
         approval_required = bool(decision.approval_requirements)
         task = RuntimeTaskRecord(
             task_id=request.task_id,
+            correlation_id=correlation_id,
+            mission_id=body.mission_id,
+            trace_id=body.trace_id,
+            metadata=integration_metadata,
             workspace_id=request.workspace_id,
             user_id=user_id,
             prompt_digest=request.prompt_digest,
@@ -367,9 +389,21 @@ class RuntimeService:
             )
             await self.store.save_task(task)
 
-        result = await self.execution_routing.router.execute_with_fallback(
-            intent, decision=decision
-        )
+        if (
+            decision.selected_backend_id == "local"
+            and decision.selected_harness_id == "codex"
+        ):
+            result = await self._execute_coding_worker(
+                task=task,
+                prompt=prompt,
+                workspace_path=workspace_path,
+                decision=decision,
+                intent=intent,
+            )
+        else:
+            result = await self.execution_routing.router.execute_with_fallback(
+                intent, decision=decision
+            )
         for audit in result.audits:
             await self.store.audit(
                 str(audit.get("event_type") or "backend.event"),
@@ -401,13 +435,13 @@ class RuntimeService:
             context=CompletionContext(
                 organisation_id=None,
                 project_id=task.workspace_id,
-                mission_id=task.task_id,
+                mission_id=task.mission_id or task.task_id,
                 execution_id=result.execution_id,
                 attempt_id=attempt_id,
                 authoritative_attempt_id=attempt_id,
                 backend_id=result.backend_id,
                 harness_id=result.harness_id,
-                correlation_id=task.task_id,
+                correlation_id=task.correlation_id or task.task_id,
                 user_id=task.user_id,
                 verification_strategy="backend_success_with_evidence",
             ),
@@ -489,7 +523,8 @@ class RuntimeService:
     ) -> Mapping[str, Any]:
         """Map JoyMeshBackend.submit onto the existing node lease scheduler."""
 
-        task = await self.store.get_task(intent.mission_id)
+        runtime_task_id = str(intent.metadata.get("runtime_task_id") or intent.mission_id)
+        task = await self.store.get_task(runtime_task_id)
         request = _request_from_record(task)
         # Prefer router harness, but only require it when the mission explicitly required one.
         preferred = request.preferred_connectors
@@ -775,13 +810,13 @@ class RuntimeService:
             context=CompletionContext(
                 organisation_id=None,
                 project_id=task.workspace_id,
-                mission_id=task.task_id,
+                mission_id=task.mission_id or task.task_id,
                 execution_id=execution_id,
                 attempt_id=attempt_id,
                 authoritative_attempt_id=authoritative,
                 backend_id=task.selected_backend_id or "joymesh",
                 harness_id=task.selected_harness_id or task.selected_connector_id,
-                correlation_id=task.task_id,
+                correlation_id=task.correlation_id or task.task_id,
                 user_id=task.user_id,
                 cancelled=event_type in {"task.cancelled", "execution.cancelled"},
                 require_evidence=True,
@@ -900,7 +935,7 @@ class RuntimeService:
                 CompletionContext(
                     organisation_id=None,
                     project_id=task.workspace_id,
-                    mission_id=task.task_id,
+                    mission_id=task.mission_id or task.task_id,
                     execution_id=execution_id,
                     attempt_id=attempt_id,
                     authoritative_attempt_id=attempt_id,
@@ -908,6 +943,7 @@ class RuntimeService:
                     harness_id=task.selected_harness_id or task.selected_connector_id,
                     cancelled=True,
                     user_id=task.user_id,
+                    correlation_id=task.correlation_id or task.task_id,
                 ),
                 cleanup_completed=True,
             )
@@ -960,6 +996,150 @@ class RuntimeService:
 
     async def register_placement(self, placement: WorkspacePlacement) -> WorkspacePlacement:
         return await self.store.save_placement(placement)
+
+    async def _execute_coding_worker(
+        self,
+        *,
+        task: RuntimeTaskRecord,
+        prompt: str,
+        workspace_path: str,
+        decision: ExecutionDecision,
+        intent: ExecutionIntent,
+    ) -> ExecutionResult:
+        from joymesh.runtime_v1.coding_worker import (
+            CodingWorker,
+            task_from_runtime,
+        )
+        from joymesh.runtime_v1.execution_routing.models import (
+            ExecutionResult,
+            ExecutionStatus,
+        )
+
+        policy_profile = task.policy_profile
+        allow_commit = "git.commit" in task.requested_capabilities and "git.commit" not in (
+            task.prohibited_capabilities
+        )
+        allow_push = "git.push" in task.requested_capabilities and "git.push" not in (
+            task.prohibited_capabilities
+        )
+        if policy_profile in {"read_only", "production_restricted", "ci"}:
+            allow_commit = False
+            allow_push = False
+
+        coding_task = task_from_runtime(
+            task_id=task.task_id,
+            prompt=prompt,
+            workspace_path=workspace_path,
+            mission_id=task.mission_id,
+            execution_id=intent.execution_id,
+            correlation_id=task.correlation_id,
+            allow_commit=allow_commit,
+            allow_push=allow_push,
+            timeout_seconds=task.timeout_seconds,
+            constraints=tuple(
+                item
+                for item in (
+                    "Do not commit" if not allow_commit else None,
+                    "Do not push" if not allow_push else None,
+                    "Stay inside the repository",
+                )
+                if item
+            ),
+        )
+        worker = CodingWorker(leases=self.leases, worker_id="local-codex-worker")
+        progress_events: list[dict[str, Any]] = []
+
+        async def on_progress(label: str) -> None:
+            event = {
+                "event_type": "coding_worker.progress",
+                "summary": label,
+                "execution_id": intent.execution_id,
+                "task_id": task.task_id,
+                "correlation_id": task.correlation_id,
+            }
+            progress_events.append(event)
+            self.store.append_event(task.task_id, event)
+
+        coding_result = await worker.execute(coding_task, on_progress=on_progress)
+        self.store.append_event(
+            task.task_id,
+            {
+                "event_type": "coding_worker.result",
+                "execution_id": intent.execution_id,
+                "result": coding_result.as_dict(),
+            },
+        )
+        ok = coding_result.status == "completed"
+        status = (
+            ExecutionStatus.CANCELLED
+            if coding_result.status == "cancelled"
+            else ExecutionStatus.SUCCEEDED
+            if ok
+            else ExecutionStatus.FAILED
+        )
+        return ExecutionResult(
+            ok=ok,
+            execution_id=intent.execution_id,
+            backend_id="local",
+            harness_id="codex",
+            status=status,
+            message=coding_result.summary,
+            attempted_backends=("local",),
+            decision=decision,
+            output={
+                "coding_worker": coding_result.as_dict(),
+                "ok": ok,
+                "changed_files": list(coding_result.changed_files),
+                "tests_run": [
+                    {
+                        "command": item.command,
+                        "status": item.status,
+                        "output_summary": item.output_summary,
+                    }
+                    for item in coding_result.tests_run
+                ],
+            },
+            audits=(),
+            attempts=(
+                {
+                    "attempt_id": f"coding_attempt_{task.task_id}",
+                    "execution_id": intent.execution_id,
+                    "backend_id": "local",
+                    "harness_id": "codex",
+                    "status": coding_result.status,
+                },
+            ),
+            failure_class=None if ok else (coding_result.error or "coding_worker_failed"),
+            evidence_refs=tuple(item.uri for item in coding_result.evidence),
+            candidate_verification={
+                "changed_files": list(coding_result.changed_files),
+                "tests_run": [
+                    {
+                        "command": item.command,
+                        "status": item.status,
+                        "output_summary": item.output_summary,
+                    }
+                    for item in coding_result.tests_run
+                ],
+                "worker_id": coding_result.worker_id,
+                "lease_id": coding_result.lease_id,
+            },
+        )
+
+    def coding_worker_health(self) -> dict[str, Any]:
+        from joymesh.runtime_v1.coding_worker import coding_worker_ready
+
+        ready = coding_worker_ready()
+        return {
+            **ready,
+            "lease_service": "ok",
+            "active_leases": sum(
+                1
+                for task_id in list(getattr(self.leases, "_active", {}))
+                if (lease := self.leases.active_lease(task_id)) is not None
+                and lease.status.value == "active"
+            ),
+        }
 
     def list_capabilities(self) -> list[dict[str, Any]]:
         from joymesh.runtime_v1.capabilities import CapabilityRegistry

@@ -77,6 +77,7 @@ class EventType(StrEnum):
     RATE_LIMIT_ENCOUNTERED = "rate_limit.encountered"
     FALLBACK_PROPOSED = "fallback.proposed"
     APPROVAL_REQUESTED = "approval.requested"
+    RUNTIME_SNAPSHOT_UPDATED = "runtime.snapshot_updated"
 
 
 class BillingRoute(StrEnum):
@@ -106,6 +107,8 @@ class FailureKind(StrEnum):
     UNSUPPORTED = "unsupported"
     PROCESS = "process"
     TIMEOUT = "timeout"
+    INVALID_REQUEST = "invalid_request"
+    TURN_LIMIT = "turn_limit"
     UNKNOWN = "unknown"
 
 
@@ -245,6 +248,13 @@ class RunRequest(BaseModel):
     model: str | None = None
     provider: str | None = None
     additional_writable_directories: tuple[str, ...] = ()
+    correlation_id: str | None = None
+    mission_id: str | None = None
+    trace_id: str | None = None
+    execution_id: str | None = None
+    # Optional JoyCLI execution directive (canonical JSON object). When present,
+    # JoyMesh validates it authoritatively and never recalculates routing.
+    directive: dict[str, Any] | None = None
 
 
 class SubscriptionCreate(BaseModel):

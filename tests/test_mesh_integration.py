@@ -19,6 +19,7 @@ from joymesh.models import (
 from joymesh.registry import AdapterRegistry
 from joymesh.service import JoyMesh
 from tests.fixtures.fake_harness_definition import fake_harness_definition
+from tests.quota_test_utils import install_ready_quota
 
 
 def adapters(
@@ -36,6 +37,12 @@ def _registry(adapter_list) -> AdapterRegistry:
         adapters=adapter_list,
         definitions=(fake_harness_definition(), *builtin_catalogue()),
     )
+
+
+def _mesh(database_url: str, registry: AdapterRegistry) -> JoyMesh:
+    mesh = JoyMesh(database_url=database_url, registry=registry)
+    install_ready_quota(mesh)
+    return mesh
 
 
 async def register_profiles(mesh: JoyMesh) -> None:
@@ -58,7 +65,7 @@ async def register_profiles(mesh: JoyMesh) -> None:
 async def test_same_run_request_works_across_adapters(
     fake_executable_factory, tmp_path: Path
 ) -> None:
-    mesh = JoyMesh(
+    mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'cross.db'}",
         registry=_registry(adapters(fake_executable_factory)),
     )
@@ -87,7 +94,7 @@ async def test_routing_rejections_penalties_and_alternative(
     fake_executable_factory, tmp_path: Path
 ) -> None:
     registry = _registry(adapters(fake_executable_factory))
-    mesh = JoyMesh(
+    mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'routing.db'}",
         registry=registry,
     )
@@ -163,7 +170,7 @@ async def test_unavailable_and_concurrent_harnesses_are_rejected(
     unavailable = OpenCodeAdapter(str(tmp_path / "missing-opencode"), conformance_passed=True)
     unavailable.executable_name = str(tmp_path / "missing-opencode")
     unavailable_registry = _registry([FakeHarnessAdapter(), unavailable])
-    unavailable_mesh = JoyMesh(
+    unavailable_mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'unavailable.db'}",
         registry=unavailable_registry,
     )
@@ -176,7 +183,7 @@ async def test_unavailable_and_concurrent_harnesses_are_rejected(
     assert "harness unavailable" in rejected.reasons
     await unavailable_mesh.close()
 
-    mesh = JoyMesh(
+    mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'limits.db'}",
         registry=_registry([codex, opencode]),
     )
@@ -230,7 +237,7 @@ async def test_rate_limit_requires_approved_linked_fallback(
             OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True),
         ]
     )
-    mesh = JoyMesh(
+    mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'fallback.db'}",
         registry=registry,
     )
@@ -288,7 +295,7 @@ async def test_concurrent_runs_are_isolated(fake_executable_factory, tmp_path: P
             OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True),
         ]
     )
-    mesh = JoyMesh(
+    mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'concurrent.db'}",
         registry=registry,
     )
@@ -340,7 +347,7 @@ async def test_sdk_first_acceptance(fake_executable_factory, tmp_path: Path) -> 
             OpenCodeAdapter(str(fake_executable_factory("opencode")), conformance_passed=True),
         ]
     )
-    mesh = JoyMesh(
+    mesh = _mesh(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'acceptance.db'}",
         registry=registry,
     )

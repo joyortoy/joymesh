@@ -237,9 +237,11 @@ class CodexConnectorRuntime:
         workspace_path: str,
         read_only: bool = True,
     ) -> Sequence[str]:
-        argv = [executable, "exec", "--json"]
+        argv = [executable, "exec", "--json", "--skip-git-repo-check"]
         if read_only:
             argv.extend(["--sandbox", "read-only"])
+        else:
+            argv.extend(["--sandbox", "workspace-write"])
         argv.extend(["-C", workspace_path, prompt])
         return tuple(argv)
 

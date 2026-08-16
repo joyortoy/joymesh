@@ -88,6 +88,10 @@ class RuntimeTaskRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     task_id: str
+    correlation_id: str | None = None
+    mission_id: str | None = None
+    trace_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     workspace_id: str
     user_id: str
     prompt_digest: str
@@ -220,6 +224,12 @@ class CreateRuntimeTaskBody(BaseModel):
 
     workspace_id: str
     prompt: str
+    correlation_id: str | None = None
+    mission_id: str | None = None
+    execution_id: str | None = None
+    trace_id: str | None = None
+    actor_id: str | None = None
+    idempotency_key: str | None = None
     policy_profile: str = "read_only"
     requested_capabilities: tuple[str, ...]
     prohibited_capabilities: tuple[str, ...] = ()

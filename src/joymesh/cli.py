@@ -12,13 +12,13 @@ from uuid import uuid4
 
 import typer
 
-from joymesh.api import create_app
 from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
-from joymesh.models import BillingRoute, Run, SubscriptionCreate
+from joymesh.models import BillingRoute, Run, RunRequest, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
+from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
 from joymesh.telemetry import (
     MetricsMode,
     TelemetryMode,
@@ -39,6 +39,10 @@ connector_app = typer.Typer(help="Validate, inspect, and certify versioned conne
 provider_route_app = typer.Typer(help="Inspect and manage provider routes (not harnesses).")
 telemetry_app = typer.Typer(help="Manage anonymous execution metrics preferences (alias).")
 metrics_app = typer.Typer(help="Manage anonymous execution metrics consent preferences.")
+quota_app = typer.Typer(
+    help="Inspect local harness quota and availability.",
+    invoke_without_command=True,
+)
 app.add_typer(harness_app, name="harness")
 app.add_typer(subscription_app, name="subscription")
 app.add_typer(route_app, name="route")
@@ -48,6 +52,210 @@ app.add_typer(connector_app, name="connector")
 app.add_typer(provider_route_app, name="provider-route")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(telemetry_app, name="telemetry")
+app.add_typer(quota_app, name="quota")
+runtime_app = typer.Typer(
+    help="Inspect factual harness runtime snapshots for JoyCLI.",
+    invoke_without_command=True,
+)
+app.add_typer(runtime_app, name="runtime")
+delivery_app = typer.Typer(help="JoyCLI runtime-state delivery intake (Unix socket).")
+app.add_typer(delivery_app, name="delivery")
+production_app = typer.Typer(help="Production readiness utilities.")
+app.add_typer(production_app, name="production")
+legal_app = typer.Typer(help="JoyLegal contract emission (evidence only; JoyLegal owns verdicts).")
+legal_cert_app = typer.Typer(help="Producer certification observations.")
+legal_evidence_app = typer.Typer(help="Producer evidence export.")
+legal_bundle_app = typer.Typer(help="JoyLegal bundle materialization.")
+legal_compat_app = typer.Typer(help="Schema compatibility checks.")
+app.add_typer(legal_app, name="legal")
+legal_app.add_typer(legal_cert_app, name="certification")
+legal_app.add_typer(legal_evidence_app, name="evidence")
+legal_app.add_typer(legal_bundle_app, name="bundle")
+legal_app.add_typer(legal_compat_app, name="compatibility")
+runtime_key_app = typer.Typer(help="Runtime signing key lifecycle.")
+runtime_app.add_typer(runtime_key_app, name="key")
+secrets_app = typer.Typer(
+    help="OS Keychain vault for provider API keys (never stored in JoyMesh DB).",
+)
+app.add_typer(secrets_app, name="secrets")
+
+
+@secrets_app.command("backend")
+def secrets_backend() -> None:
+    """Show which credential backend is active."""
+
+    from joymesh.secrets import backend_name, keychain_available
+
+    _print({"backend": backend_name(), "keychain_available": keychain_available()})
+
+
+@secrets_app.command("set")
+def secrets_set(
+    name: str = typer.Argument(..., help="Provider id, e.g. opencode-go, openrouter, openai"),
+    value: str | None = typer.Option(
+        None,
+        "--value",
+        help="Secret value; if omitted, prompts with hidden input",
+    ),
+) -> None:
+    """Store a provider API key in the OS Keychain (preferred) or secure file."""
+
+    from joymesh.secrets import SecretsError, mask_secret, set_secret
+
+    secret = value
+    if secret is None:
+        secret = typer.prompt("API key", hide_input=True)
+    try:
+        meta = set_secret(name, secret)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({**meta.as_dict(), "masked": mask_secret(secret)})
+
+
+@secrets_app.command("get")
+def secrets_get(
+    name: str = typer.Argument(...),
+    show: bool = typer.Option(False, "--show", help="Print full secret (dangerous)"),
+) -> None:
+    """Fetch a secret; default output is masked."""
+
+    from joymesh.secrets import SecretsError, get_secret, mask_secret
+
+    value = get_secret(name)
+    if value is None:
+        typer.echo(f"missing: {name}", err=True)
+        raise typer.Exit(1)
+    if show:
+        typer.echo(value)
+        return
+    _print({"name": name.lower(), "masked": mask_secret(value), "present": True})
+
+
+@secrets_app.command("list")
+def secrets_list() -> None:
+    """List stored secret names (never prints values)."""
+
+    from joymesh.secrets import list_secrets
+
+    _print({"secrets": [item.as_dict() for item in list_secrets()]})
+
+
+@secrets_app.command("delete")
+def secrets_delete(name: str = typer.Argument(...)) -> None:
+    """Delete a secret from the vault."""
+
+    from joymesh.secrets import delete_secret
+
+    ok = delete_secret(name)
+    _print({"deleted": ok, "name": name.lower()})
+    if not ok:
+        raise typer.Exit(1)
+
+
+@secrets_app.command("import-opencode")
+def secrets_import_opencode(
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="OpenCode auth.json path (default: ~/.local/share/opencode/auth.json)",
+    ),
+) -> None:
+    """Import API keys from OpenCode auth.json into Keychain."""
+
+    from pathlib import Path as P
+
+    from joymesh.secrets import SecretsError, import_opencode_auth
+
+    try:
+        imported = import_opencode_auth(P(path) if path else None)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({"imported": imported, "count": len(imported)})
+
+
+@secrets_app.command("sync-opencode")
+def secrets_sync_opencode(
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="OpenCode auth.json path to rewrite from Keychain",
+    ),
+) -> None:
+    """Rebuild OpenCode auth.json from Keychain so restarts keep working."""
+
+    from pathlib import Path as P
+
+    from joymesh.secrets import SecretsError, sync_opencode_auth
+
+    try:
+        out = sync_opencode_auth(P(path) if path else None)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({"synced": str(out), "mode": 0o600})
+
+
+@secrets_app.command("ensure")
+def secrets_ensure(
+    name: str = typer.Argument(..., help="Provider id required for the upcoming task"),
+) -> None:
+    """Ensure a provider key exists in the vault; prompt to store it if missing.
+
+    Use this before a task so the same API key is reused after restart::
+
+        joymesh secrets ensure opencode-go
+        joymesh secrets sync-opencode
+    """
+
+    from joymesh.secrets import SecretsError, get_secret, mask_secret, set_secret
+
+    existing = get_secret(name)
+    if existing:
+        _print(
+            {
+                "name": name.lower(),
+                "present": True,
+                "masked": mask_secret(existing),
+                "action": "reused_existing",
+                "hint": "joymesh secrets sync-opencode  # if OpenCode needs auth.json refreshed",
+            }
+        )
+        return
+    typer.echo(
+        f"No Keychain secret for {name!r}. Store it once so restarts keep the same API.",
+        err=True,
+    )
+    secret = typer.prompt(f"Paste API key for {name}", hide_input=True)
+    try:
+        meta = set_secret(name, secret)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print(
+        {
+            **meta.as_dict(),
+            "masked": mask_secret(secret),
+            "action": "stored_new",
+            "hint": "joymesh secrets sync-opencode",
+        }
+    )
+
+
+@secrets_app.command("export-env")
+def secrets_export_env() -> None:
+    """Print export lines for env-backed providers (eval carefully)."""
+
+    from joymesh.secrets import export_env_lines
+
+    lines = export_env_lines()
+    if not lines:
+        typer.echo("# no env-mapped secrets present", err=True)
+        raise typer.Exit(1)
+    for line in lines:
+        typer.echo(line)
+
 
 
 @app.command("init")
@@ -153,6 +361,486 @@ def telemetry_preview() -> None:
     """Alias for ``joymesh metrics preview``."""
 
     _metrics_preview()
+
+
+def _quota_ids() -> tuple[str, ...]:
+    return ("opencode", "claude-code", "codex", "gemini-cli", "grok")
+
+
+def _print_quota_table(mesh: JoyMesh, snapshots: tuple[object, ...]) -> None:
+    typer.echo(mesh.quota.format_table(snapshots))  # type: ignore[arg-type]
+
+
+@quota_app.callback(invoke_without_command=True)
+def quota_root(ctx: typer.Context) -> None:
+    """Show local harness quota and availability (not telemetry)."""
+
+    if ctx.invoked_subcommand is not None:
+        return
+    quota_status()
+
+
+@quota_app.command("status")
+def quota_status() -> None:
+    """Display harness availability in a human-readable table."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshots = await mesh.list_quota(harness_ids=_quota_ids())
+        _print_quota_table(mesh, snapshots)
+
+    _run(operation)
+
+
+@quota_app.command("refresh")
+def quota_refresh(
+    harness: str | None = typer.Option(None, "--harness", help="Refresh one harness only"),
+) -> None:
+    """Invalidate cache and re-probe harness quota."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        if harness:
+            snapshots = await mesh.refresh_quota(harness)
+        else:
+            snapshots = await mesh.list_quota(harness_ids=_quota_ids(), refresh=True)
+        _print_quota_table(mesh, snapshots)
+
+    _run(operation)
+
+
+@quota_app.command("json")
+def quota_json() -> None:
+    """Print quota snapshots as JSON (local routing data only)."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshots = await mesh.list_quota(harness_ids=_quota_ids())
+        typer.echo(json.dumps(mesh.quota.as_json(snapshots), indent=2, sort_keys=True))
+
+    _run(operation)
+
+
+def _runtime_ids() -> tuple[str, ...]:
+    return _quota_ids()
+
+
+@runtime_app.callback(invoke_without_command=True)
+def runtime_root(ctx: typer.Context) -> None:
+    """Show factual harness runtime status for JoyCLI."""
+
+    if ctx.invoked_subcommand is not None:
+        return
+    runtime_status()
+
+
+@runtime_app.command("status")
+def runtime_status() -> None:
+    """Display harness runtime availability (facts only)."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshot = await mesh.get_runtime_snapshot()
+        # Prefer the canonical five when present.
+        wanted = set(_runtime_ids())
+        filtered = type(snapshot)(
+            snapshot_id=snapshot.snapshot_id,
+            observed_at=snapshot.observed_at,
+            harnesses=tuple(
+                item for item in snapshot.harnesses if item.harness_id in wanted
+            ),
+            schema_version=snapshot.schema_version,
+        )
+        if filtered.harnesses:
+            typer.echo(mesh.runtime_snapshots.format_table(filtered), nl=False)
+        else:
+            typer.echo(mesh.runtime_snapshots.format_table(snapshot), nl=False)
+
+    _run(operation)
+
+
+@runtime_app.command("json")
+def runtime_json() -> None:
+    """Print the immutable runtime snapshot as JSON."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshot = await mesh.get_runtime_snapshot()
+        typer.echo(json.dumps(mesh.runtime_snapshots.as_json(snapshot), indent=2, sort_keys=True))
+
+    _run(operation)
+
+
+@runtime_app.command("refresh")
+def runtime_refresh(
+    harness: str | None = typer.Option(None, "--harness", help="Refresh one harness only"),
+) -> None:
+    """Invalidate cache and rebuild the runtime snapshot."""
+
+    async def operation(mesh: JoyMesh) -> None:
+        snapshot = await mesh.refresh_runtime_snapshot(harness)
+        typer.echo(mesh.runtime_snapshots.format_table(snapshot), nl=False)
+
+    _run(operation)
+
+
+@delivery_app.command("intake")
+def delivery_intake(
+    socket: str | None = typer.Option(
+        None,
+        "--socket",
+        help="Unix socket path (default: XDG runtime joymesh-delivery.sock)",
+    ),
+    store: str | None = typer.Option(
+        None,
+        "--store",
+        help="Durable intake SQLite path",
+    ),
+) -> None:
+    """DEPRECATED: reference/test intake only.
+
+    Production ownership is JoyCLI:
+      joyctl runtime intake-serve
+    """
+
+    import warnings
+
+    warnings.warn(
+        "joymesh delivery intake is deprecated; use `joyctl runtime intake-serve` "
+        "(JoyCLI owns the canonical Unix socket receiver).",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    typer.echo(
+        "DEPRECATED: use `joyctl runtime intake-serve` for production intake.",
+        err=True,
+    )
+
+    async def _serve() -> None:
+        from joymesh.delivery import UnixSocketDeliveryServer, default_socket_path
+
+        path = Path(socket) if socket else default_socket_path()
+        server = UnixSocketDeliveryServer(path, intake_path=store)
+        await server.start()
+        typer.echo(f"delivery intake listening on {path} (deprecated reference)", err=True)
+        stop = asyncio.Event()
+        try:
+            await stop.wait()
+        finally:
+            await server.stop()
+
+    try:
+        asyncio.run(_serve())
+    except KeyboardInterrupt:
+        raise typer.Exit(0) from None
+
+
+@delivery_app.command("health")
+def delivery_health() -> None:
+    """Show local delivery transport health from a JoyMesh composition root."""
+
+    async def operation(mesh: JoyMesh) -> dict[str, object]:
+        return mesh.delivery_health()
+
+    _print(_run(operation))
+
+
+@delivery_app.command("backup")
+def delivery_backup(
+    destination: str = typer.Option(..., "--destination", help="Empty directory for backup"),
+    outbox: str | None = typer.Option(None, "--outbox", help="Outbox SQLite path"),
+    include_private_key: bool = typer.Option(
+        False,
+        "--include-private-key",
+        help="Include signing private key (explicit and dangerous)",
+    ),
+) -> None:
+    """Backup durable delivery outbox with checksums."""
+
+    from joymesh.delivery.backup import backup_delivery_outbox
+    from joymesh.delivery.outbox import default_outbox_path
+    from joymesh.production.config import load_production_config
+
+    cfg = load_production_config()
+    outbox_path = Path(outbox) if outbox else Path(cfg.outbox_path or default_outbox_path())
+    key_path = Path(cfg.signing_key_path).expanduser() if cfg.signing_key_path else None
+    manifest = backup_delivery_outbox(
+        outbox_path=outbox_path,
+        destination=Path(destination),
+        signing_key_path=key_path,
+        include_private_key=include_private_key,
+    )
+    _print(manifest.as_dict())
+
+
+@delivery_app.command("restore")
+def delivery_restore(
+    source: str = typer.Option(..., "--source", help="Backup directory"),
+    outbox: str | None = typer.Option(None, "--outbox", help="Destination outbox path"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing outbox"),
+) -> None:
+    """Restore delivery outbox from a checksummed backup."""
+
+    from joymesh.delivery.backup import restore_delivery_outbox
+    from joymesh.delivery.outbox import default_outbox_path
+    from joymesh.production.config import load_production_config
+
+    cfg = load_production_config()
+    outbox_path = Path(outbox) if outbox else Path(cfg.outbox_path or default_outbox_path())
+    manifest = restore_delivery_outbox(
+        backup_dir=Path(source),
+        outbox_path=outbox_path,
+        force=force,
+    )
+    _print(manifest.as_dict())
+
+
+def _legal_repo_root(repo: str | None) -> Path:
+    from joymesh.legal.identity import repo_root_from_module
+
+    return Path(repo).resolve() if repo else repo_root_from_module()
+
+
+def _legal_identity(repo: str | None):
+    from joymesh.legal.identity import collect_source_identity
+
+    root = _legal_repo_root(repo)
+    return collect_source_identity(root, producer_system="joymesh")
+
+
+@legal_cert_app.command("export")
+def legal_certification_export(
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+    output: str | None = typer.Option(None, "--output", help="Optional JSON output path"),
+    environment: str = typer.Option("local", "--environment"),
+    workspace_id: str = typer.Option("ws-joymesh", "--workspace-id"),
+    profile_id: str = typer.Option("joymesh-production-readiness-v1", "--profile-id"),
+    claim_type: str = typer.Option("production_ready", "--claim-type"),
+) -> None:
+    """Export a producer certification observation (never an ALLOW/DENY verdict)."""
+
+    from joymesh.legal import (
+        build_certification_observation_v2,
+        build_claim_v2,
+        build_connector_evidence,
+        build_soak_evidence,
+        validate_against_schema,
+    )
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    soak = build_soak_evidence(identity=identity, repo_root=root)
+    connector = build_connector_evidence(identity=identity, repo_root=root)
+    evidence_items = [soak, connector]
+    evidence_ids = [str(item["id"]) for item in evidence_items]
+    limitations = list(soak.get("limitations") or [])
+    claim = build_claim_v2(
+        identity=identity,
+        claim_type=claim_type,
+        environment=environment,
+        workspace_id=workspace_id,
+        claimant="joymesh-producer",
+        requested_profile=profile_id,
+        supporting_evidence=evidence_ids,
+        limitations=limitations,
+    )
+    known_gaps = list(soak.get("soak_8h", {}).get("limitations") or [])
+    certification = build_certification_observation_v2(
+        identity=identity,
+        claim=claim,
+        evidence_items=evidence_items,
+        profile_id=profile_id,
+        environment=environment,
+        workspace_id=workspace_id,
+        known_gaps=known_gaps,
+    )
+    payload = {
+        "claim": claim,
+        "certification": certification,
+        "schema_validation": {
+            "claim": validate_against_schema(claim, "claim-v2.json"),
+            "certification": validate_against_schema(certification, "certification-v2.json"),
+        },
+    }
+    if output:
+        out = Path(output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _print(payload)
+
+
+@legal_evidence_app.command("export")
+def legal_evidence_export(
+    output: str = typer.Option(..., "--output", help="Evidence output directory"),
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+) -> None:
+    """Export producer soak and connector evidence pack."""
+
+    from joymesh.legal import export_evidence
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    _print(export_evidence(identity=identity, output_dir=Path(output), evidence_items=[], repo_root=root))
+
+
+@legal_bundle_app.command("create")
+def legal_bundle_create(
+    output: str = typer.Option(..., "--output", help="Bundle output directory"),
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+    evidence_dir: str | None = typer.Option(None, "--evidence-dir"),
+    environment: str = typer.Option("local", "--environment"),
+    workspace_id: str = typer.Option("ws-joymesh", "--workspace-id"),
+    claim_type: str = typer.Option("production_ready", "--claim-type"),
+) -> None:
+    """Create a joylegal.bundle/v2 directory with claim, certification, and evidence."""
+
+    from joymesh.legal import (
+        build_certification_observation_v2,
+        build_claim_v2,
+        compatibility_check,
+        create_bundle_directory,
+        export_evidence,
+    )
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    out = Path(output)
+    pack_dir = Path(evidence_dir) if evidence_dir else out.parent / "evidence-pack"
+    exported = export_evidence(
+        identity=identity,
+        output_dir=pack_dir,
+        evidence_items=[],
+        repo_root=root,
+    )
+    evidence_items = exported["items"]
+    evidence_ids = [str(item["id"]) for item in evidence_items]
+    limitations: list[str] = []
+    for item in evidence_items:
+        limitations.extend(item.get("limitations") or [])
+    claim = build_claim_v2(
+        identity=identity,
+        claim_type=claim_type,
+        environment=environment,
+        workspace_id=workspace_id,
+        claimant="joymesh-producer",
+        requested_profile="joymesh-production-readiness-v1",
+        supporting_evidence=evidence_ids,
+        limitations=limitations or ["Awaiting JoyLegal evidence admission and decision."],
+    )
+    certification = build_certification_observation_v2(
+        identity=identity,
+        claim=claim,
+        evidence_items=evidence_items,
+        environment=environment,
+        workspace_id=workspace_id,
+        known_gaps=list(exported["pack"].get("limitations") or []),
+    )
+    result = create_bundle_directory(
+        identity=identity,
+        output_dir=out,
+        claim=claim,
+        certification=certification,
+        evidence_dir=pack_dir,
+    )
+    result["schema_validation"] = compatibility_check(
+        [
+            (claim, "claim-v2.json"),
+            (certification, "certification-v2.json"),
+            (result["manifest"], "bundle-v2.json"),
+        ]
+    )
+    _print(result)
+
+
+@legal_compat_app.command("check")
+def legal_compatibility_check(
+    repo: str | None = typer.Option(None, "--repo", help="JoyMesh repository root"),
+) -> None:
+    """Validate sample emitted documents against vendored JoyLegal schemas."""
+
+    from joymesh.legal import (
+        build_certification_observation_v2,
+        build_claim_v2,
+        build_connector_evidence,
+        build_soak_evidence,
+        compatibility_check,
+        create_bundle_directory,
+    )
+
+    root = _legal_repo_root(repo)
+    identity = _legal_identity(repo)
+    soak = build_soak_evidence(identity=identity, repo_root=root)
+    connector = build_connector_evidence(identity=identity, repo_root=root)
+    evidence_items = [soak, connector]
+    claim = build_claim_v2(
+        identity=identity,
+        claim_type="release_candidate",
+        environment="local",
+        workspace_id="ws-joymesh",
+        claimant="joymesh-producer",
+        requested_profile="joymesh-production-readiness-v1",
+        supporting_evidence=[str(item["id"]) for item in evidence_items],
+        limitations=["compatibility_check_fixture"],
+    )
+    certification = build_certification_observation_v2(
+        identity=identity,
+        claim=claim,
+        evidence_items=evidence_items,
+        known_gaps=["compatibility_check_fixture_gap"],
+    )
+    bundle = create_bundle_directory(
+        identity=identity,
+        output_dir=root / "reports" / "legal" / "compatibility-tmp-bundle",
+        claim=claim,
+        certification=certification,
+        evidence_dir=None,
+    )["manifest"]
+    result = compatibility_check(
+        [
+            (claim, "claim-v2.json"),
+            (certification, "certification-v2.json"),
+            (bundle, "bundle-v2.json"),
+        ]
+    )
+    _print(result)
+    if not result["ok"]:
+        raise typer.Exit(2)
+
+
+@production_app.command("validate-config")
+def production_validate_config() -> None:
+    """Validate production configuration without starting services."""
+
+    from joymesh.production import validate_production_config
+
+    result = validate_production_config()
+    _print(result.as_dict())
+    if not result.ok:
+        raise typer.Exit(2)
+
+
+@runtime_key_app.command("generate")
+def runtime_key_generate(
+    destination: str = typer.Option(..., "--destination", help="Private key output path"),
+    key_id: str | None = typer.Option(None, "--key-id", help="Optional key id"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Generate a runtime signing keypair; never prints the private key."""
+
+    from joymesh.delivery.key_lifecycle import generate_runtime_signing_key
+
+    generated = generate_runtime_signing_key(
+        destination=Path(destination),
+        key_id=key_id,
+        overwrite=overwrite,
+    )
+    _print(generated.as_dict(include_private=False))
+
+
+@runtime_key_app.command("inspect")
+def runtime_key_inspect(
+    path: str = typer.Option(..., "--path", help="Private key path"),
+) -> None:
+    """Inspect a signing key file without printing private material."""
+
+    from joymesh.delivery.key_lifecycle import inspect_runtime_signing_key
+
+    _print(inspect_runtime_signing_key(Path(path)))
 
 
 def _maybe_prompt_telemetry_consent() -> None:
@@ -1107,7 +1795,40 @@ def run_launch(
     _maybe_prompt_telemetry_consent()
 
     async def operation(mesh: JoyMesh) -> Run:
-        run = await mesh.run(task=task, workspace=workspace, harness=harness)
+        # Phase 3.5: attach JoyMux context placement before execution.
+        try:
+            placement = fetch_context_placement(
+                harness=harness,
+                workspace=workspace,
+                task=task,
+                client_name="joymesh-cli",
+            )
+        except JoyMuxPlacementError as exc:
+            typer.echo(str(exc), err=True)
+            typer.echo(
+                "Ensure JoyMux is running (`joymux daemon start`) and JOYMUX_SOCKET points at runtime.sock.",
+                err=True,
+            )
+            raise typer.Exit(2) from exc
+
+        selected_harness = str(placement.get("selected_harness") or harness)
+        requirements = {
+            "requirements_id": placement.get("requirements_id"),
+        }
+        request = RunRequest(
+            task=task,
+            workspace=workspace,
+            preferred_harness=selected_harness,
+            allowed_harnesses=frozenset({selected_harness}),
+            context_placement=placement,
+            strategic_requirements=requirements,
+            strategic_requirements_id=str(placement.get("requirements_id") or ""),
+            runtime_snapshot_revision=str(placement.get("runtime_snapshot_revision") or "")
+            or None,
+            correlation_id=str(placement.get("correlation_id") or "") or None,
+            mission_id=str(placement.get("mission_id") or "") or None,
+        )
+        run = await mesh.run(request=request, harness=selected_harness)
         return await mesh.wait(run.id)
 
     try:
@@ -1151,6 +1872,8 @@ def api_server(
     """Run the local REST API."""
 
     import uvicorn
+
+    from joymesh.api import create_app
 
     uvicorn.run(create_app(), host=host, port=port)
 

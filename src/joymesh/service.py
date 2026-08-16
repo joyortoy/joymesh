@@ -56,9 +56,11 @@ from joymesh.models import (
     utc_now,
 )
 from joymesh.persistence import Database
+from joymesh.quota.contracts import QuotaSnapshot
 from joymesh.registry import AdapterRegistry
 from joymesh.routing import Router
 from joymesh.runtime import HarnessRuntime, HarnessTimeoutError
+from joymesh.runtime_snapshot.contracts import HarnessRuntimeSnapshot, RuntimeSnapshot
 from joymesh.runtime_v1.service import RuntimeService
 from joymesh.runtime_v1.store import RuntimeStore
 from joymesh.workspace import resolve_workspace
@@ -69,6 +71,23 @@ TERMINAL_STATUSES = {
     RunStatus.CANCELLED,
     RunStatus.TIMED_OUT,
 }
+
+
+def _durable_sidecar_paths(database_url: str | None) -> tuple[Path, Path]:
+    from joymesh.delivery import default_outbox_path
+    from joymesh.execution import default_checkpoint_path
+
+    if database_url and "sqlite" in database_url:
+        marker = ":///"
+        if marker in database_url:
+            raw = database_url.split(marker, 1)[1]
+            db_path = Path(raw)
+            if str(db_path):
+                return (
+                    db_path.with_name(db_path.stem + ".delivery.sqlite3"),
+                    db_path.with_name(db_path.stem + ".checkpoints.sqlite3"),
+                )
+    return default_outbox_path(), default_checkpoint_path()
 
 
 class NoRouteError(RuntimeError):
@@ -93,6 +112,8 @@ class JoyMesh:
         database_url: str | None = None,
         registry: AdapterRegistry | None = None,
         runtime: HarnessRuntime | None = None,
+        delivery_settings: object | None = None,
+        delivery_transport: object | None = None,
     ) -> None:
         self.database = Database(database_url)
         self.connector_catalogue = ConnectorCatalogue.builtins()
@@ -101,7 +122,19 @@ class JoyMesh:
         self._runtime_service: RuntimeService | None = None
         self.registry = registry or AdapterRegistry()
         self.runtime = runtime or HarnessRuntime()
-        self.router = Router(self.registry, self.database)
+        from joymesh.quota import QuotaService
+
+        self.quota = QuotaService(
+            harness_ids=[item.manifest.harness_id for item in self.registry.list()]
+        )
+        self.router = Router(self.registry, self.database, quota=self.quota)
+        from joymesh.runtime_snapshot import RuntimeSnapshotService
+
+        self.runtime_snapshots = RuntimeSnapshotService(
+            quota=self.quota,
+            registry=self.registry,
+            harness_ids=[item.manifest.harness_id for item in self.registry.list()],
+        )
         self.lifecycle = HarnessLifecycleService(
             self.registry.definitions(),
             self.registry.discovery,
@@ -112,10 +145,58 @@ class JoyMesh:
         self.control_plane = ControlPlane(
             onboarding_repository=SqlOnboardingProgressRepository(self.database.sessions)
         )
+        from joymesh.config import load_user_config
+        from joymesh.delivery import (
+            DeliveryOutbox,
+            DeliveryWorker,
+            RuntimeDeliveryPublisher,
+        )
+        from joymesh.delivery.factory import build_delivery_transport
+        from joymesh.delivery.settings import (
+            DeliverySettings,
+            delivery_settings_from_mapping,
+            resolve_delivery_settings,
+        )
+        from joymesh.execution import (
+            ApprovalContinuationService,
+            CheckpointStore,
+        )
+
+        # Delivery uses an isolated SQLite file so crash recovery does not depend
+        # on the primary mesh DB being writable.
+        outbox_path, checkpoint_path = _durable_sidecar_paths(database_url)
+        self._delivery_outbox = DeliveryOutbox(outbox_path)
+        self.delivery_publisher = RuntimeDeliveryPublisher(self._delivery_outbox)
+        if isinstance(delivery_settings, DeliverySettings):
+            resolved_settings = delivery_settings
+        else:
+            user_delivery = delivery_settings_from_mapping(
+                load_user_config().delivery.as_dict()
+            )
+            resolved_settings = resolve_delivery_settings(config_delivery=user_delivery)
+        self.delivery_settings = resolved_settings
+        if delivery_transport is not None:
+            self._delivery_transport = delivery_transport
+        else:
+            self._delivery_transport = build_delivery_transport(resolved_settings)
+        self.delivery_worker = DeliveryWorker(
+            self._delivery_outbox,
+            self._delivery_transport,  # type: ignore[arg-type]
+        )
+        self.approvals = ApprovalContinuationService()
+        self.checkpoints = CheckpointStore(checkpoint_path)
+        self.runtime_snapshots.publisher.subscribe(self._on_runtime_snapshot)
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._requests: dict[str, RunRequest] = {}
+
+    @property
+    def delivery_transport(self) -> object:
+        return self._delivery_transport
+
+    def delivery_health(self) -> dict[str, object]:
+        return self.delivery_worker.health()
 
     async def initialize(self) -> None:
         async with self._initialize_lock:
@@ -125,6 +206,10 @@ class JoyMesh:
                 self._runtime_service = RuntimeService(
                     store=RuntimeStore(self.database),
                 )
+                # Restore durable delivery + interrupted checkpoints after restart.
+                self.checkpoints.mark_interrupted()
+                await self.delivery_worker.start()
+                await self.delivery_worker.flush_once()
                 self._initialized = True
 
     @property
@@ -139,17 +224,106 @@ class JoyMesh:
             raise RuntimeError("JoyMesh is not initialized")
         return self._runtime_service
 
+    def _on_runtime_snapshot(self, snapshot: object) -> None:
+        from joymesh.runtime_snapshot.contracts import RuntimeSnapshot
+
+        if isinstance(snapshot, RuntimeSnapshot):
+            self.delivery_publisher.publish_snapshot(snapshot)
+
     async def close(self) -> None:
         for run_id in await self.runtime.active_run_ids():
             await self.cancel(run_id)
         if self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        await self.delivery_worker.stop()
+        self._delivery_outbox.close()
+        self.checkpoints.close()
         await self.database.close()
         self._initialized = False
 
     async def detect_harnesses(self) -> tuple[HarnessDescriptor, ...]:
         await self.initialize()
         return await self.registry.detect()
+
+    async def list_quota(
+        self,
+        *,
+        refresh: bool = False,
+        harness_ids: tuple[str, ...] | None = None,
+    ) -> tuple[QuotaSnapshot, ...]:
+        """Return normalized quota snapshots for routing and status surfaces."""
+        await self.initialize()
+        ids = harness_ids
+        if ids is None:
+            ids = tuple(
+                sorted(
+                    {
+                        *self.quota.known_harness_ids(),
+                        *(item.manifest.harness_id for item in self.registry.list()),
+                    }
+                )
+            )
+        return await self.quota.list_snapshots(harness_ids=ids, refresh=refresh)
+
+    async def get_quota(self, harness_id: str, *, refresh: bool = False) -> QuotaSnapshot:
+        await self.initialize()
+        resolved = harness_id
+        try:
+            resolved = self.registry.resolve_id(harness_id)
+        except KeyError:
+            pass
+        return await self.quota.snapshot(resolved, refresh=refresh)
+
+    async def refresh_quota(self, harness_id: str | None = None) -> tuple[QuotaSnapshot, ...]:
+        await self.initialize()
+        if harness_id:
+            resolved = harness_id
+            try:
+                resolved = self.registry.resolve_id(harness_id)
+            except KeyError:
+                pass
+            snapshots = await self.quota.refresh(resolved)
+        else:
+            ids = tuple(
+                sorted(
+                    {
+                        *self.quota.known_harness_ids(),
+                        *(item.manifest.harness_id for item in self.registry.list()),
+                    }
+                )
+            )
+            self.quota.cache.invalidate()
+            snapshots = await self.quota.list_snapshots(harness_ids=ids, refresh=True)
+        self.runtime_snapshots.cache.invalidate()
+        return snapshots
+
+    async def get_runtime_snapshot(self, *, refresh: bool = False) -> RuntimeSnapshot:
+        await self.initialize()
+        return await self.runtime_snapshots.snapshot(refresh=refresh)
+
+    async def get_harness_runtime_snapshot(
+        self, harness_id: str, *, refresh: bool = False
+    ) -> HarnessRuntimeSnapshot:
+        await self.initialize()
+        resolved = harness_id
+        try:
+            resolved = self.registry.resolve_id(harness_id)
+        except KeyError:
+            pass
+        return await self.runtime_snapshots.harness_snapshot(resolved, refresh=refresh)
+
+    async def refresh_runtime_snapshot(
+        self, harness_id: str | None = None
+    ) -> RuntimeSnapshot:
+        await self.initialize()
+        if harness_id:
+            resolved = harness_id
+            try:
+                resolved = self.registry.resolve_id(harness_id)
+            except KeyError:
+                pass
+            return await self.runtime_snapshots.refresh(resolved)
+        return await self.runtime_snapshots.refresh()
 
     def list_harnesses(self) -> tuple[HarnessDefinition, ...]:
         return self.registry.definitions()
@@ -481,6 +655,53 @@ class JoyMesh:
             harness_id=route.harness_id,
             required=request.required_capabilities,
         )
+        from joymesh.execution import (
+            DirectiveValidationError,
+            ExecutionDirective,
+            validate_directive,
+        )
+        from joymesh.runtime_snapshot import RuntimeLaunchError
+
+        if request.directive is not None:
+            try:
+                directive = ExecutionDirective.model_validate(request.directive)
+                is_fallback = bool(continuation_of_run_id)
+                await validate_directive(
+                    directive,
+                    registry=self.registry,
+                    runtime_snapshots=self.runtime_snapshots,
+                    is_fallback=is_fallback,
+                    harness_enabled=True,
+                )
+                if directive.selected_harness != route.harness_id:
+                    raise NoRouteError(
+                        "directive selected_harness does not match route",
+                        code="runtime_changed",
+                        details={
+                            "directive_harness": directive.selected_harness,
+                            "route_harness": route.harness_id,
+                        },
+                    )
+            except DirectiveValidationError as exc:
+                raise NoRouteError(
+                    str(exc),
+                    code=exc.code.value,
+                    remediation=exc.remediation,
+                    details=exc.details,
+                ) from exc
+        else:
+            try:
+                await self.runtime_snapshots.revalidate_for_launch(
+                    route.harness_id,
+                    required_capabilities=request.required_capabilities,
+                )
+            except RuntimeLaunchError as exc:
+                raise NoRouteError(
+                    str(exc),
+                    code=exc.code.value,
+                    remediation=exc.remediation,
+                    details=exc.details,
+                ) from exc
         self.registry.get(route.harness_id)
         normalized_request = request.model_copy(update={"workspace": str(resolved), "route": route})
         run = Run(
@@ -495,8 +716,42 @@ class JoyMesh:
             continuation_of_run_id=continuation_of_run_id,
         )
         await self.database.create_run(run)
+        import json
+
+        from joymesh.execution import ExecutionCheckpoint
+
+        self.checkpoints.save(
+            ExecutionCheckpoint(
+                execution_id=request.execution_id or run.id,
+                attempt_id=run.id,
+                harness_id=run.harness_id,
+                native_session_id=None,
+                status=RunStatus.QUEUED.value,
+                directive_json=(
+                    None
+                    if request.directive is None
+                    else json.dumps(request.directive, sort_keys=True)
+                ),
+                updated_at=utc_now(),
+            )
+        )
         self._requests[run.id] = normalized_request
-        await self._event(run.id, EventType.RUN_QUEUED, "Run queued")
+        correlation_metadata = {
+            key: value
+            for key, value in {
+                "correlation_id": request.correlation_id,
+                "mission_id": request.mission_id,
+                "trace_id": request.trace_id,
+                "execution_id": request.execution_id,
+            }.items()
+            if value is not None
+        }
+        await self._event(
+            run.id,
+            EventType.RUN_QUEUED,
+            "Run queued",
+            {"integration": correlation_metadata} if correlation_metadata else None,
+        )
         handle = asyncio.create_task(self._execute(run.id), name=f"joymesh-run-{run.id}")
         self._tasks[run.id] = handle
         handle.add_done_callback(lambda _task: self._tasks.pop(run.id, None))
@@ -534,7 +789,17 @@ class JoyMesh:
         if prefs.enabled:
             ready = [item for item in ready if item in prefs.enabled]
         override = None if harness == "auto" else harness
+        if override:
+            try:
+                override = self.registry.resolve_id(override)
+            except KeyError:
+                pass
         preferred = selected_request.preferred_harness
+        if preferred:
+            try:
+                preferred = self.registry.resolve_id(preferred)
+            except KeyError:
+                pass
         try:
             resolution = resolve_harness(
                 prefs=prefs,
@@ -654,6 +919,37 @@ class JoyMesh:
         original = await self.inspect_run(proposal.original_run_id)
         if original is None:
             raise KeyError("original run not found")
+        # Bind approval to the original execution and consume a signed response.
+        request_payload = {
+            "proposal_id": proposal.id,
+            "original_run_id": proposal.original_run_id,
+            "harness_id": proposal.route.harness_id,
+            "reason": proposal.reason,
+        }
+        approval_req = self.approvals.request_approval(
+            execution_id=original.id,
+            attempt_id=proposal.id,
+            directive_payload=request_payload,
+            reason=proposal.reason,
+        )
+        approval_resp = self.approvals.sign_response(approval_req, approved=True)
+        self.approvals.verify_response(
+            approval_resp,
+            expected_execution_id=original.id,
+            expected_attempt_id=proposal.id,
+            expected_directive_hash=approval_req.directive_hash,
+        )
+        self.delivery_publisher.publish_approval_request(
+            {
+                "approval_id": approval_req.approval_id,
+                "execution_id": original.id,
+                "attempt_id": proposal.id,
+                "reason": proposal.reason,
+                "approved": True,
+            },
+            idempotency_key=f"approval:{approval_req.approval_id}",
+        )
+        # Cross-harness fallback is a clean retry — never resume the failed session.
         request = RunRequest(task=original.task, workspace=original.workspace)
         continuation = await self.start_run(
             request=request,
@@ -678,7 +974,38 @@ class JoyMesh:
         if not terminated and (task := self._tasks.get(run_id)):
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-        await self._event(run_id, EventType.RUN_CANCELLED, "Run cancelled")
+        from joymesh.execution import ExecutionCheckpoint
+
+        self.checkpoints.save(
+            ExecutionCheckpoint(
+                execution_id=run.id,
+                attempt_id=run.id,
+                harness_id=run.harness_id,
+                native_session_id=run.native_session_id,
+                status=RunStatus.CANCELLED.value,
+                directive_json=None,
+                updated_at=utc_now(),
+            )
+        )
+        await self._event(
+            run_id,
+            EventType.RUN_CANCELLED,
+            "Run cancelled",
+            {
+                "process_tree_terminated": terminated,
+                "native_session_id": run.native_session_id,
+            },
+        )
+        self.delivery_publisher.publish_event(
+            event_type=EventType.RUN_CANCELLED.value,
+            payload={
+                "run_id": run_id,
+                "harness_id": run.harness_id,
+                "process_tree_terminated": terminated,
+            },
+            idempotency_key=f"cancel:{run_id}",
+        )
+        await self.delivery_worker.flush_once()
         return cancelled
 
     async def _execute(self, run_id: str) -> None:
@@ -687,14 +1014,19 @@ class JoyMesh:
         if run is None or request is None:
             return
         adapter = self.registry.get(run.harness_id)
-        await self.database.update_run(run_id, status=RunStatus.RUNNING, started_at=utc_now())
+        started_at = utc_now()
+        await self.database.update_run(run_id, status=RunStatus.RUNNING, started_at=started_at)
         await self._event(run_id, EventType.RUN_STARTED, "Run started")
+        self.runtime_snapshots.mark_run_started(run.harness_id)
         output: list[str] = []
+        usage_input = 0
+        usage_output = 0
 
         async def on_started(pid: int) -> None:
             await self.database.update_run(run_id, process_id=pid)
 
         async def on_line(stream: str, line: str) -> None:
+            nonlocal usage_input, usage_output
             output.append(line)
             observation = adapter.normalize_output(
                 run_id=run_id, sequence=0, stream=stream, line=line
@@ -710,15 +1042,43 @@ class JoyMesh:
                     "Native session identified",
                     {"native_session_id": observation.native_session_id},
                 )
-            if observation.usage and run.subscription_id:
-                await self.database.record_usage(
-                    subscription_id=run.subscription_id,
-                    run_id=run_id,
-                    input_tokens=observation.usage.input_tokens,
-                    output_tokens=observation.usage.output_tokens,
-                    amount=observation.usage.cost or 0,
-                )
-                await self._event(run_id, EventType.USAGE_RECORDED, "Usage recorded")
+            if observation.usage:
+                usage_input += observation.usage.input_tokens
+                usage_output += observation.usage.output_tokens
+                if run.subscription_id:
+                    await self.database.record_usage(
+                        subscription_id=run.subscription_id,
+                        run_id=run_id,
+                        input_tokens=observation.usage.input_tokens,
+                        output_tokens=observation.usage.output_tokens,
+                        amount=observation.usage.cost or 0,
+                    )
+                    await self._event(run_id, EventType.USAGE_RECORDED, "Usage recorded")
+
+        async def _publish_runtime_observation(
+            *,
+            success: bool,
+            failure_kind: FailureKind | None = None,
+            detail: str | None = None,
+        ) -> None:
+            finished = utc_now()
+            duration_ms = max(0.0, (finished - started_at).total_seconds() * 1000.0)
+            snapshot = await self.runtime_snapshots.observe_execution(
+                run.harness_id,
+                success=success,
+                failure_kind=failure_kind,
+                detail=detail,
+                duration_ms=duration_ms,
+                input_tokens=usage_input,
+                output_tokens=usage_output,
+            )
+            entry = snapshot.harness(run.harness_id)
+            await self._event(
+                run_id,
+                EventType.RUNTIME_SNAPSHOT_UPDATED,
+                "Runtime snapshot updated",
+                {"harness": entry.as_dict() if entry is not None else None},
+            )
 
         try:
             exit_code = await self.runtime.execute(
@@ -729,6 +1089,7 @@ class JoyMesh:
             )
             current = await self.database.get_run(run_id)
             if current is None or current.status is RunStatus.CANCELLED:
+                self.runtime_snapshots.observations.mark_running(run.harness_id, delta=-1)
                 return
             if exit_code == 0:
                 await self.database.update_run(
@@ -737,6 +1098,7 @@ class JoyMesh:
                     finished_at=utc_now(),
                     exit_code=0,
                 )
+                await _publish_runtime_observation(success=True)
                 await self._event(run_id, EventType.RUN_COMPLETED, "Run completed")
             else:
                 failure = adapter.classify_failure(exit_code=exit_code, output="\n".join(output))
@@ -747,6 +1109,11 @@ class JoyMesh:
                     exit_code=exit_code,
                     error=failure.message,
                 )
+                await _publish_runtime_observation(
+                    success=False,
+                    failure_kind=failure.kind,
+                    detail=failure.message + "\n" + "\n".join(output[-20:]),
+                )
                 await self._event(run_id, EventType.RUN_FAILED, failure.message)
                 if failure.kind is FailureKind.RATE_LIMIT:
                     await self._handle_rate_limit(run)
@@ -754,12 +1121,23 @@ class JoyMesh:
             await self.database.update_run(
                 run_id, status=RunStatus.TIMED_OUT, finished_at=utc_now(), error=str(exc)
             )
+            await _publish_runtime_observation(
+                success=False,
+                failure_kind=FailureKind.TIMEOUT,
+                detail=str(exc),
+            )
             await self._event(run_id, EventType.RUN_TIMED_OUT, str(exc))
         except asyncio.CancelledError:
+            self.runtime_snapshots.observations.mark_running(run.harness_id, delta=-1)
             raise
         except Exception as exc:
             await self.database.update_run(
                 run_id, status=RunStatus.FAILED, finished_at=utc_now(), error=str(exc)
+            )
+            await _publish_runtime_observation(
+                success=False,
+                failure_kind=FailureKind.UNKNOWN,
+                detail=str(exc),
             )
             await self._event(run_id, EventType.RUN_FAILED, str(exc))
         finally:
