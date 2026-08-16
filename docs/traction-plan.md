@@ -2,42 +2,47 @@
 
 ## Goal
 
-Find the first repeat users and contributors for JoyMesh by proving one clear
-promise: a developer can inspect and control multiple coding-agent harnesses
-through one local interface without overstating compatibility.
+Find the first repeat users and contributors by proving one clear promise: a
+developer can keep their planning agent and delegate isolated subtasks across
+different harnesses and models, in parallel, with compact feedback.
 
 The primary audience is developers building coding-agent products, internal
-agent platforms, and multi-harness developer tooling. General AI audiences are
-secondary until the quick start and certified execution path are reliable.
+agent platforms, and multi-harness developer tooling. The first wedge is people
+whose main agent is wasting context on small research, inspection, and test
+tasks that can safely run elsewhere.
 
 ## Activation funnel
 
 1. **Discover** — a qualified developer reaches the repository.
 2. **Understand** — they can explain JoyMesh's purpose in one sentence.
-3. **Try** — they run `examples/discovery.py` or the quick start.
-4. **Succeed** — they inspect or execute through at least one local harness.
+3. **Try** — they run the layered delegation demo or quick start.
+4. **Succeed** — two isolated workers execute in parallel and return useful
+   feedback to their planner.
 5. **Respond** — they open an issue, return for a release, or contribute.
 
 ## Week 1: make the promise credible
 
 - Merge the positioning, contributor onboarding, and CI changes.
 - Keep the full quality gate green on Linux and Python 3.12.
-- Record a 60–90 second terminal demo of the credential-free discovery example.
+- Record a 60–90 second terminal demo of layered parallel delegation.
 - Open five scoped newcomer issues with acceptance criteria.
 - Add a repository social-preview image based on the one-sentence promise.
 
-**Milestone:** a new visitor can understand JoyMesh and complete discovery in
-under five minutes.
+**Milestone:** a new visitor can explain the five layers and run the parallel
+demo in under five minutes.
 
 ## Week 2: prove a real workflow
 
-- Publish one end-to-end Codex example with sanitized output.
+- Publish one end-to-end planning-agent → OpenCode/DeepSeek → compact-feedback
+  example with sanitized output.
+- Compare serial and delegated runs: planner context sent, total worker tokens,
+  elapsed time, feedback size, and task quality.
 - Add a generated harness support matrix with explicit evidence states.
 - Collect five structured usability sessions from target developers.
 - Turn every repeated point of confusion into a documentation change or issue.
 
 **Milestone:** three external developers complete the example without live
-maintainer help.
+maintainer help, and at least two see a measurable context or elapsed-time win.
 
 ## Week 3: focused distribution
 
@@ -65,8 +70,10 @@ maintainer help.
 Review these weekly:
 
 - qualified repository visitors and referral sources;
-- quick-start or demo completions;
-- successful first harness inspections or runs;
+- layered-demo completions;
+- successful parallel task batches and compact feedback returns;
+- planner context bytes, worker tokens, feedback bytes, and wall-clock time
+  compared with the same work performed serially;
 - substantive issues and feedback conversations;
 - returning users and external pull requests;
 - time from first visit to first successful result.
@@ -77,6 +84,7 @@ or contribution after a developer reaches a successful result.
 ## Guardrails
 
 - Never describe catalogue presence as certified execution support.
+- Never promise token or cost savings without a measured baseline.
 - Do not launch broadly while the default branch is red.
 - Keep outreach personal, relevant, and easy to decline.
 - Prefer one complete workflow over adding more unverified integrations.

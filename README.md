@@ -1,11 +1,15 @@
 # JoyMesh
 
-**One local interface for discovering, routing, and supervising coding agents.**
+**Give one planning agent a team of specialized workers—without changing your harness.**
 
-JoyMesh is an open-source Python SDK, CLI, and API that sits between your
-application and coding-agent harnesses. Instead of building separate discovery,
-execution, event, and approval logic for every agent, you integrate once and let
-JoyMesh provide a consistent control layer.
+JoyMesh is an open-source delegation and routing layer for coding agents. Your
+favorite agent remains the planner. JoyMesh sends bounded subtasks to the most
+suitable harness and model, runs independent work in parallel, then returns
+compact results and evidence to the original agent.
+
+That separation keeps specialist workers from inheriting the planner's full
+conversation. It can reduce repeated context and token use while letting one
+workflow use local, open-source, subscription, or hosted agents together.
 
 > [!IMPORTANT]
 > JoyMesh is alpha software under active development. Its connector catalogue
@@ -14,12 +18,30 @@ JoyMesh provide a consistent control layer.
 
 ## Why JoyMesh?
 
-Coding agents expose different commands, capabilities, authentication methods,
-event formats, and lifecycle behavior. That makes multi-agent products brittle
-and locks orchestration logic to individual tools.
+One agent should not spend its entire context researching, coding, testing, and
+reviewing every detail serially. JoyMesh creates explicit layers between
+planning and execution:
+
+```text
+Your existing planning agent
+        │ bounded subtasks
+        ▼
+JoyMesh delegation and routing layer
+        ├── OpenCode + DeepSeek: focused research
+        ├── local agent: quick repository inspection
+        └── preferred coding harness: implementation
+        │ compact feedback + evidence + usage
+        ▼
+Original planning agent decides what comes next
+```
 
 JoyMesh gives you:
 
+- **Layered delegation** — give each worker only the task context it needs.
+- **Parallel execution** — run independent subtasks concurrently with bounded
+  parallelism and failure isolation.
+- **Compact feedback** — return summaries, evidence, route identity, and token
+  usage instead of copying entire worker conversations into the planner.
 - **One integration surface** — use the Python SDK, CLI, or local REST API.
 - **Capability-aware discovery** — inspect what an installed harness can
   actually do before selecting it.
@@ -29,11 +51,10 @@ JoyMesh gives you:
   instead of parsing every harness independently.
 - **Approval-gated changes** — installation, authentication, and routing
   mutations require explicit approval.
+- **Workflow independence** — keep using your preferred planner and harness;
+  JoyMesh handles delegation underneath it.
 - **Local-first operation** — use SQLite and local processes, with an optional
-  outbound-only node for remote control-plane access.
-
-JoyMesh is independent of JoyCLI. It contains no application-specific mission
-planning, private workflows, or proprietary data.
+  outbound-only node for remote access.
 
 ## Quick start
 
@@ -69,6 +90,19 @@ uv run python examples/discovery.py
 
 The example uses a temporary SQLite database and does not read provider
 credentials or launch an agent.
+
+### Layered delegation demo
+
+Run the credential-free example to see two focused tasks delegated in parallel
+and returned as compact feedback:
+
+```sh
+uv run python examples/layered_delegation.py
+```
+
+The example uses a simulated dispatcher so it is safe to run anywhere. Replace
+that callback with your JoyMesh route and worker execution. See
+[Layered delegation](docs/layered-delegation.md) for the integration pattern.
 
 ## Python SDK
 
@@ -128,18 +162,21 @@ The core uses Python 3.12, Pydantic v2, FastAPI, SQLAlchemy 2, SQLite, Alembic,
 Typer, and asyncio.
 
 ```text
-Your app / CLI / browser
+Planning agent / existing workflow
+          |
+  bounded task contracts
           |
   JoyMesh SDK and API
           |
- discovery -> capability checks -> route preview -> approved execution
+ delegate -> discover -> preview route -> execute in parallel -> compact feedback
           |
-  Codex / Claude Code / Gemini CLI / OpenCode / other harnesses
+ Codex / Claude Code / Gemini CLI / OpenCode / local or hosted models
 ```
 
 Start with these design documents:
 
 - [Initial architecture](docs/adr/0001-initial-architecture.md)
+- [Layered delegation](docs/layered-delegation.md)
 - [Harness architecture](docs/harness-architecture.md)
 - [Harness catalogue](docs/harness-catalogue.md)
 - [Adapter conformance](docs/adapter-conformance.md)

@@ -1,11 +1,11 @@
 """ExecutionCompletionOrchestrator — JoyMesh factual execution bookkeeping.
 
-DEPRECATED FOR JOYCLI MISSION AUTHORITY
---------------------------------------
-JoyCLI owns authoritative mission completion, evidence acceptance, and
-verification. JoyMesh retains this module only for neutral worker/runtime
-lifecycle bookkeeping. Do not treat JoyMesh CompletionOutcome as mission
-terminal authority. Migration stage: joycli-completion-authority-v1.
+NOT A PLANNING-AUTHORITY API
+----------------------------
+The calling planning layer owns authoritative task completion, evidence
+acceptance, and verification. JoyMesh retains this module only for neutral
+worker/runtime lifecycle bookkeeping. Do not treat a JoyMesh CompletionOutcome
+as final task authority.
 """
 
 from __future__ import annotations
@@ -41,9 +41,8 @@ from joymesh.runtime_v1.execution_routing.models import ExecutionResult, Executi
 class ExecutionCompletionOrchestrator:
     """Converts backend execution facts into runtime lifecycle records.
 
-    .. deprecated::
-        Not authoritative for JoyCLI missions. Use
-        ``joycli.runtime.completion.ExecutionCompletionOrchestrator``.
+    The calling planning agent remains responsible for deciding whether the
+    original task is complete.
     """
 
     def __init__(
@@ -56,9 +55,8 @@ class ExecutionCompletionOrchestrator:
         store: CompletionStore | None = None,
     ) -> None:
         warnings.warn(
-            "joymesh.runtime_v1.completion.ExecutionCompletionOrchestrator is not "
-            "authoritative for JoyCLI missions; use joycli.runtime.completion "
-            "(migration stage: joycli-completion-authority-v1).",
+            "joymesh.runtime_v1.completion.ExecutionCompletionOrchestrator records "
+            "runtime facts only; the calling planning layer owns task completion.",
             DeprecationWarning,
             stacklevel=2,
         )
