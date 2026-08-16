@@ -151,13 +151,16 @@ To use JoyCLI with JoyMesh:
 
 ## Implementation Notes
 
-- The compatibility layer wraps the existing `/runtime/tasks` API
+- The compatibility layer wraps the existing `/runtime/tasks` API with `skip_routing=True`
 - All executions are created with `user_id="joycli"`
 - Capabilities must be valid JoyMesh capability IDs (see `src/joymesh/runtime_v1/capabilities.py`)
-- **Fast path when no workers:** Tasks are immediately queued when `connected_nodes` is 0, without attempting routing or backend execution
-- **Normal path with workers:** When nodes are connected, full routing and execution selection is performed
+- **POST /executions always returns immediately** (typically < 100ms)
+  - Tasks are created and saved in QUEUED state
+  - Routing to workers happens later when workers become available
+  - Does NOT block waiting for `execute_with_fallback` or backend selection
+- **GET /executions/{id}/events** returns a synthetic "accepted" event immediately
 - The layer does not require authentication (suitable for local development only)
-- Response time: < 100ms when no nodes, variable (typically < 2s) when nodes available
+- Normal `/runtime/tasks` API behavior unchanged (still performs full routing synchronously)
 
 ## Testing
 
