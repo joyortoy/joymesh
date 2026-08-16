@@ -36,9 +36,7 @@ async def test_fake_run_is_persisted_and_normalized(tmp_path: Path, monkeypatch)
         )
     )
     try:
-        run = await mesh.run(
-            task="Exercise the fake harness", workspace=tmp_path, harness="fake"
-        )
+        run = await mesh.run(task="Exercise the fake harness", workspace=tmp_path, harness="fake")
         completed = await mesh.wait(run.id)
         events = await mesh.events(run.id)
 

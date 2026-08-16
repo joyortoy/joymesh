@@ -44,9 +44,7 @@ METRICS_PAYLOAD_ALLOWLIST: frozenset[str] = frozenset(
         "quality",
     }
 )
-USAGE_ALLOWLIST: frozenset[str] = frozenset(
-    {"input_tokens", "output_tokens", "total_tokens"}
-)
+USAGE_ALLOWLIST: frozenset[str] = frozenset({"input_tokens", "output_tokens", "total_tokens"})
 QUALITY_ALLOWLIST: frozenset[str] = frozenset({"good", "bad", "unknown"})
 
 # Legacy telemetry allowlist retained for AnonymousExecutionReport compatibility.
@@ -117,11 +115,7 @@ class AnonymousExecutionMetrics:
     def as_dict(self) -> dict[str, Any]:
         usage: dict[str, int] | None = None
         if self.usage:
-            usage = {
-                key: int(value)
-                for key, value in self.usage.items()
-                if key in USAGE_ALLOWLIST
-            }
+            usage = {key: int(value) for key, value in self.usage.items() if key in USAGE_ALLOWLIST}
             if not usage:
                 usage = None
         quality = self.quality if self.quality in QUALITY_ALLOWLIST else "unknown"
@@ -158,9 +152,7 @@ class AnonymousExecutionReport:
         tokens: dict[str, int] | None = None
         if self.tokens:
             tokens = {
-                key: int(value)
-                for key, value in self.tokens.items()
-                if key in TOKENS_ALLOWLIST
+                key: int(value) for key, value in self.tokens.items() if key in TOKENS_ALLOWLIST
             }
             if not tokens:
                 tokens = None
@@ -232,8 +224,7 @@ def render_preview_yaml(payload: dict[str, Any] | None = None) -> str:
     data = payload if payload is not None else preview_metrics_placeholder()
     allowlist = (
         METRICS_PAYLOAD_ALLOWLIST
-        if set(data.keys()) <= METRICS_PAYLOAD_ALLOWLIST | {"usage"}
-        or "task_type" in data
+        if set(data.keys()) <= METRICS_PAYLOAD_ALLOWLIST | {"usage"} or "task_type" in data
         else PAYLOAD_ALLOWLIST
     )
     lines: list[str] = []
@@ -309,9 +300,7 @@ def classify_error_category(*, status: str | None, exit_code: int | None) -> str
     return None
 
 
-def duration_ms_from_times(
-    started_at: datetime | None, finished_at: datetime | None
-) -> int | None:
+def duration_ms_from_times(started_at: datetime | None, finished_at: datetime | None) -> int | None:
     if started_at is None or finished_at is None:
         return None
     delta = finished_at - started_at
@@ -646,9 +635,7 @@ class TelemetryService:
                 if not prompt_ask_send(input_fn=input_fn, output_fn=output_fn):
                     return None
             metrics = (
-                report
-                if isinstance(report, AnonymousExecutionMetrics)
-                else report.to_metrics()
+                report if isinstance(report, AnonymousExecutionMetrics) else report.to_metrics()
             )
             return self._submit(metrics)
         except Exception:

@@ -443,9 +443,7 @@ class JoyMesh:
             )
         )
 
-    def _assert_capabilities(
-        self, *, harness_id: str, required: frozenset[Capability]
-    ) -> None:
+    def _assert_capabilities(self, *, harness_id: str, required: frozenset[Capability]) -> None:
         from joymesh.harnesses.selection import find_capability_mismatch
 
         adapter = self.registry.get(harness_id)
@@ -546,9 +544,7 @@ class JoyMesh:
                 interactive=False,
                 known_ids=[item.manifest.harness_id for item in detected],
                 allow_disabled_override=bool(override),
-                allow_test_harnesses=bool(
-                    getattr(self.registry, "_allow_test_harnesses", False)
-                ),
+                allow_test_harnesses=bool(getattr(self.registry, "_allow_test_harnesses", False)),
             )
         except HarnessSelectionError as exc:
             raise NoRouteError(

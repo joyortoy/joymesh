@@ -141,7 +141,9 @@ class SqlOnboardingProgressRepository:
                     update={
                         "id": current.id if current is not None else progress.id,
                         "revision": next_revision,
-                        "created_at": current.created_at if current is not None else progress.created_at,
+                        "created_at": (
+                            current.created_at if current is not None else progress.created_at
+                        ),
                         "updated_at": now,
                     }
                 )
@@ -196,7 +198,9 @@ def _from_row(row: OnboardingProgressRow) -> OnboardingProgress:
         else row.updated_at
     )
     completed = tuple(
-        OnboardingState(item) for item in data.get("completed_steps") or () if item in OnboardingState
+        OnboardingState(item)
+        for item in data.get("completed_steps") or ()
+        if item in OnboardingState
     )
     policy_raw = data.get("paid_route_policy") or PaidRoutePolicy.ASK.value
     try:

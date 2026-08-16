@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "joymesh"
 version = "0.1.0"
-description = "A harness interoperability layer for coding agents"
+description = "A local control plane for discovering, routing, and supervising coding agents"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }

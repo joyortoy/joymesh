@@ -60,9 +60,7 @@ def test_cannot_register_fake_in_production_registry() -> None:
 
 
 def test_legacy_joy_default_migrated_without_silent_replacement(tmp_path: Path) -> None:
-    raw = UserConfig(
-        harnesses=HarnessPreferences(enabled=("joy", "codex"), default="joy")
-    )
+    raw = UserConfig(harnesses=HarnessPreferences(enabled=("joy", "codex"), default="joy"))
     migrated, changed = migrate_legacy_harness_preferences(raw)
     assert changed is True
     assert migrated.harnesses.default is None
@@ -191,9 +189,7 @@ def test_saving_custom_does_not_enable(tmp_path: Path, monkeypatch: pytest.Monke
         executable=_python_executable(),
         args=("-c", "print(1)"),
     )
-    save_harness_preferences(
-        HarnessPreferences(custom={"my-custom-harness": config})
-    )
+    save_harness_preferences(HarnessPreferences(custom={"my-custom-harness": config}))
     prefs = load_user_config().harnesses
     assert "my-custom-harness" in prefs.custom
     assert "my-custom-harness" not in prefs.enabled
@@ -212,9 +208,7 @@ def test_custom_readiness_and_adapter_launch_spec() -> None:
     adapter = CustomHarnessAdapter(config)
     from joymesh.models import RunRequest
 
-    spec = adapter.build_launch_spec(
-        RunRequest(task="x", workspace="/tmp")
-    )
+    spec = adapter.build_launch_spec(RunRequest(task="x", workspace="/tmp"))
     assert spec.argv[0]
     assert "-V" in spec.argv
     assert all(isinstance(item, str) for item in spec.argv)
@@ -305,9 +299,7 @@ async def test_explicit_registry_can_use_test_fake(tmp_path: Path) -> None:
         from joymesh.config import HarnessPreferences, save_harness_preferences
 
         os.environ["JOYMESH_CONFIG_DIR"] = str(tmp_path / "cfg")
-        save_harness_preferences(
-            HarnessPreferences(enabled=("fake",), default="fake")
-        )
+        save_harness_preferences(HarnessPreferences(enabled=("fake",), default="fake"))
         run = await mesh.run(task="Exercise the fake harness", workspace=tmp_path, harness="fake")
         completed = await mesh.wait(run.id)
         assert completed.harness_id == "fake"
@@ -349,9 +341,7 @@ def test_custom_must_validate_before_enable(
     assert "bad-custom" not in load_user_config().harnesses.enabled
 
 
-def test_override_does_not_mutate_default(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_override_does_not_mutate_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JOYMESH_CONFIG_DIR", str(tmp_path))
     save_harness_preferences(HarnessPreferences(enabled=("codex", "opencode"), default="codex"))
     resolve_harness(
@@ -639,9 +629,7 @@ async def test_non_explicit_routing_may_select_compatible_alternative(
         )
         assert preview.selected is not None
         assert preview.selected.harness_id == "codex"
-        custom = next(
-            item for item in preview.candidates if item.harness_id == "my-custom-harness"
-        )
+        custom = next(item for item in preview.candidates if item.harness_id == "my-custom-harness")
         assert not custom.eligible
         assert any("missing capabilities" in reason for reason in custom.reasons)
 

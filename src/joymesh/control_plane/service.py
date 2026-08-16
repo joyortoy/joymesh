@@ -66,9 +66,7 @@ class ControlPlane:
     async def onboarding_progress(
         self, *, user_id: str, organisation_id: str, workspace_id: str
     ) -> OnboardingProgress:
-        progress = await self.onboarding_repository.get(
-            user_id=user_id, workspace_id=workspace_id
-        )
+        progress = await self.onboarding_repository.get(user_id=user_id, workspace_id=workspace_id)
         if progress is None:
             progress = await self.onboarding_repository.put(
                 progress=new_progress(
@@ -107,9 +105,7 @@ class ControlPlane:
         if current.state not in completed and current.state is not OnboardingState.NOT_STARTED:
             completed = (*completed, current.state)
         selected = (
-            selected_harnesses
-            if selected_harnesses is not None
-            else current.selected_harnesses
+            selected_harnesses if selected_harnesses is not None else current.selected_harnesses
         )
         forbidden = {"fake", "joy"}
         if any(item in forbidden for item in selected):
@@ -156,9 +152,9 @@ class ControlPlane:
                     if fireconnect_enabled is not None
                     else current.fireconnect_enabled
                 ),
-                "last_error": None if clear_error else (
-                    last_error if last_error is not None else current.last_error
-                ),
+                "last_error": None
+                if clear_error
+                else (last_error if last_error is not None else current.last_error),
                 "updated_at": utc_now(),
                 "unsynchronised": False,
             }
@@ -239,9 +235,7 @@ class ControlPlane:
         pairing = self.store.pairings.get(pairing_id)
         if pairing is None:
             raise KeyError("pairing session not found")
-        self.store.pairings[pairing_id] = pairing.model_copy(
-            update={"expires_at": utc_now()}
-        )
+        self.store.pairings[pairing_id] = pairing.model_copy(update={"expires_at": utc_now()})
 
     async def approve_pairing(self, pairing_id: str, *, user_id: str) -> PairingSession:
         pairing = self.store.pairings[pairing_id]

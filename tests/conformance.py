@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from joymesh.adapters.base import HarnessAdapter
+from joymesh.harnesses.contracts import HarnessDefinition
 from joymesh.models import (
     EventType,
     FailureKind,
@@ -51,11 +52,15 @@ async def assert_static_conformance(adapter: HarnessAdapter, workspace: Path) ->
 
 
 async def assert_runtime_conformance(
-    adapter: HarnessAdapter, workspace: Path, database_url: str
+    adapter: HarnessAdapter,
+    workspace: Path,
+    database_url: str,
+    *,
+    definitions: tuple[HarnessDefinition, ...] | None = None,
 ) -> None:
     mesh = JoyMesh(
         database_url=database_url,
-        registry=AdapterRegistry([adapter]),
+        registry=AdapterRegistry([adapter], definitions=definitions),
     )
     await mesh.initialize()
     try:

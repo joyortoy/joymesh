@@ -8,11 +8,10 @@ from joymesh.connectors.lifecycle_models import (
     ConnectorReadiness,
     ConnectorTaskRecord,
     ConnectorTaskStatus,
+    NodeConnectorState,
 )
 from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.contracts import OnboardingProgress, OnboardingState
-from joymesh.connectors.lifecycle_models import NodeConnectorState
-
 
 _INSTALLING_STATES = {
     NodeConnectorState.INSTALLING,
@@ -48,13 +47,19 @@ def derive_wizard_state(
     selected = set(progress.selected_harnesses)
     if not progress.node_id:
         return OnboardingState.NODE_PAIRING_REQUIRED
-    if progress.state in {
-        OnboardingState.ACCOUNT_READY,
-        OnboardingState.NODE_PAIRING_REQUIRED,
-        OnboardingState.ENVIRONMENT_CHECK,
-        OnboardingState.HARNESS_SELECTION,
-    } and not selected:
-        return progress.state if progress.state is not OnboardingState.NOT_STARTED else OnboardingState.ACCOUNT_READY
+    if (
+        progress.state
+        in {
+            OnboardingState.ACCOUNT_READY,
+            OnboardingState.NODE_PAIRING_REQUIRED,
+            OnboardingState.ENVIRONMENT_CHECK,
+            OnboardingState.HARNESS_SELECTION,
+        }
+        and not selected
+    ):
+        if progress.state is not OnboardingState.NOT_STARTED:
+            return progress.state
+        return OnboardingState.ACCOUNT_READY
 
     by_id = {item.connector_id: item for item in readiness if item.connector_id in selected}
     selected_rows = [by_id[item] for item in selected if item in by_id]
