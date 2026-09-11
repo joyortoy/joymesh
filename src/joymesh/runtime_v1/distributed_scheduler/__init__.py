@@ -1,7 +1,7 @@
 """Deprecated package — JoyMesh no longer owns distributed fleet scheduling.
 
-Fleet scheduling, placement, fairness, queues, and scheduler HA live in JoyCLI.
-JoyMesh retains neutral worker reporting and lease validation under
+Fleet scheduling, placement, fairness, queues, and scheduler HA belong to an
+external planning layer. JoyMesh retains neutral worker reporting and lease validation under
 ``joymesh.runtime_v1.workers`` and ``joymesh.runtime_v1.contracts``.
 """
 
@@ -11,7 +11,7 @@ import warnings
 
 warnings.warn(
     "joymesh.runtime_v1.distributed_scheduler is removed. "
-    "JoyCLI owns distributed fleet scheduling. "
+    "An external planning layer owns distributed fleet scheduling. "
     "Use joymesh.runtime_v1.contracts / joymesh.runtime_v1.workers for neutral runtime facts.",
     DeprecationWarning,
     stacklevel=2,
@@ -62,6 +62,7 @@ def __getattr__(name: str) -> object:
     if name in removed:
         raise ImportError(
             f"{name} was removed from JoyMesh. "
-            "JoyCLI owns fleet scheduling, placement, fairness, queues, and lease granting."
+            "An external planning layer owns fleet scheduling, placement, fairness, "
+            "queues, and lease granting."
         )
     raise AttributeError(name)

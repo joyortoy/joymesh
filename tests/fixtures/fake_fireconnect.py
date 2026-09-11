@@ -151,7 +151,12 @@ def _per_harness(state: dict) -> list[dict]:
 def _load(path: Path) -> dict:
     if not path.exists():
         return {"enabled": {}, "models": {}}
-    return json.loads(path.read_text(encoding="utf-8"))
+    import fcntl
+
+    with path.open(encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_SH)
+        raw = handle.read()
+    return json.loads(raw) if raw.strip() else {"enabled": {}, "models": {}}
 
 
 def _save(path: Path, state: dict) -> None:

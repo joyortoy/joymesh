@@ -7,7 +7,7 @@ import hmac
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     Depends,
@@ -86,6 +86,71 @@ TERMINAL_STATUSES = {
     RunStatus.CANCELLED,
     RunStatus.TIMED_OUT,
 }
+
+
+class JoyCliExecutionRequest(BaseModel):
+    """JoyCLI execution request model for compatibility layer."""
+
+    mission_id: str
+    step_id: str | None = None
+    repository_path: str
+    instruction: str
+    policy_grant: str | dict[str, object] = "read_only"
+    capabilities: list[str] = Field(default_factory=list)
+    timeout_seconds: int = Field(default=300, ge=1, le=86_400)
+    constraints: dict[str, object] = Field(default_factory=dict)
+    context: dict[str, object] = Field(default_factory=dict)
+    # Explicit local-compat routing fields (never implied by production outbound path).
+    preferred_connectors: list[str] = Field(default_factory=list)
+    required_connector: str | None = None
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _joycli_compat_route_requested(execution_request: JoyCliExecutionRequest) -> bool:
+    """Local compat routing is opt-in only; default remains queue-without-route."""
+
+    constraints = execution_request.constraints or {}
+    if _truthy(constraints.get("local_compat_route")):
+        return True
+    if _truthy(constraints.get("route_now")):
+        return True
+    env = os.environ.get("JOYMESH_JOYCLI_COMPAT_ROUTE", "").strip().lower()
+    return env in {"1", "true", "yes", "on"}
+
+
+def _joycli_preferred_connectors(
+    execution_request: JoyCliExecutionRequest, *, route_now: bool
+) -> tuple[str, ...]:
+    preferred = tuple(
+        str(item) for item in (execution_request.preferred_connectors or ()) if str(item).strip()
+    )
+    constraints = execution_request.constraints or {}
+    if not preferred:
+        raw = constraints.get("preferred_connectors") or ()
+        if isinstance(raw, (list, tuple)):
+            preferred = tuple(str(item) for item in raw if str(item).strip())
+    if route_now and not preferred:
+        # Explicit route opt-in without a connector still defaults to Cursor for
+        # the supported local JoyCLI→JoyMesh→Cursor path — never for queue-only.
+        preferred = ("cursor",)
+    return preferred
+
+
+def _joycli_required_connector(execution_request: JoyCliExecutionRequest) -> str | None:
+    if execution_request.required_connector:
+        return str(execution_request.required_connector)
+    constraints = execution_request.constraints or {}
+    raw = constraints.get("required_connector")
+    return str(raw) if raw else None
 
 
 class DiscoveryRequest(BaseModel):
@@ -189,6 +254,119 @@ async def require_service_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+async def _build_node_snapshot(
+    service: JoyMesh,
+    *,
+    node_id: str,
+    online: bool,
+) -> Any:
+    """Build a SchedulerNodeSnapshot from connector readiness data for runtime registration."""
+    from joymesh.connectors.lifecycle_models import NodeConnectorState
+    from joymesh.runtime_v1.scheduler import SchedulerConnectorSnapshot, SchedulerNodeSnapshot
+    
+    node = service.control_plane.store.nodes.get(node_id)
+    revoked = node.revoked_at is not None if node else False
+    
+    # Fetch connector readiness for this node
+    try:
+        readiness_list = await service.list_connector_readiness(node_id=node_id)
+    except Exception:
+        readiness_list = ()
+    
+    # Convert readiness to connector snapshots
+    connectors: dict[str, SchedulerConnectorSnapshot] = {}
+    for readiness in readiness_list:
+        # Derive installed from installed_version or state
+        installed = bool(readiness.installed_version) or readiness.state in {
+            NodeConnectorState.INSTALLED,
+            NodeConnectorState.AUTHENTICATION_REQUIRED,
+            NodeConnectorState.AUTHENTICATION_IN_PROGRESS,
+            NodeConnectorState.AUTHENTICATED,
+            NodeConnectorState.AUTHENTICATION_FAILED,
+            NodeConnectorState.VERIFICATION_REQUIRED,
+            NodeConnectorState.VERIFICATION_IN_PROGRESS,
+            NodeConnectorState.VERIFIED,
+            NodeConnectorState.CERTIFICATION_REQUIRED,
+            NodeConnectorState.CERTIFICATION_IN_PROGRESS,
+            NodeConnectorState.CERTIFIED,
+            NodeConnectorState.CERTIFICATION_FAILED,
+            NodeConnectorState.NEEDS_REPAIR,
+            NodeConnectorState.ROUTING_DISABLED,
+            NodeConnectorState.READY,
+        }
+        
+        # Derive authenticated from state
+        authenticated = readiness.state in {
+            NodeConnectorState.AUTHENTICATED,
+            NodeConnectorState.VERIFIED,
+            NodeConnectorState.CERTIFIED,
+            NodeConnectorState.READY,
+        }
+        
+        # Fetch certified capabilities from database
+        certified_capabilities = await _fetch_certified_capabilities(
+            service, node_id=node_id, connector_id=readiness.connector_id
+        )
+        
+        connectors[readiness.connector_id] = SchedulerConnectorSnapshot(
+            connector_id=readiness.connector_id,
+            installed=installed,
+            readiness=readiness.state,
+            authenticated=authenticated,
+            routing_enabled=readiness.routing_eligible,
+            certified_capabilities=certified_capabilities,
+            trust_level=readiness.evidence_trust_level,
+            execution_origin=readiness.execution_origin,
+        )
+    
+    # Fetch workspace placements for this node
+    placements: list[Any] = []
+    for _workspace_id, placement_list in service.runtime_service.store.placements.items():
+        for placement in placement_list:
+            if placement.node_id == node_id:
+                placements.append(placement)
+    
+    return SchedulerNodeSnapshot(
+        node_id=node_id,
+        online=online,
+        revoked=revoked,
+        session_authenticated=online and not revoked,
+        connectors=connectors,
+        placements=tuple(placements),
+    )
+
+
+async def _fetch_certified_capabilities(
+    service: JoyMesh,
+    *,
+    node_id: str,
+    connector_id: str,
+) -> frozenset[str]:
+    """Fetch certified capabilities for a connector from the runtime store database."""
+    from sqlalchemy import select
+
+    from joymesh.runtime_v1.store import CertifiedCapabilityRow
+    
+    db = service.runtime_service.store.database
+    if db is None:
+        # No database, return empty set (safe default for in-memory testing)
+        return frozenset()
+    
+    try:
+        async with db.session() as session:
+            stmt = (
+                select(CertifiedCapabilityRow.capability_id)
+                .where(CertifiedCapabilityRow.node_id == node_id)
+                .where(CertifiedCapabilityRow.connector_id == connector_id)
+                .where(CertifiedCapabilityRow.invalidation_reason.is_(None))
+            )
+            result = await session.execute(stmt)
+            capabilities = [row[0] for row in result.fetchall()]
+            return frozenset(capabilities)
+    except Exception:
+        # Database error, return empty set (safe default)
+        return frozenset()
+
 
 def _onboarding_actions(
     state: OnboardingState,
@@ -210,7 +388,11 @@ def _onboarding_actions(
         actions.extend(["start_authentication", "verify_authentication"])
     if state is OnboardingState.CERTIFICATION_REQUIRED:
         actions.append("start_certification")
-    if state in {OnboardingState.FINAL_CHECK, OnboardingState.ROUTING_SETUP, OnboardingState.FIRECONNECT_SETUP}:
+    if state in {
+        OnboardingState.FINAL_CHECK,
+        OnboardingState.ROUTING_SETUP,
+        OnboardingState.FIRECONNECT_SETUP,
+    }:
         actions.append("complete")
         if not all(
             item.routing_eligible
@@ -792,6 +974,7 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/health")
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "joymesh", "version": "0.1.0"}
@@ -852,9 +1035,7 @@ def create_app(
         if progress.node_id:
             readiness = list(await service.list_connector_readiness(node_id=progress.node_id))
             active_tasks = list(await service.active_connector_tasks(node_id=progress.node_id))
-        derived = derive_wizard_state(
-            progress, readiness=readiness, active_tasks=active_tasks
-        )
+        derived = derive_wizard_state(progress, readiness=readiness, active_tasks=active_tasks)
         pairing = None
         if progress.pairing_id:
             try:
@@ -868,7 +1049,11 @@ def create_app(
                     node_id=progress.node_id
                 )
             except (KeyError, PermissionError) as exc:
-                environment = {"node_id": progress.node_id, "node_online": False, "detail": str(exc)}
+                environment = {
+                    "node_id": progress.node_id,
+                    "node_online": False,
+                    "detail": str(exc),
+                }
         return {
             "revision": progress.revision,
             "state": derived.value,
@@ -1154,6 +1339,9 @@ def create_app(
                 runtime_version=str(hello.payload.get("runtime_version", node.version)),
                 remote_address=websocket.client.host if websocket.client else None,
             )
+            # Register the online node session with RuntimeService
+            snapshot = await _build_node_snapshot(service, node_id=node_id, online=True)
+            service.runtime_service.register_node(snapshot)
             await service.connector_lifecycle.offer_queued_tasks(node_id=node_id)
             while True:
                 message = ProtocolMessage.model_validate_json(await websocket.receive_text())
@@ -1206,6 +1394,9 @@ def create_app(
         finally:
             if node_id is not None:
                 gateway.disconnect(node_id, websocket)
+                # Unregister the offline node session from RuntimeService
+                snapshot = await _build_node_snapshot(service, node_id=node_id, online=False)
+                service.runtime_service.register_node(snapshot)
 
     @app.get("/api/v1/fireconnect", response_model=FireConnectStatus)
     async def fireconnect_status() -> FireConnectStatus:
@@ -1781,7 +1972,234 @@ def create_app(
     async def coding_worker_health() -> dict[str, object]:
         return service.runtime_service.coding_worker_health()
 
+    # --- JoyCLI Compatibility Routes ---
+
+    @app.get("/ready")
+    async def joycli_ready() -> dict[str, object]:
+        """JoyCLI compatibility: check if JoyMesh is ready to accept executions."""
+        health = service.runtime_service.health()
+        return {
+            "ready": True,
+            "status": "ok",
+            "detail": "JoyMesh runtime ready",
+            "routes": {
+                "executions": "/executions",
+                "health": "/runtime/health",
+            },
+            "connected_nodes": health.get("active_node_sessions", 0),
+            "queued_tasks": health.get("task_queue", 0),
+        }
+
+    def _extract_policy_profile(policy_grant: str | dict[str, object]) -> str:
+        """Extract policy profile from JoyCLI policy_grant (string or dict)."""
+        if isinstance(policy_grant, str):
+            return policy_grant
+        
+        # Try common keys that might hold the profile
+        for key in ("profile", "mode", "policy_profile"):
+            if key in policy_grant:
+                value = policy_grant[key]
+                if isinstance(value, str):
+                    return value
+        
+        # If we have a dict but no recognized keys, try JSON serialization
+        # or default to read_only
+        return "read_only"
+
+    @app.post("/executions")
+    async def joycli_create_execution(
+        execution_request: JoyCliExecutionRequest,
+    ) -> dict[str, str]:
+        """JoyCLI compatibility: submit an execution request.
+
+        Default: queue immediately with skip_routing=True (in-memory queue is not
+        worker success). Explicit local opt-in
+        (constraints.local_compat_route / JOYMESH_JOYCLI_COMPAT_ROUTE) may route
+        to preferred connectors such as Cursor when nodes are registered.
+        """
+        from joymesh.runtime_v1.models import CreateRuntimeTaskBody
+
+        caps = execution_request.capabilities
+        policy_profile = _extract_policy_profile(execution_request.policy_grant)
+        route_now = _joycli_compat_route_requested(execution_request)
+        preferred = _joycli_preferred_connectors(execution_request, route_now=route_now)
+        required = _joycli_required_connector(execution_request)
+
+        body = CreateRuntimeTaskBody(
+            workspace_id=execution_request.repository_path,
+            prompt=execution_request.instruction,
+            policy_profile=policy_profile,
+            requested_capabilities=tuple(caps) if caps else (),
+            preferred_connectors=preferred,
+            required_connector=required,
+            timeout_seconds=execution_request.timeout_seconds,
+        )
+        # Queue-only unless local compat routing was explicitly requested.
+        task = await service.runtime_service.create_task(
+            body, user_id="joycli", skip_routing=not route_now
+        )
+
+        # Store mission_id and step_id for JoyCLI event reconciliation
+        # These are required on every event returned by GET /executions/{id}/events
+        await service.runtime_service.store.audit(
+            "joycli.execution_metadata",
+            task_id=task.task_id,
+            payload={
+                "mission_id": execution_request.mission_id,
+                "step_id": execution_request.step_id,
+                "execution_id": task.task_id,
+                "local_compat_route": route_now,
+                "preferred_connectors": list(preferred),
+            },
+        )
+
+        return {"execution_id": task.task_id}
+
+    @app.get("/executions/{execution_id}/events")
+    async def joycli_execution_events(execution_id: str) -> dict[str, list[dict[str, object]]]:
+        """JoyCLI compatibility: retrieve normalized events for an execution.
+        
+        Every event MUST include execution_id, mission_id, step_id for JoyCLI reconciliation.
+        """
+        try:
+            task = await service.runtime_service.store.get_task(execution_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Execution not found") from exc
+
+        # Extract mission_id and step_id from audit log
+        mission_id = None
+        step_id = None
+        for audit in service.runtime_service.store.audits:
+            if (
+                audit.task_id == execution_id
+                and audit.event_type == "joycli.execution_metadata"
+            ):
+                mission_id = audit.payload.get("mission_id")
+                step_id = audit.payload.get("step_id")
+                break
+
+        raw_events = service.runtime_service.store.events.get(execution_id, [])
+        normalized = []
+
+        for event in raw_events:
+            event_type = str(event.get("event_type", "unknown"))
+            payload = event.get("payload", {})
+            
+            # Map internal event types to JoyCLI event types
+            joycli_type = _map_to_joycli_event_type(event_type, task.status.value)
+            
+            normalized.append({
+                "event_type": joycli_type,
+                "execution_id": execution_id,
+                "mission_id": mission_id,
+                "step_id": step_id,
+                "timestamp": event.get("timestamp", ""),
+                "sequence": event.get("sequence", 0),
+                "payload": payload,
+            })
+
+        # Add a synthetic status event based on current task status
+        # JoyCLI requires execution_id, mission_id, step_id on EVERY event
+        if task.status.value in ["queued", "leased", "offered"]:
+            if not any(e["event_type"] == "queued" for e in normalized):
+                normalized.append({
+                    "event_type": "queued",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "payload": {"status": task.status.value},
+                })
+        elif task.status.value in ["accepted", "running"]:
+            if not any(e["event_type"] == "started" for e in normalized):
+                normalized.append({
+                    "event_type": "started",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "payload": {"status": task.status.value},
+                })
+        elif task.status.value == "succeeded":
+            if not any(e["event_type"] == "completed" for e in normalized):
+                normalized.append({
+                    "event_type": "completed",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "payload": {"status": task.status.value},
+                })
+        elif task.status.value == "failed":
+            if not any(e["event_type"] == "failed" for e in normalized):
+                normalized.append({
+                    "event_type": "failed",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "payload": {"status": task.status.value, "detail": task.detail},
+                })
+        elif task.status.value == "cancelled":
+            if not any(e["event_type"] == "cancelled" for e in normalized):
+                normalized.append({
+                    "event_type": "cancelled",
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "payload": {"status": task.status.value},
+                })
+
+        return {"events": normalized}
+
+    @app.post("/executions/{execution_id}/cancel")
+    async def joycli_cancel_execution(execution_id: str) -> dict[str, str]:
+        """JoyCLI compatibility: cancel an execution."""
+        try:
+            task = await service.runtime_service.cancel_task(execution_id)
+            return {"status": task.status.value, "execution_id": execution_id}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Execution not found") from exc
+
     return app
+
+
+def _map_to_joycli_event_type(internal_type: str, task_status: str) -> str:
+    """Map JoyMesh internal event types to JoyCLI event types."""
+    mapping = {
+        "task.created": "accepted",
+        "task.queued": "queued",
+        "task.offered": "queued",
+        "task.accepted": "accepted",
+        "task.started": "started",
+        "task.succeeded": "completed",
+        "task.failed": "failed",
+        "task.cancelled": "cancelled",
+        "execution.completed": "completed",
+        "execution.failed": "failed",
+        "execution.cancelled": "cancelled",
+        "backend.selected": "accepted",
+        "route.selected": "started",
+    }
+    
+    # Try exact match first
+    if internal_type in mapping:
+        return mapping[internal_type]
+    
+    # Check for partial matches
+    for key, value in mapping.items():
+        if key in internal_type:
+            return value
+    
+    # Default based on task status
+    if task_status in ["succeeded", "completed"]:
+        return "completed"
+    elif task_status in ["failed", "rejected"]:
+        return "failed"
+    elif task_status in ["cancelled"]:
+        return "cancelled"
+    elif task_status in ["running", "accepted"]:
+        return "started"
+    elif task_status in ["queued", "leased", "offered"]:
+        return "queued"
+    
+    return "output"
 
 
 def _problem(status_code: int, detail: str) -> JSONResponse:

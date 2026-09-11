@@ -55,9 +55,7 @@ async def register_profiles(mesh: JoyMesh) -> None:
                 monthly_limit=100,
                 max_concurrency=2,
                 billing_route=(
-                    BillingRoute.LOCAL
-                    if harness_id == "fake"
-                    else BillingRoute.SUBSCRIPTION
+                    BillingRoute.LOCAL if harness_id == "fake" else BillingRoute.SUBSCRIPTION
                 ),
                 cost_weight=0 if harness_id == "fake" else 1,
             )

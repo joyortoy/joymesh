@@ -9,6 +9,7 @@ from joymesh.adapters.opencode import OpenCodeAdapter
 from joymesh.harnesses.adapters import DocumentedCLIAdapter
 from joymesh.harnesses.catalogue import builtin_catalogue
 from tests.conformance import assert_runtime_conformance, assert_static_conformance
+from tests.fixtures.fake_harness_definition import fake_harness_definition
 
 
 @pytest.mark.parametrize(
@@ -36,10 +37,12 @@ async def test_adapter_conformance(
     executable = fake_executable_factory(kind)
     adapter = factory(executable)
     await assert_static_conformance(adapter, tmp_path)
+    definitions = (*builtin_catalogue(), fake_harness_definition()) if kind == "fake" else None
     await assert_runtime_conformance(
         adapter,
         tmp_path,
         f"sqlite+aiosqlite:///{tmp_path / f'{kind}.db'}",
+        definitions=definitions,
     )
 
 

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from joymesh.adapters.base import HarnessAdapter
+from joymesh.harnesses.contracts import HarnessDefinition
 from joymesh.models import (
     EventType,
     FailureKind,
@@ -51,7 +52,11 @@ async def assert_static_conformance(adapter: HarnessAdapter, workspace: Path) ->
 
 
 async def assert_runtime_conformance(
-    adapter: HarnessAdapter, workspace: Path, database_url: str
+    adapter: HarnessAdapter,
+    workspace: Path,
+    database_url: str,
+    *,
+    definitions: tuple[HarnessDefinition, ...] | None = None,
 ) -> None:
     from joymesh.harnesses.catalogue import builtin_catalogue
     from tests.fixtures.fake_harness_definition import fake_harness_definition

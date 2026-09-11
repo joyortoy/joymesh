@@ -16,7 +16,14 @@ from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
-from joymesh.models import BillingRoute, Run, RunRequest, SubscriptionCreate
+from joymesh.models import (
+    BillingRoute,
+    PermissionMode,
+    Run,
+    RunRequest,
+    RunStatus,
+    SubscriptionCreate,
+)
 from joymesh.service import JoyMesh, NoRouteError
 from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
 from joymesh.telemetry import (
@@ -884,7 +891,6 @@ def _maybe_send_run_telemetry(run: Run, *, task: str | None = None) -> None:
         return
 
 
-
 @node_app.command("init")
 def node_init(
     private_key_path: Path | None = typer.Option(None, "--private-key-path"),  # noqa: B008
@@ -1466,18 +1472,14 @@ def harness_select() -> None:
 
     defs = _run_value(lambda mesh: mesh.list_harnesses())
     detected = {
-        item.manifest.harness_id: item
-        for item in _run(lambda mesh: mesh.detect_harnesses())
+        item.manifest.harness_id: item for item in _run(lambda mesh: mesh.detect_harnesses())
     }
     typer.echo("Choose the harnesses JoyMesh may use (comma-separated ids):")
     for definition in defs:
         if definition.id in FORBIDDEN_PRODUCTION_HARNESS_IDS:
             continue
         descriptor = detected.get(definition.id)
-        ready = (
-            descriptor is not None
-            and descriptor.availability is HarnessAvailability.AVAILABLE
-        )
+        ready = descriptor is not None and descriptor.availability is HarnessAvailability.AVAILABLE
         state = "ready" if ready else "not ready"
         typer.echo(f"  [ ] {definition.id:20} {definition.display_name} ({state})")
     prefs = load_user_config().harnesses
@@ -1789,6 +1791,11 @@ def run_launch(
     workspace: str | None = typer.Option(None, "--workspace"),
     task: str | None = typer.Option(None, "--task"),
     harness: str = typer.Option("auto", "--harness", help="Harness id or 'auto'"),
+    permission_mode: PermissionMode = typer.Option(  # noqa: B008
+        PermissionMode.AUTO_APPROVE,
+        "--permission-mode",
+        help="Headless runs default to auto-approve so the harness can execute tools.",
+    ),
 ) -> None:
     """Launch a run when called without a run subcommand."""
 
@@ -1823,6 +1830,7 @@ def run_launch(
         request = RunRequest(
             task=task,
             workspace=workspace,
+            permission_mode=permission_mode,
             preferred_harness=selected_harness,
             allowed_harnesses=frozenset({selected_harness}),
             context_placement=placement,
@@ -1845,6 +1853,12 @@ def run_launch(
         raise typer.Exit(2) from exc
     _print(completed)
     _maybe_send_run_telemetry(completed, task=task)
+    if completed.status in {
+        RunStatus.FAILED,
+        RunStatus.TIMED_OUT,
+        RunStatus.CANCELLED,
+    }:
+        raise typer.Exit(1)
 
 
 @run_app.command("inspect")

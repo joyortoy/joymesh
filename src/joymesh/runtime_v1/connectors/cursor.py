@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from joymesh.connectors import ConnectorCatalogue
 from joymesh.connectors.process_utils import executable_fingerprint, terminate_process_tree
+from joymesh.cursor_sandbox import cursor_sandbox_argv
 from joymesh.models import utc_now
 from joymesh.runtime_v1.capabilities import READ_ONLY_CAPABILITIES
 from joymesh.runtime_v1.certification import ReadOnlyRepositoryProfile
@@ -248,15 +249,18 @@ class CursorConnectorRuntime:
         workspace_path: str,
         read_only: bool = True,
     ) -> Sequence[str]:
-        del workspace_path, read_only  # Cursor trusts process cwd; --trust for headless.
-        return (
+        argv = [
             executable,
             "--print",
             "--output-format",
             "stream-json",
             "--trust",
-            prompt,
-        )
+            "--sandbox",
+            "enabled",
+        ]
+        if read_only:
+            argv.extend(["--mode", "plan"])
+        return cursor_sandbox_argv((*argv, prompt), workspace_path, read_only=read_only)
 
     def build_read_only_cert_argv(
         self,

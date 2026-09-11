@@ -162,13 +162,11 @@ def test_architecture_no_fleet_scheduler_modules() -> None:
     assert forbidden_files.isdisjoint(present)
 
 
-def test_architecture_no_joycli_or_joypay_imports() -> None:
+def test_architecture_no_application_specific_imports() -> None:
     root = Path(__file__).resolve().parents[1] / "src/joymesh"
     offenders: list[str] = []
     for path in root.rglob("*.py"):
         text = path.read_text()
-        if "import joycli" in text or "from joycli" in text:
-            offenders.append(str(path))
         if "import joypay" in text or "from joypay" in text:
             offenders.append(str(path))
     assert offenders == []

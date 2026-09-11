@@ -4,7 +4,7 @@ JoyMesh is a neutral harness execution and worker runtime. It does **not** own
 distributed fleet scheduling, organisation fairness, or mission completion.
 
 ```text
-External control plane (e.g. JoyCLI)
+External planning agent or control plane
         │
         │ execution request + externally issued lease
         ▼
@@ -30,7 +30,7 @@ Package: `joymesh.runtime_v1.contracts`
 * `ExecutionOffer` / `ExecutionAcknowledgement`
 * `FactualExecutionResult` — process facts only
 
-A successful process result does **not** mean a JoyCLI mission completed.
+A successful process result does **not** mean the original task is complete.
 
 ## Worker helpers
 

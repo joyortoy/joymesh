@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 from joymesh.runtime_v1.execution_routing.capability_routing.policies import RoutingPolicy
 from joymesh.runtime_v1.execution_routing.capability_routing.profiles import (
@@ -113,7 +114,8 @@ def score_route(
     if not quota_ok:
         return _reject(harness, backend_id, connector, model, "quota_exhausted")
 
-    if task.privacy_required or policy.prefer_local or SemanticCapability.LOCAL_ONLY in task.required_semantic:
+    local_required = SemanticCapability.LOCAL_ONLY in task.required_semantic
+    if task.privacy_required or policy.prefer_local or local_required:
         if connector and not connector.local and connector.privacy != "local":
             return _reject(harness, backend_id, connector, model, "privacy_requires_local")
         if backend_id not in {"local", "joymesh"} and policy.prefer_local:
@@ -141,11 +143,7 @@ def score_route(
 
     quality = harness.quality * 15.0
     if model is not None:
-        quality += (
-            model.coding * 8.0
-            + model.reasoning * 8.0
-            + model.tool_use * 4.0
-        )
+        quality += model.coding * 8.0 + model.reasoning * 8.0 + model.tool_use * 4.0
         if SemanticCapability.VISION in task.required_semantic:
             quality += model.vision * 6.0
         if SemanticCapability.REASONING in task.required_semantic:

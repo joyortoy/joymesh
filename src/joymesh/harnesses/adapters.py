@@ -8,6 +8,7 @@ from typing import Any
 from joymesh.adapters.base import HarnessAdapter
 from joymesh.connectors import ConnectorCatalogue
 from joymesh.connectors.models import ConnectorDefinition
+from joymesh.cursor_sandbox import cursor_sandbox_argv
 from joymesh.harnesses.contracts import CapabilityState, HarnessDefinition
 from joymesh.harnesses.protocols import decode_record_lenient
 from joymesh.models import (
@@ -63,8 +64,15 @@ class DocumentedCLIAdapter(HarnessAdapter):
         )
 
     def build_launch_spec(self, request: RunRequest) -> LaunchSpec:
+        argv = self._argv_builder(self.executable_name, request)
+        if self.definition.id == "cursor":
+            argv = cursor_sandbox_argv(
+                argv,
+                request.workspace,
+                read_only=request.permission_mode is PermissionMode.READ_ONLY,
+            )
         return LaunchSpec(
-            argv=self._argv_builder(self.executable_name, request),
+            argv=argv,
             cwd=self.validate_workspace(request.workspace),
             env=self.launch_environment(),
             timeout_seconds=request.timeout_seconds,
@@ -135,6 +143,8 @@ def builtin_documented_adapters(
         "continue": _continue_argv,
         "qwen-code": _qwen_argv,
         "cline": _cline_argv,
+        "cursor": _cursor_argv,
+        "grok": _grok_argv,
     }
     connectors = ConnectorCatalogue.builtins()
     for connector in connectors.all():
@@ -169,6 +179,46 @@ def _catalogue_builder(connector: ConnectorDefinition) -> ArgvBuilder:
         return (executable, *argv[1:])
 
     return build
+
+
+def _cursor_argv(executable: str, request: RunRequest) -> tuple[str, ...]:
+    argv = [
+        executable,
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--trust",
+        "--sandbox",
+        "enabled",
+    ]
+    if request.permission_mode is PermissionMode.READ_ONLY:
+        argv.extend(["--mode", "plan"])
+    elif request.permission_mode is PermissionMode.AUTO_APPROVE:
+        argv.append("--force")
+    if request.model:
+        argv.extend(["--model", request.model])
+    argv.append(request.task)
+    return tuple(argv)
+
+
+def _grok_argv(executable: str, request: RunRequest) -> tuple[str, ...]:
+    argv = [
+        executable,
+        "--no-auto-update",
+        "-p",
+        request.task,
+        "--output-format",
+        "streaming-json",
+    ]
+    if request.resume_session_id:
+        argv.extend(["--resume", request.resume_session_id])
+    if request.permission_mode is PermissionMode.READ_ONLY:
+        argv.extend(["--sandbox", "strict", "--permission-mode", "plan"])
+    elif request.permission_mode is PermissionMode.AUTO_APPROVE:
+        argv.extend(["--permission-mode", "bypassPermissions"])
+    if request.model:
+        argv.extend(["--model", request.model])
+    return tuple(argv)
 
 
 def _claude_argv(executable: str, request: RunRequest) -> tuple[str, ...]:

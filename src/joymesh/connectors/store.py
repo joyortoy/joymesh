@@ -13,10 +13,14 @@ from joymesh.connectors.lifecycle_models import (
     TERMINAL_TASK_STATUSES,
     ConnectorEvidence,
     ConnectorEvidenceType,
+    ConnectorExecutionOrigin,
     ConnectorReadiness,
     ConnectorTaskEvent,
     ConnectorTaskRecord,
     ConnectorTaskStatus,
+    EvidenceTrustLevel,
+    NodeConnectorState,
+    RecommendedConnectorAction,
 )
 from joymesh.connectors.planning import ConnectorTaskPlan
 from joymesh.connectors.readiness import ConnectorReadinessService, _NodeConnectorSnapshot
@@ -232,15 +236,22 @@ class ConnectorLifecycleStore:
         await self.recompute(node_id=str(evidence.node_id), connector_id=evidence.connector_id)
         return evidence
 
+    async def save_readiness(self, readiness: ConnectorReadiness) -> ConnectorReadiness:
+        """Persist a computed readiness row (tests and explicit control-plane seeds)."""
+        return await self._persist_readiness(readiness)
+
     async def recompute(self, *, node_id: str, connector_id: str) -> ConnectorReadiness:
         snapshot = await self._load_snapshot(node_id=node_id, connector_id=connector_id)
         readiness = self.readiness.derive_from_snapshot(
             node_id=node_id, connector_id=connector_id, snapshot=snapshot
         )
+        return await self._persist_readiness(readiness)
+
+    async def _persist_readiness(self, readiness: ConnectorReadiness) -> ConnectorReadiness:
         row = NodeConnectorReadinessRow(
             id=str(uuid4()),
-            node_id=node_id,
-            connector_id=connector_id,
+            node_id=readiness.node_id,
+            connector_id=readiness.connector_id,
             state=readiness.state.value,
             recommended_action=(
                 readiness.recommended_action.value if readiness.recommended_action else None
@@ -271,13 +282,36 @@ class ConnectorLifecycleStore:
         async with self.database.sessions() as session:
             await session.execute(
                 delete(NodeConnectorReadinessRow).where(
-                    NodeConnectorReadinessRow.node_id == node_id,
-                    NodeConnectorReadinessRow.connector_id == connector_id,
+                    NodeConnectorReadinessRow.node_id == readiness.node_id,
+                    NodeConnectorReadinessRow.connector_id == readiness.connector_id,
                 )
             )
             session.add(row)
             await session.commit()
         return readiness
+
+    def _readiness_from_row(self, row: NodeConnectorReadinessRow) -> ConnectorReadiness:
+        payload = json.loads(row.snapshot_json or "{}")
+        trust = payload.get("evidence_trust_level")
+        origin = payload.get("execution_origin")
+        action = row.recommended_action
+        return ConnectorReadiness(
+            node_id=row.node_id,
+            connector_id=row.connector_id,
+            state=NodeConnectorState(row.state),
+            recommended_action=RecommendedConnectorAction(action) if action else None,
+            blocking_reason=row.blocking_reason,
+            active_task_id=row.active_task_id,
+            latest_evidence_id=row.latest_evidence_id,
+            routing_eligible=bool(row.routing_eligible),
+            catalogue_maturity=str(payload.get("catalogue_maturity") or "unknown"),
+            installed_version=payload.get("installed_version"),
+            executable_path=payload.get("executable_path"),
+            routing_profile=payload.get("routing_profile"),
+            evidence_trust_level=EvidenceTrustLevel(trust) if trust else None,
+            execution_origin=ConnectorExecutionOrigin(origin) if origin else None,
+            updated_at=row.recomputed_at,
+        )
 
     async def get_readiness(self, *, node_id: str, connector_id: str) -> ConnectorReadiness:
         async with self.database.sessions() as session:
@@ -291,10 +325,7 @@ class ConnectorLifecycleStore:
             )
         if row is None:
             return await self.recompute(node_id=node_id, connector_id=connector_id)
-        snapshot = await self._load_snapshot(node_id=node_id, connector_id=connector_id)
-        return self.readiness.derive_from_snapshot(
-            node_id=node_id, connector_id=connector_id, snapshot=snapshot
-        )
+        return self._readiness_from_row(row)
 
     async def list_readiness(self, *, node_id: str) -> tuple[ConnectorReadiness, ...]:
         from joymesh.connectors import ConnectorCatalogue

@@ -11,6 +11,20 @@ from joymesh.service import JoyMesh
 from tests.fixtures.fake_harness_definition import fake_harness_definition
 
 
+async def test_health_liveness_aliases(tmp_path: Path) -> None:
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'api-health.db'}")
+    app = create_app(mesh)
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            for path in ("/health", "/api/v1/health"):
+                resp = await client.get(path)
+                assert resp.status_code == 200, path
+                body = resp.json()
+                assert body["status"] == "ok"
+                assert body["service"] == "joymesh"
+
+
 async def test_api_production_harnesses_exclude_fake(tmp_path: Path) -> None:
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'api-prod.db'}")
     app = create_app(mesh)

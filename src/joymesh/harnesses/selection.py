@@ -89,11 +89,7 @@ def resolve_harness(
 
     ready = list(ready_enabled)
     if not allow_test_harnesses:
-        ready = [
-            item
-            for item in ready
-            if item not in REMOVED_PRODUCTION_HARNESS_IDS
-        ]
+        ready = [item for item in ready if item not in REMOVED_PRODUCTION_HARNESS_IDS]
     known = set(known_ids or ()) | set(ready) | set(prefs.enabled) | set(prefs.custom)
 
     def _validate(harness_id: str, *, require_enabled: bool) -> str:
