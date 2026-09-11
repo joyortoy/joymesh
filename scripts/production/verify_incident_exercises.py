@@ -6,9 +6,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = Path(os.environ.get("QUAL_OUTPUT_DIR", ROOT / "reports/data/production"))
@@ -29,15 +28,20 @@ def _key_compromise_exercise() -> dict:
             idempotency_key="incident:1",
         )
         pending_before = outbox.size()
-        # Simulate compromise response: stop using key (revocation enforced on JoyCLI side in tests).
+        # Simulate compromise response: stop using key.
+        # Revocation is enforced on the JoyCLI side in tests.
         outbox.close()
-    return {"ok": pending_before >= 1, "pending_before_close": pending_before, "action": "revoke_and-rotate_key"}
+    return {
+        "ok": pending_before >= 1,
+        "pending_before_close": pending_before,
+        "action": "revoke_and-rotate_key",
+    }
 
 
 def _outbox_not_draining_detection() -> dict:
+    from joymesh.delivery import MemoryDeliveryTransport
     from joymesh.delivery.outbox import DeliveryOutbox
     from joymesh.delivery.worker import DeliveryWorker
-    from joymesh.delivery import MemoryDeliveryTransport
 
     with tempfile.TemporaryDirectory() as tmp:
         outbox = DeliveryOutbox(Path(tmp) / "outbox.sqlite3", max_entries=10)
@@ -62,7 +66,7 @@ def main() -> int:
     }
     report = {
         "ok": all(item.get("ok") for item in exercises.values()),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "exercises": exercises,
     }
     path = OUT / "incident-response.json"

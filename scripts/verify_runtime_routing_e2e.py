@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import sys
 import tempfile
+from dataclasses import replace
+from pathlib import Path
 
 
 def main() -> int:
@@ -27,6 +27,7 @@ def main() -> int:
         build_execution_directive,
         envelope_from_dict,
     )
+
     from joymesh.control_plane.security import generate_node_keypair
     from joymesh.delivery import DeliveryOutbox, RuntimeDeliveryPublisher
 

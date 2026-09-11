@@ -16,6 +16,8 @@ from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
+from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
+from joymesh.legal.identity import SourceIdentity
 from joymesh.models import (
     BillingRoute,
     PermissionMode,
@@ -25,7 +27,6 @@ from joymesh.models import (
     SubscriptionCreate,
 )
 from joymesh.service import JoyMesh, NoRouteError
-from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
 from joymesh.telemetry import (
     MetricsMode,
     TelemetryMode,
@@ -127,7 +128,7 @@ def secrets_get(
 ) -> None:
     """Fetch a secret; default output is masked."""
 
-    from joymesh.secrets import SecretsError, get_secret, mask_secret
+    from joymesh.secrets import get_secret, mask_secret
 
     value = get_secret(name)
     if value is None:
@@ -262,7 +263,6 @@ def secrets_export_env() -> None:
         raise typer.Exit(1)
     for line in lines:
         typer.echo(line)
-
 
 
 @app.command("init")
@@ -449,9 +449,7 @@ def runtime_status() -> None:
         filtered = type(snapshot)(
             snapshot_id=snapshot.snapshot_id,
             observed_at=snapshot.observed_at,
-            harnesses=tuple(
-                item for item in snapshot.harnesses if item.harness_id in wanted
-            ),
+            harnesses=tuple(item for item in snapshot.harnesses if item.harness_id in wanted),
             schema_version=snapshot.schema_version,
         )
         if filtered.harnesses:
@@ -603,7 +601,7 @@ def _legal_repo_root(repo: str | None) -> Path:
     return Path(repo).resolve() if repo else repo_root_from_module()
 
 
-def _legal_identity(repo: str | None):
+def _legal_identity(repo: str | None) -> SourceIdentity:
     from joymesh.legal.identity import collect_source_identity
 
     root = _legal_repo_root(repo)
@@ -682,7 +680,11 @@ def legal_evidence_export(
 
     root = _legal_repo_root(repo)
     identity = _legal_identity(repo)
-    _print(export_evidence(identity=identity, output_dir=Path(output), evidence_items=[], repo_root=root))
+    _print(
+        export_evidence(
+            identity=identity, output_dir=Path(output), evidence_items=[], repo_root=root
+        )
+    )
 
 
 @legal_bundle_app.command("create")
@@ -1818,7 +1820,10 @@ def run_launch(
         except JoyMuxPlacementError as exc:
             typer.echo(str(exc), err=True)
             typer.echo(
-                "Ensure JoyMux is running (`joymux daemon start`) and JOYMUX_SOCKET points at runtime.sock.",
+                (
+                    "Ensure JoyMux is running (`joymux daemon start`) and "
+                    "JOYMUX_SOCKET points at runtime.sock."
+                ),
                 err=True,
             )
             raise typer.Exit(2) from exc
@@ -1836,8 +1841,7 @@ def run_launch(
             context_placement=placement,
             strategic_requirements=requirements,
             strategic_requirements_id=str(placement.get("requirements_id") or ""),
-            runtime_snapshot_revision=str(placement.get("runtime_snapshot_revision") or "")
-            or None,
+            runtime_snapshot_revision=str(placement.get("runtime_snapshot_revision") or "") or None,
             correlation_id=str(placement.get("correlation_id") or "") or None,
             mission_id=str(placement.get("mission_id") or "") or None,
         )

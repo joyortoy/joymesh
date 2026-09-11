@@ -7,9 +7,8 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 JOYCLI = Path(os.environ.get("JOYCLI_REPO", Path.home() / "intexta-buildweek/joycli"))
@@ -35,7 +34,10 @@ def _pytest(cwd: Path, target: str) -> dict:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     cases = [
-        _pytest(ROOT, "tests/test_fault_injection_production.py::test_outbox_max_entries_from_production_config"),
+        _pytest(
+            ROOT,
+            "tests/test_fault_injection_production.py::test_outbox_max_entries_from_production_config",
+        ),
         _pytest(ROOT, "tests/test_production_readiness.py"),
     ]
     joycli_target = JOYCLI / "tests/test_resource_bounds.py"
@@ -46,7 +48,7 @@ def main() -> int:
 
     report = {
         "ok": all(item.get("ok") for item in cases),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "cases": cases,
     }
     path = OUT / "resource-bounds.json"

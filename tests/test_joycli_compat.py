@@ -13,7 +13,7 @@ async def test_ready_endpoint(tmp_path: Path) -> None:
     """Test GET /ready returns readiness information."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -32,7 +32,7 @@ async def test_create_execution(tmp_path: Path) -> None:
     """Test POST /executions creates a task and returns execution_id."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -46,15 +46,15 @@ async def test_create_execution(tmp_path: Path) -> None:
                     "policy_grant": "read_only",
                     "capabilities": ["repository.read", "filesystem.read"],
                     "timeout_seconds": 300,
-            },
-        )
+                },
+            )
         if response.status_code != 200:
             print(f"Error: {response.json()}")
         assert response.status_code == 200
         data = response.json()
         assert "execution_id" in data
         execution_id = data["execution_id"]
-        
+
         # Verify the task was created in the runtime
         task = await mesh.runtime_service.store.get_task(execution_id)
         assert task.task_id == execution_id
@@ -67,7 +67,7 @@ async def test_execution_events(tmp_path: Path) -> None:
     """Test GET /executions/{id}/events returns normalized events."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -84,17 +84,17 @@ async def test_execution_events(tmp_path: Path) -> None:
                 },
             )
             execution_id = create_response.json()["execution_id"]
-            
+
             # Get events
             events_response = await client.get(f"/executions/{execution_id}/events")
             assert events_response.status_code == 200
             data = events_response.json()
             assert "events" in data
             assert isinstance(data["events"], list)
-            
+
             # Should have at least one event (status-based synthetic event)
             assert len(data["events"]) > 0
-            
+
             # Verify event structure
             for event in data["events"]:
                 assert "event_type" in event
@@ -119,7 +119,7 @@ async def test_cancel_execution(tmp_path: Path) -> None:
     """Test POST /executions/{id}/cancel cancels a task."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -136,14 +136,14 @@ async def test_cancel_execution(tmp_path: Path) -> None:
                 },
             )
             execution_id = create_response.json()["execution_id"]
-            
+
             # Cancel it
             cancel_response = await client.post(f"/executions/{execution_id}/cancel")
             assert cancel_response.status_code == 200
             data = cancel_response.json()
             assert data["execution_id"] == execution_id
             assert data["status"] in ["cancelled", "rejected", "failed", "succeeded"]
-            
+
             # Verify the task status
             task = await mesh.runtime_service.store.get_task(execution_id)
             assert task.status in [
@@ -158,14 +158,14 @@ async def test_execution_not_found(tmp_path: Path) -> None:
     """Test that nonexistent execution_id returns 404."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # Try to get events for nonexistent execution
             events_response = await client.get("/executions/nonexistent-id/events")
             assert events_response.status_code == 404
-            
+
             # Try to cancel nonexistent execution
             cancel_response = await client.post("/executions/nonexistent-id/cancel")
             assert cancel_response.status_code == 404
@@ -175,14 +175,14 @@ async def test_create_execution_with_no_connected_nodes(tmp_path: Path) -> None:
     """Test that execution creation works even when connected_nodes is 0."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # Verify no nodes connected
             ready_response = await client.get("/ready")
             assert ready_response.json()["connected_nodes"] == 0
-            
+
             # Should still be able to create an execution
             response = await client.post(
                 "/executions",
@@ -198,7 +198,7 @@ async def test_create_execution_with_no_connected_nodes(tmp_path: Path) -> None:
             assert response.status_code == 200
             data = response.json()
             assert "execution_id" in data
-            
+
             # Task should be created (may be queued or rejected, but should exist)
             execution_id = data["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
@@ -209,7 +209,7 @@ async def test_create_execution_with_dict_policy_grant(tmp_path: Path) -> None:
     """Test POST /executions accepts policy_grant as dict (JoyCLI format)."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -228,7 +228,7 @@ async def test_create_execution_with_dict_policy_grant(tmp_path: Path) -> None:
             assert response.status_code == 200
             data = response.json()
             assert "execution_id" in data
-            
+
             # Verify task was created with correct policy profile
             execution_id = data["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
@@ -240,7 +240,7 @@ async def test_create_execution_with_dict_policy_grant_mode_key(tmp_path: Path) 
     """Test policy_grant dict with 'mode' key instead of 'profile'."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -258,7 +258,7 @@ async def test_create_execution_with_dict_policy_grant_mode_key(tmp_path: Path) 
             assert response.status_code == 200
             data = response.json()
             assert "execution_id" in data
-            
+
             execution_id = data["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
             assert task.policy_profile == "read_only"
@@ -268,7 +268,7 @@ async def test_create_execution_with_dict_policy_grant_no_known_keys(tmp_path: P
     """Test policy_grant dict without recognized keys defaults to read_only."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -286,7 +286,7 @@ async def test_create_execution_with_dict_policy_grant_no_known_keys(tmp_path: P
             assert response.status_code == 200
             data = response.json()
             assert "execution_id" in data
-            
+
             execution_id = data["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
             # Should default to read_only when no recognized keys found
@@ -297,7 +297,7 @@ async def test_execution_events_include_mission_and_step_ids(tmp_path: Path) -> 
     """Test that events include execution_id, mission_id, and step_id as JoyCLI requires."""
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -315,14 +315,14 @@ async def test_execution_events_include_mission_and_step_ids(tmp_path: Path) -> 
             )
             assert create_response.status_code == 200
             execution_id = create_response.json()["execution_id"]
-            
+
             # Get events
             events_response = await client.get(f"/executions/{execution_id}/events")
             assert events_response.status_code == 200
             data = events_response.json()
             assert "events" in data
             events = data["events"]
-            
+
             # Every event MUST have execution_id, mission_id, step_id
             assert len(events) > 0, "Should have at least one event"
             for event in events:
@@ -331,17 +331,27 @@ async def test_execution_events_include_mission_and_step_ids(tmp_path: Path) -> 
                 assert "step_id" in event, f"Event missing step_id: {event}"
                 assert "event_type" in event, f"Event missing event_type: {event}"
                 assert "payload" in event, f"Event missing payload: {event}"
-                
+
                 # Verify correct IDs
                 assert event["execution_id"] == execution_id
                 assert event["mission_id"] == "mission_abc123"
                 assert event["step_id"] == "step_xyz789"
-                
+
                 # Verify event_type is valid for JoyCLI
                 valid_types = [
-                    "accepted", "queued", "started", "output", "tool", "file",
-                    "evidence", "blocked", "failed", "cancelled", "completed",
-                    "usage", "fallback"
+                    "accepted",
+                    "queued",
+                    "started",
+                    "output",
+                    "tool",
+                    "file",
+                    "evidence",
+                    "blocked",
+                    "failed",
+                    "cancelled",
+                    "completed",
+                    "usage",
+                    "fallback",
                 ]
                 assert event["event_type"] in valid_types, (
                     f"Invalid event_type: {event['event_type']}"

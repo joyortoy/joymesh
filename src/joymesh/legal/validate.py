@@ -51,7 +51,7 @@ def validate_against_schema(document: dict[str, Any], schema_name: str) -> dict[
         jsonschema.validate(document, schema)
     except ImportError:
         pass
-    except Exception as exc:  # noqa: BLE001 - surface schema errors to callers
+    except Exception as exc:
         errors.append(str(exc))
     return {"ok": not errors, "schema": schema_name, "errors": errors}
 

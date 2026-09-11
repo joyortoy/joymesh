@@ -87,8 +87,10 @@ def resolve_delivery_settings(
                 "invalid_delivery_transport",
                 f"unsupported JOYMESH_DELIVERY_TRANSPORT: {env_transport!r}",
             ) from exc
-        socket = Path(env_socket).expanduser() if env_socket else (
-            config_delivery.socket_path if config_delivery else None
+        socket = (
+            Path(env_socket).expanduser()
+            if env_socket
+            else (config_delivery.socket_path if config_delivery else None)
         )
         return DeliverySettings(transport=mode, socket_path=socket)
 

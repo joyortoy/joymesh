@@ -63,9 +63,7 @@ class _ASGIWebSocket:
         await self._app(scope, receive, send)
 
     async def send_json(self, payload: Mapping[str, Any]) -> None:
-        await self._incoming.put(
-            {"type": "websocket.receive", "text": json.dumps(payload)}
-        )
+        await self._incoming.put({"type": "websocket.receive", "text": json.dumps(payload)})
 
     async def receive_text(self) -> str:
         while True:

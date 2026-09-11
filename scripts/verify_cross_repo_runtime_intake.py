@@ -33,6 +33,7 @@ def main() -> int:
         print("SKIP: joycli.runtime.intake not importable")
         return 2
 
+    from joymesh.control_plane.security import generate_node_keypair
     from joymesh.delivery import (
         DeliveryOutbox,
         DeliverySettings,
@@ -42,7 +43,6 @@ def main() -> int:
         RuntimeDeliveryPublisher,
         build_delivery_transport,
     )
-    from joymesh.control_plane.security import generate_node_keypair
     from joymesh.models import utc_now
     from joymesh.quota.contracts import (
         HarnessAvailability,
@@ -84,9 +84,7 @@ def main() -> int:
     listener = UnixSocketRuntimeListener(intake, path=sock)
     listener.start_background()
 
-    settings = DeliverySettings(
-        transport=DeliveryTransportMode.UNIX_SOCKET, socket_path=sock
-    )
+    settings = DeliverySettings(transport=DeliveryTransportMode.UNIX_SOCKET, socket_path=sock)
     transport = build_delivery_transport(settings)
     assert not isinstance(transport, MemoryDeliveryTransport)
     outbox = DeliveryOutbox(outbox_path)
@@ -115,7 +113,9 @@ def main() -> int:
             source=QuotaSource.NONE,
         )
 
-    def harness(hid: str, availability: HarnessAvailability, state: QuotaState) -> HarnessRuntimeSnapshot:
+    def harness(
+        hid: str, availability: HarnessAvailability, state: QuotaState
+    ) -> HarnessRuntimeSnapshot:
         q = quota(hid, availability, state)
         return HarnessRuntimeSnapshot(
             harness_id=hid,
@@ -207,7 +207,7 @@ def main() -> int:
     try:
         asyncio.run(_run())
         return 0
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         import traceback
 
         traceback.print_exc()

@@ -73,28 +73,16 @@ def validate_harness_entry(entry: HarnessRuntimeSnapshot) -> None:
     if not entry.harness_id:
         raise RuntimeSnapshotValidationError("harness_id must be non-empty")
     if entry.quota.harness_id != entry.harness_id:
-        raise RuntimeSnapshotValidationError(
-            f"quota harness_id mismatch for {entry.harness_id}"
-        )
+        raise RuntimeSnapshotValidationError(f"quota harness_id mismatch for {entry.harness_id}")
     if not isinstance(entry.availability, HarnessAvailability):
         raise RuntimeSnapshotValidationError("invalid availability")
     if not isinstance(entry.quota.state, QuotaState):
         raise RuntimeSnapshotValidationError("invalid quota state")
     # Auth/config consistency: authentication_required implies not authenticated.
-    if (
-        entry.availability is HarnessAvailability.AUTHENTICATION_REQUIRED
-        and entry.authenticated
-    ):
-        raise RuntimeSnapshotValidationError(
-            "authentication_required cannot be authenticated=true"
-        )
-    if (
-        entry.availability is HarnessAvailability.CONFIGURATION_REQUIRED
-        and entry.configured
-    ):
-        raise RuntimeSnapshotValidationError(
-            "configuration_required cannot be configured=true"
-        )
+    if entry.availability is HarnessAvailability.AUTHENTICATION_REQUIRED and entry.authenticated:
+        raise RuntimeSnapshotValidationError("authentication_required cannot be authenticated=true")
+    if entry.availability is HarnessAvailability.CONFIGURATION_REQUIRED and entry.configured:
+        raise RuntimeSnapshotValidationError("configuration_required cannot be configured=true")
     usage = entry.recent_usage
     for name, value in (
         ("input_tokens", usage.input_tokens),
@@ -113,9 +101,7 @@ def validate_harness_entry(entry: HarnessRuntimeSnapshot) -> None:
         ("p95_ms", latency.p95_ms),
     ):
         if latency_value is not None and latency_value < 0:
-            raise RuntimeSnapshotValidationError(
-                f"{latency_name} must not be negative"
-            )
+            raise RuntimeSnapshotValidationError(f"{latency_name} must not be negative")
 
 
 def validate_snapshot(snapshot: RuntimeSnapshot) -> None:
@@ -128,9 +114,7 @@ def validate_snapshot(snapshot: RuntimeSnapshot) -> None:
     seen: set[str] = set()
     for entry in snapshot.harnesses:
         if entry.harness_id in seen:
-            raise RuntimeSnapshotValidationError(
-                f"duplicate harness id: {entry.harness_id}"
-            )
+            raise RuntimeSnapshotValidationError(f"duplicate harness id: {entry.harness_id}")
         seen.add(entry.harness_id)
         validate_harness_entry(entry)
 

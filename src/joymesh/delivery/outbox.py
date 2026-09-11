@@ -187,9 +187,7 @@ class DeliveryOutbox:
             deleted = 0
             while True:
                 count = int(
-                    self._conn.execute(
-                        "SELECT COUNT(*) AS c FROM delivery_outbox"
-                    ).fetchone()["c"]
+                    self._conn.execute("SELECT COUNT(*) AS c FROM delivery_outbox").fetchone()["c"]
                 )
                 if count <= self.max_entries:
                     break

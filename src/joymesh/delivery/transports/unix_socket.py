@@ -57,9 +57,7 @@ def prepare_runtime_dir(path: Path, *, require_private: bool = False) -> Path:
     return path
 
 
-def prepare_socket_parent(
-    socket_path: Path, *, require_private: bool = False
-) -> Path:
+def prepare_socket_parent(socket_path: Path, *, require_private: bool = False) -> Path:
     parent = Path(socket_path).expanduser().parent
     return prepare_runtime_dir(parent, require_private=require_private)
 
@@ -268,9 +266,7 @@ class UnixSocketDeliveryTransport:
     async def publish(self, envelope: DeliveryEnvelope) -> DeliveryAck:
         async with self._lock:
             await self._ensure()
-            response = await self._roundtrip(
-                {"type": "publish", "envelope": envelope.as_dict()}
-            )
+            response = await self._roundtrip({"type": "publish", "envelope": envelope.as_dict()})
             if response.get("type") == "error":
                 await self.close()
                 raise ConnectionError(response.get("detail") or "transport error")

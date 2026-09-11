@@ -23,6 +23,9 @@ from joymesh.runtime import HarnessRuntime, LineHandler, StartedHandler
 class SupervisionLost(RuntimeError):
     """JoyMux supervision could not be established or maintained."""
 
+    rpc_method: str = ""
+    failure_kind: str = ""
+
 
 class _Channel:
     def __init__(self, path: Path, timeout: float) -> None:
@@ -69,7 +72,13 @@ class _Channel:
             error.failure_kind = type(exc).__name__
             raise error from exc
 
-    async def bind(self, run_id: str, workspace: str, *, evidence_scope: str = "lifecycle_only_not_kernel_denials") -> None:
+    async def bind(
+        self,
+        run_id: str,
+        workspace: str,
+        *,
+        evidence_scope: str = "lifecycle_only_not_kernel_denials",
+    ) -> None:
         result = await self.call(
             "client/register",
             {

@@ -66,8 +66,7 @@ async def validate_directive(
             )
         if (
             directive.fallback_authorization_references
-            and directive.authorization_reference
-            not in directive.fallback_authorization_references
+            and directive.authorization_reference not in directive.fallback_authorization_references
         ):
             raise DirectiveValidationError(
                 "fallback authorization reference is not approved",
@@ -113,9 +112,7 @@ async def validate_directive(
             RuntimeValidationCode.CONFIGURATION_REQUIRED: (
                 ProviderDiagnosticCode.CONFIGURATION_REQUIRED
             ),
-            RuntimeValidationCode.CAPABILITY_MISMATCH: (
-                ProviderDiagnosticCode.CAPABILITY_MISMATCH
-            ),
+            RuntimeValidationCode.CAPABILITY_MISMATCH: (ProviderDiagnosticCode.CAPABILITY_MISMATCH),
             RuntimeValidationCode.PROVIDER_UNAVAILABLE: (
                 ProviderDiagnosticCode.PROVIDER_UNAVAILABLE
             ),
@@ -130,9 +127,7 @@ async def validate_directive(
             details=exc.details,
         ) from exc
 
-    entry = await runtime_snapshots.harness_snapshot(
-        directive.selected_harness, refresh=False
-    )
+    entry = await runtime_snapshots.harness_snapshot(directive.selected_harness, refresh=False)
     if entry.availability in AUTO_BLOCKED_AVAILABILITIES:
         raise DirectiveValidationError(
             f"harness unavailable: {entry.availability.value}",

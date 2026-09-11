@@ -27,7 +27,9 @@ RUNNER = CliRunner()
 
 
 def _identity():
-    return collect_source_identity(ROOT, producer_system="joymesh", package_version_value=package_version())
+    return collect_source_identity(
+        ROOT, producer_system="joymesh", package_version_value=package_version()
+    )
 
 
 def test_claim_v2_schema_and_producer_boundary() -> None:
@@ -73,7 +75,9 @@ def test_certification_observation_v2_never_verdict() -> None:
     assert report["report_status"] == "PRODUCER_OBSERVATION"
     assert report["evaluator_version"] == "joymesh.producer-observation/v1"
     assert report["evidence_admitted"] == []
-    assert any(item.startswith("submitted_pending_admission:") for item in report["evidence_missing"])
+    assert any(
+        item.startswith("submitted_pending_admission:") for item in report["evidence_missing"]
+    )
     assert "soak_8h_incomplete" in report["evidence_missing"]
     check = validate_against_schema(report, "certification-v2.json")
     assert check["ok"], check
@@ -104,7 +108,9 @@ def test_connector_evidence_marks_fake_local_unsatisfied() -> None:
     assert fake_ids == {"fake", "joy"}
     for item in connector["fake_local_providers"]:
         assert item["live_provider_gate_satisfied"] is False
-    unsatisfied = [item for item in connector["connectors"] if not item["live_provider_gate_satisfied"]]
+    unsatisfied = [
+        item for item in connector["connectors"] if not item["live_provider_gate_satisfied"]
+    ]
     assert unsatisfied, "catalogue should include connectors below live-provider maturity"
     assert connector["report_status"] == "PRODUCER_OBSERVATION"
 

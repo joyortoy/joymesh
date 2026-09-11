@@ -73,7 +73,9 @@ def _account(name: str) -> str:
 
 
 def _config_dir() -> Path:
-    return Path(os.environ.get("JOYMESH_CONFIG_DIR", Path.home() / ".config" / "joymesh")).expanduser()
+    return Path(
+        os.environ.get("JOYMESH_CONFIG_DIR", Path.home() / ".config" / "joymesh")
+    ).expanduser()
 
 
 def _file_store_path() -> Path:

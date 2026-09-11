@@ -39,7 +39,5 @@ class ExecutionDirective(BaseModel):
             "runtime_projection_revision": self.runtime_projection_revision,
             "authorization_reference": self.authorization_reference,
             "expires_at": self.expires_at.isoformat(),
-            "fallback_authorization_references": sorted(
-                self.fallback_authorization_references
-            ),
+            "fallback_authorization_references": sorted(self.fallback_authorization_references),
         }

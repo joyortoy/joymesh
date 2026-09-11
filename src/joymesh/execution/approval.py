@@ -82,8 +82,7 @@ class ApprovalContinuationService:
             attempt_id=attempt_id,
             directive_hash=directive_hash(directive_payload),
             reason=reason,
-            expires_at=expires_at
-            or (utc_now() + timedelta(seconds=self.default_ttl_seconds)),
+            expires_at=expires_at or (utc_now() + timedelta(seconds=self.default_ttl_seconds)),
         )
         self._pending[request.approval_id] = request
         return request

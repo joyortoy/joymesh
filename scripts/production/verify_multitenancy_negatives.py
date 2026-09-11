@@ -7,9 +7,8 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 JOYCLI = Path(os.environ.get("JOYCLI_REPO", Path.home() / "intexta-buildweek/joycli"))
@@ -41,7 +40,7 @@ def main() -> int:
 
     report = {
         "ok": ok,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "detail": detail,
     }
     path = OUT / "multitenancy-negative.json"

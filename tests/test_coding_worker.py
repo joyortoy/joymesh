@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from joymesh.models import utc_now
 from joymesh.runtime_v1.coding_worker import (
     CodingWorker,
     CodingWorkerAllowedActions,
@@ -21,10 +22,8 @@ from joymesh.runtime_v1.coding_worker import (
 from joymesh.runtime_v1.coding_worker.lifecycle import CodingWorkerLeaseError
 from joymesh.runtime_v1.coding_worker.safety import RepositorySafetyError
 from joymesh.runtime_v1.leases import LeaseService
-from joymesh.runtime_v1.models import LeaseStatus, CreateRuntimeTaskBody
+from joymesh.runtime_v1.models import CreateRuntimeTaskBody, LeaseStatus, WorkspacePlacement
 from joymesh.runtime_v1.service import RuntimeService
-from joymesh.models import utc_now
-from joymesh.runtime_v1.models import WorkspacePlacement
 
 
 def test_coding_worker_ready_reports_codex() -> None:
@@ -119,7 +118,9 @@ def test_worker_failure_returns_structured_error(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_uses_placement_and_prefers_codex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_runtime_uses_placement_and_prefers_codex(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = tmp_path / "workspace"
     repo.mkdir()
     (repo / ".git").mkdir()

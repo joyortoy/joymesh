@@ -8,12 +8,13 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
-ARTIFACTS = Path(os.environ.get("RC1_ARTIFACTS", Path.home() / "Documents/joymesh-rc1-verify/artifacts"))
+ARTIFACTS = Path(
+    os.environ.get("RC1_ARTIFACTS", Path.home() / "Documents/joymesh-rc1-verify/artifacts")
+)
 OUT = Path(os.environ.get("QUAL_OUTPUT_DIR", ROOT / "reports/data/production"))
 
 
@@ -45,7 +46,11 @@ def _pip_install(venv_python: Path, wheel: Path) -> dict:
         capture_output=True,
         text=True,
     )
-    return {"wheel": str(wheel), "ok": proc.returncode == 0, "stderr_tail": proc.stderr.splitlines()[-3:]}
+    return {
+        "wheel": str(wheel),
+        "ok": proc.returncode == 0,
+        "stderr_tail": proc.stderr.splitlines()[-3:],
+    }
 
 
 def _run_check(venv_python: Path, code: str) -> dict:
@@ -54,17 +59,26 @@ def _run_check(venv_python: Path, code: str) -> dict:
         capture_output=True,
         text=True,
     )
-    return {"ok": proc.returncode == 0, "stdout": proc.stdout.strip(), "stderr_tail": proc.stderr.splitlines()[-5:]}
+    return {
+        "ok": proc.returncode == 0,
+        "stdout": proc.stdout.strip(),
+        "stderr_tail": proc.stderr.splitlines()[-5:],
+    }
 
 
 def _verify_rc1_baseline(venv_python: Path) -> dict:
-    return _run_check(venv_python, "import joymesh; print(getattr(joymesh, '__version__', 'unknown'))")
+    return _run_check(
+        venv_python, "import joymesh; print(getattr(joymesh, '__version__', 'unknown'))"
+    )
 
 
 def _verify_candidate_production(venv_python: Path) -> dict:
     return _run_check(
         venv_python,
-        "import joymesh; from joymesh.production.config import load_production_config; print(load_production_config().max_outbox_entries)",
+        (
+            "import joymesh; from joymesh.production.config import "
+            "load_production_config; print(load_production_config().max_outbox_entries)"
+        ),
     )
 
 
@@ -81,15 +95,24 @@ def _verify_rollback_baseline(venv_python: Path) -> dict:
 def _schema_downgrade_note(venv_python: Path) -> dict:
     """Document that rolling back code must not silently downgrade production schema."""
     proc = subprocess.run(
-        [str(venv_python), "-c", "print('unsafe_schema_downgrade: refused by policy; use backup restore with matching schema')"],
+        [
+            str(venv_python),
+            "-c",
+            (
+                "print('unsafe_schema_downgrade: refused by policy; use "
+                "backup restore with matching schema')"
+            ),
+        ],
         capture_output=True,
         text=True,
     )
     return {
         "ok": proc.returncode == 0,
         "stdout": proc.stdout.strip(),
-        "note": "Operational rollback to RC1 code is supported only with compatible DB backups; "
-        "future-schema restore remains fail-closed (see joycli test_restore_rejects_future_schema_version).",
+        "note": "Operational rollback to RC1 code is supported only with compatible DB backups; "(
+            "future-schema restore remains fail-closed (see joycli "
+            "test_restore_rejects_future_schema_version)."
+        ),
     }
 
 
@@ -123,9 +146,13 @@ def main() -> int:
                 steps.append({"step": "rollback_rc1_code", **_pip_install(venv_python, rc1)})
                 rb_verify = _verify_rollback_baseline(venv_python)
                 steps.append({"step": "verify_rollback_baseline_import", **rb_verify})
-                steps.append({"step": "schema_downgrade_policy", **_schema_downgrade_note(venv_python)})
+                steps.append(
+                    {"step": "schema_downgrade_policy", **_schema_downgrade_note(venv_python)}
+                )
             elif rc1 is not None:
-                steps.append({"step": "upgrade_candidate", "ok": False, "note": "candidate wheel not found"})
+                steps.append(
+                    {"step": "upgrade_candidate", "ok": False, "note": "candidate wheel not found"}
+                )
 
     primary = [
         "create_venv",
@@ -140,8 +167,11 @@ def main() -> int:
     report = {
         "ok": ok,
         "primary_path": "RC1 baseline import -> candidate production import",
-        "rollback_policy": "Code rollback to RC1 verified via baseline import only; schema downgrade unsafe and refused operationally",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "rollback_policy": (
+            "Code rollback to RC1 verified via baseline import only; "
+            "schema downgrade unsafe and refused operationally"
+        ),
+        "generated_at": datetime.now(UTC).isoformat(),
         "artifacts_dir": str(ARTIFACTS),
         "rc1_wheel": str(rc1) if rc1 else None,
         "candidate_wheel": str(candidate) if candidate else None,

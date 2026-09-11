@@ -91,9 +91,7 @@ class RuntimeSnapshotService:
                 if harness_ids is None:
                     return cached
                 wanted = set(harness_ids)
-                filtered = tuple(
-                    item for item in cached.harnesses if item.harness_id in wanted
-                )
+                filtered = tuple(item for item in cached.harnesses if item.harness_id in wanted)
                 if len(filtered) == len(wanted):
                     return RuntimeSnapshot(
                         snapshot_id=cached.snapshot_id,
@@ -259,9 +257,7 @@ class RuntimeSnapshotService:
             capabilities = frozenset()
 
         active = self.observations.active_runs(harness_id)
-        execution_state = (
-            ExecutionState.RUNNING if active > 0 else ExecutionState.IDLE
-        )
+        execution_state = ExecutionState.RUNNING if active > 0 else ExecutionState.IDLE
         metadata = sanitize_provider_metadata(
             {
                 "reset_at": quota.reset_at.isoformat() if quota.reset_at else None,
@@ -325,15 +321,11 @@ def _availability_to_code(
         HarnessAvailability.AUTHENTICATION_REQUIRED: (
             RuntimeValidationCode.AUTHENTICATION_REQUIRED
         ),
-        HarnessAvailability.CONFIGURATION_REQUIRED: (
-            RuntimeValidationCode.CONFIGURATION_REQUIRED
-        ),
+        HarnessAvailability.CONFIGURATION_REQUIRED: (RuntimeValidationCode.CONFIGURATION_REQUIRED),
         HarnessAvailability.QUOTA_EXHAUSTED: RuntimeValidationCode.QUOTA_EXHAUSTED,
         HarnessAvailability.RATE_LIMITED: RuntimeValidationCode.RATE_LIMITED,
         HarnessAvailability.OFFLINE: RuntimeValidationCode.OFFLINE,
-        HarnessAvailability.PROVIDER_UNAVAILABLE: (
-            RuntimeValidationCode.PROVIDER_UNAVAILABLE
-        ),
+        HarnessAvailability.PROVIDER_UNAVAILABLE: (RuntimeValidationCode.PROVIDER_UNAVAILABLE),
     }
     return mapping.get(availability)
 

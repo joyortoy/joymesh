@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import replace
 import hashlib
 import os
+from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -58,10 +58,14 @@ class RuntimeDeliveryPublisher:
                     )
                 # Non-production: preserve RC1 ephemeral fallback for local/dev tests.
                 self._private_key, public_key = generate_node_keypair()
-        self.key_id = key_id or os.environ.get("JOYMESH_RUNTIME_SIGNING_KEY_ID") or (
-            f"ed25519:{hashlib.sha256(public_key.encode()).hexdigest()[:16]}"
-            if public_key
-            else None
+        self.key_id = (
+            key_id
+            or os.environ.get("JOYMESH_RUNTIME_SIGNING_KEY_ID")
+            or (
+                f"ed25519:{hashlib.sha256(public_key.encode()).hexdigest()[:16]}"
+                if public_key
+                else None
+            )
         )
         self.identity = PublisherIdentity(
             publisher_id=publisher_id,

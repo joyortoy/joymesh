@@ -173,9 +173,7 @@ class JoyMesh:
         if isinstance(delivery_settings, DeliverySettings):
             resolved_settings = delivery_settings
         else:
-            user_delivery = delivery_settings_from_mapping(
-                load_user_config().delivery.as_dict()
-            )
+            user_delivery = delivery_settings_from_mapping(load_user_config().delivery.as_dict())
             resolved_settings = resolve_delivery_settings(config_delivery=user_delivery)
         self.delivery_settings = resolved_settings
         if delivery_transport is not None:
@@ -315,9 +313,7 @@ class JoyMesh:
             pass
         return await self.runtime_snapshots.harness_snapshot(resolved, refresh=refresh)
 
-    async def refresh_runtime_snapshot(
-        self, harness_id: str | None = None
-    ) -> RuntimeSnapshot:
+    async def refresh_runtime_snapshot(self, harness_id: str | None = None) -> RuntimeSnapshot:
         await self.initialize()
         if harness_id:
             resolved = harness_id

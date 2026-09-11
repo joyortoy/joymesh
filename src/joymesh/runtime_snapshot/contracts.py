@@ -43,9 +43,7 @@ class UsageSnapshot:
             "output_tokens": self.output_tokens,
             "total_tokens": self.total_tokens,
             "execution_count": self.execution_count,
-            "last_execution": (
-                self.last_execution.isoformat() if self.last_execution else None
-            ),
+            "last_execution": (self.last_execution.isoformat() if self.last_execution else None),
             "average_duration_ms": self.average_duration_ms,
         }
 

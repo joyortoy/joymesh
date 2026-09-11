@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from joymesh.delivery.contracts import (
@@ -36,16 +35,16 @@ def test_wire_contract_field_parity_with_joycli_fixture():
             "schema_version",
             "transport_version",
             "signature",
-                "key_id",
-                "signature_algorithm",
+            "key_id",
+            "signature_algorithm",
             "idempotency_key",
         ],
-            "publisher_fields": [
-                "publisher_id",
-                "public_key",
-                "instance_id",
-                "organisation_id",
-            ],
+        "publisher_fields": [
+            "publisher_id",
+            "public_key",
+            "instance_id",
+            "organisation_id",
+        ],
     }
     assert SCHEMA_VERSION == fixture["schema_version"]
     assert TRANSPORT_VERSION == fixture["transport_version"]

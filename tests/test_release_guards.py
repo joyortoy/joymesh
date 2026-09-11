@@ -25,8 +25,9 @@ def test_production_unix_mode_does_not_instantiate_memory() -> None:
 
 
 def test_socket_listener_delegates_to_intake(tmp_path: Path) -> None:
-    from joymesh.delivery import RuntimeStateIntakeService
     import warnings
+
+    from joymesh.delivery import RuntimeStateIntakeService
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)

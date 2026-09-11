@@ -63,7 +63,9 @@ async def main() -> None:
     from joymesh.adapters.opencode import OpenCodeAdapter
     from joymesh.delivery import MemoryDeliveryTransport
     from joymesh.delivery.settings import DeliverySettings, DeliveryTransportMode
-    from joymesh.models import BillingRoute, PermissionMode, RunRequest, RunStatus, SubscriptionCreate
+    from joymesh.models import (
+        BillingRoute, PermissionMode, RunRequest, RunStatus, SubscriptionCreate,
+    )
     from joymesh.registry import AdapterRegistry
     from joymesh.service import JoyMesh
 
@@ -131,7 +133,9 @@ asyncio.run(main())
 """
 
 
-async def recover_and_cancel(root: Path, sock: Path, db: Path, workspace: Path, exe: str, marker: dict) -> dict:
+async def recover_and_cancel(
+    root: Path, sock: Path, db: Path, workspace: Path, exe: str, marker: dict
+) -> dict:
     from joymesh.adapters.opencode import OpenCodeAdapter
     from joymesh.delivery import MemoryDeliveryTransport
     from joymesh.delivery.settings import DeliverySettings, DeliveryTransportMode
@@ -171,7 +175,12 @@ async def recover_and_cancel(root: Path, sock: Path, db: Path, workspace: Path, 
             log("original_harness_already_gone", pid=orphan_pid)
     # Ensure interrupted checkpoint exists (crash may have skipped graceful mark).
     existing = mesh.checkpoints.get(run_id)
-    if existing is None or existing.status not in {"interrupted", "cancelled", "failed", "completed"}:
+    if existing is None or existing.status not in {
+        "interrupted",
+        "cancelled",
+        "failed",
+        "completed",
+    }:
         mesh.checkpoints.save(
             ExecutionCheckpoint(
                 execution_id=run_id,
@@ -289,7 +298,9 @@ async def recover_and_cancel(root: Path, sock: Path, db: Path, workspace: Path, 
     # Any opencode still running under our workspace is an orphan.
     for pid in sorted(after):
         try:
-            cmdline = subprocess.check_output(["ps", "-p", str(pid), "-o", "command="], text=True)
+            cmdline = await asyncio.to_thread(
+                subprocess.check_output, ["ps", "-p", str(pid), "-o", "command="], text=True
+            )
         except (subprocess.CalledProcessError, FileNotFoundError):
             cmdline = ""
         if str(workspace) in cmdline:
@@ -313,7 +324,7 @@ async def async_main(exe: str) -> int:
         print(f"SKIP: set {GATE}=1 to run")
         return 2
     joycli_src = Path("/Users/joytan/intexta-buildweek/joycli/src")
-    if joycli_src.is_dir():
+    if await asyncio.to_thread(joycli_src.is_dir):
         sys.path.insert(0, str(joycli_src))
     from shutil import which
 
@@ -350,6 +361,7 @@ async def async_main(exe: str) -> int:
         SqliteRuntimeIntakeStore,
         UnixSocketRuntimeListener,
     )
+
     from joymesh.control_plane.security import generate_node_keypair
 
     private_key, public_key = generate_node_keypair()
@@ -394,10 +406,11 @@ async def async_main(exe: str) -> int:
         }
     )
     # Ensure child imports the same source tree when run from checkout.
-    src = str(Path(__file__).resolve().parents[1] / "src")
+    src = str((await asyncio.to_thread(Path(__file__).resolve)).parents[1] / "src")
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
 
-    child = subprocess.Popen(
+    child = await asyncio.to_thread(
+        subprocess.Popen,
         [sys.executable, "-c", CHILD_RUNNER],
         env=env,
         cwd=str(root),

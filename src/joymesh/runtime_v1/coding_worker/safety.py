@@ -38,9 +38,7 @@ def assert_path_inside_repository(repository: Path, candidate: Path) -> Path:
     try:
         resolved.relative_to(root)
     except ValueError as exc:
-        raise RepositorySafetyError(
-            "path_escape", "edit path escapes allowed repository"
-        ) from exc
+        raise RepositorySafetyError("path_escape", "edit path escapes allowed repository") from exc
     return resolved
 
 

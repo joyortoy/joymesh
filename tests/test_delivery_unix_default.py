@@ -47,9 +47,7 @@ def test_production_local_default_is_unix_socket() -> None:
 
 
 def test_memory_requires_explicit_configuration() -> None:
-    settings = resolve_delivery_settings(
-        environ={"JOYMESH_DELIVERY_TRANSPORT": "memory"}
-    )
+    settings = resolve_delivery_settings(environ={"JOYMESH_DELIVERY_TRANSPORT": "memory"})
     assert settings.transport is DeliveryTransportMode.MEMORY
     transport = build_delivery_transport(settings)
     assert isinstance(transport, MemoryDeliveryTransport)
@@ -285,9 +283,7 @@ def test_fake_not_production_registered() -> None:
 
 
 def test_disabled_transport_built_explicitly() -> None:
-    transport = build_delivery_transport(
-        DeliverySettings(transport=DeliveryTransportMode.DISABLED)
-    )
+    transport = build_delivery_transport(DeliverySettings(transport=DeliveryTransportMode.DISABLED))
     assert isinstance(transport, DisabledDeliveryTransport)
 
 

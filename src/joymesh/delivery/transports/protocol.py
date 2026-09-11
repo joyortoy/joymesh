@@ -23,9 +23,7 @@ class DeliveryTransport(Protocol):
 
 class TransportVersionError(RuntimeError):
     def __init__(self, local: int, remote: int) -> None:
-        super().__init__(
-            f"transport version mismatch: local={local} remote={remote}"
-        )
+        super().__init__(f"transport version mismatch: local={local} remote={remote}")
         self.local = local
         self.remote = remote
 

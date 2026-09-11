@@ -59,9 +59,13 @@ def generate_node_keypair() -> tuple[str, str]:
 
 
 def public_key_from_private(private_key: str) -> str:
-    public_bytes = Ed25519PrivateKey.from_private_bytes(_decode(private_key)).public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
+    public_bytes = (
+        Ed25519PrivateKey.from_private_bytes(_decode(private_key))
+        .public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
     )
     return _encode(public_bytes)
 

@@ -13,7 +13,9 @@ from joymesh.delivery.publisher import RuntimeDeliveryPublisher
 from joymesh.production.validate import validate_production_config
 
 
-def test_production_validate_requires_signing_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_validate_requires_signing_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY", raising=False)
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", raising=False)
@@ -25,7 +27,9 @@ def test_production_validate_requires_signing_key(tmp_path: Path, monkeypatch: p
     assert any(i.code == "missing_signing_key" for i in result.issues)
 
 
-def test_publisher_fails_closed_in_production(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_publisher_fails_closed_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY", raising=False)
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", raising=False)

@@ -171,7 +171,8 @@ def build_certification_observation_v2(
 def _load_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(path.read_text(encoding="utf-8"))
+    return value if isinstance(value, dict) else None
 
 
 def _soak_8h_status(repo_root: Path) -> dict[str, Any]:
@@ -227,7 +228,9 @@ def build_soak_evidence(
             "mode": "unknown",
             "requested_duration_seconds": None,
             "actual_duration_seconds": None,
-            "source_path": str(path.relative_to(repo_root)) if path.is_relative_to(repo_root) else str(path),
+            "source_path": str(path.relative_to(repo_root))
+            if path.is_relative_to(repo_root)
+            else str(path),
             "source_present": False,
             "gates": {},
             "operations": {},
@@ -255,7 +258,9 @@ def build_soak_evidence(
         "actual_duration_seconds": actual,
         "started_at": payload.get("started_at"),
         "ended_at": payload.get("ended_at"),
-        "source_path": str(path.relative_to(repo_root)) if path.is_relative_to(repo_root) else str(path),
+        "source_path": str(path.relative_to(repo_root))
+        if path.is_relative_to(repo_root)
+        else str(path),
         "source_present": True,
         "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "producer_observed_ok": payload.get("ok"),
@@ -318,7 +323,8 @@ def build_connector_evidence(
     ]
     if unsatisfied:
         limitations.append(
-            f"{unsatisfied} catalogue connector(s) do not satisfy live-provider gates by maturity/remote flags."
+            f"{unsatisfied} catalogue connector(s) do not satisfy "
+            "live-provider gates by maturity/remote flags."
         )
     return {
         "schema": "joymesh.producer-connector-evidence/v1",
@@ -346,7 +352,9 @@ def build_bundle_v2(
     generator_version: str,
 ) -> dict[str, Any]:
     moment = _now()
-    safe_hashes = [{"path": _safe_rel(item["path"]), "sha256": item["sha256"]} for item in file_hashes]
+    safe_hashes = [
+        {"path": _safe_rel(item["path"]), "sha256": item["sha256"]} for item in file_hashes
+    ]
     base: dict[str, Any] = {
         "version": "joylegal.bundle/v2",
         "bundle_type": bundle_type,
