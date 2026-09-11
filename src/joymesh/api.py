@@ -7,7 +7,7 @@ import hmac
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     Depends,
@@ -100,6 +100,57 @@ class JoyCliExecutionRequest(BaseModel):
     timeout_seconds: int = Field(default=300, ge=1, le=86_400)
     constraints: dict[str, object] = Field(default_factory=dict)
     context: dict[str, object] = Field(default_factory=dict)
+    # Explicit local-compat routing fields (never implied by production outbound path).
+    preferred_connectors: list[str] = Field(default_factory=list)
+    required_connector: str | None = None
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _joycli_compat_route_requested(execution_request: JoyCliExecutionRequest) -> bool:
+    """Local compat routing is opt-in only; default remains queue-without-route."""
+
+    constraints = execution_request.constraints or {}
+    if _truthy(constraints.get("local_compat_route")):
+        return True
+    if _truthy(constraints.get("route_now")):
+        return True
+    env = os.environ.get("JOYMESH_JOYCLI_COMPAT_ROUTE", "").strip().lower()
+    return env in {"1", "true", "yes", "on"}
+
+
+def _joycli_preferred_connectors(
+    execution_request: JoyCliExecutionRequest, *, route_now: bool
+) -> tuple[str, ...]:
+    preferred = tuple(
+        str(item) for item in (execution_request.preferred_connectors or ()) if str(item).strip()
+    )
+    constraints = execution_request.constraints or {}
+    if not preferred:
+        raw = constraints.get("preferred_connectors") or ()
+        if isinstance(raw, (list, tuple)):
+            preferred = tuple(str(item) for item in raw if str(item).strip())
+    if route_now and not preferred:
+        # Explicit route opt-in without a connector still defaults to Cursor for
+        # the supported local JoyCLI→JoyMesh→Cursor path — never for queue-only.
+        preferred = ("cursor",)
+    return preferred
+
+
+def _joycli_required_connector(execution_request: JoyCliExecutionRequest) -> str | None:
+    if execution_request.required_connector:
+        return str(execution_request.required_connector)
+    constraints = execution_request.constraints or {}
+    raw = constraints.get("required_connector")
+    return str(raw) if raw else None
 
 
 class DiscoveryRequest(BaseModel):
@@ -256,7 +307,7 @@ async def _build_node_snapshot(
     
     # Fetch workspace placements for this node
     placements: list[Any] = []
-    for workspace_id, placement_list in service.runtime_service.store.placements.items():
+    for _workspace_id, placement_list in service.runtime_service.store.placements.items():
         for placement in placement_list:
             if placement.node_id == node_id:
                 placements.append(placement)
@@ -279,6 +330,7 @@ async def _fetch_certified_capabilities(
 ) -> frozenset[str]:
     """Fetch certified capabilities for a connector from the runtime store database."""
     from sqlalchemy import select
+
     from joymesh.runtime_v1.store import CertifiedCapabilityRow
     
     db = service.runtime_service.store.database
@@ -908,6 +960,7 @@ def create_app(
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/health")
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "joymesh", "version": "0.1.0"}
@@ -1815,28 +1868,34 @@ def create_app(
         execution_request: JoyCliExecutionRequest,
     ) -> dict[str, str]:
         """JoyCLI compatibility: submit an execution request.
-        
-        Returns immediately with execution_id. Task is queued and will be routed
-        when workers become available.
+
+        Default: queue immediately with skip_routing=True (in-memory queue is not
+        worker success). Explicit local opt-in
+        (constraints.local_compat_route / JOYMESH_JOYCLI_COMPAT_ROUTE) may route
+        to preferred connectors such as Cursor when nodes are registered.
         """
         from joymesh.runtime_v1.models import CreateRuntimeTaskBody
 
         caps = execution_request.capabilities
         policy_profile = _extract_policy_profile(execution_request.policy_grant)
-        
-        # Create task with skip_routing=True to return immediately
-        # Task will be queued and can be routed later when workers connect
+        route_now = _joycli_compat_route_requested(execution_request)
+        preferred = _joycli_preferred_connectors(execution_request, route_now=route_now)
+        required = _joycli_required_connector(execution_request)
+
         body = CreateRuntimeTaskBody(
             workspace_id=execution_request.repository_path,
             prompt=execution_request.instruction,
             policy_profile=policy_profile,
             requested_capabilities=tuple(caps) if caps else (),
+            preferred_connectors=preferred,
+            required_connector=required,
             timeout_seconds=execution_request.timeout_seconds,
         )
+        # Queue-only unless local compat routing was explicitly requested.
         task = await service.runtime_service.create_task(
-            body, user_id="joycli", skip_routing=True
+            body, user_id="joycli", skip_routing=not route_now
         )
-        
+
         # Store mission_id and step_id for JoyCLI event reconciliation
         # These are required on every event returned by GET /executions/{id}/events
         await service.runtime_service.store.audit(
@@ -1846,9 +1905,11 @@ def create_app(
                 "mission_id": execution_request.mission_id,
                 "step_id": execution_request.step_id,
                 "execution_id": task.task_id,
+                "local_compat_route": route_now,
+                "preferred_connectors": list(preferred),
             },
         )
-        
+
         return {"execution_id": task.task_id}
 
     @app.get("/executions/{execution_id}/events")

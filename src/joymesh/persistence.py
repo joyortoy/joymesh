@@ -610,13 +610,20 @@ class Database:
 
     @staticmethod
     def _run_model(row: RunRow) -> Run:
+        # Historical node records used "succeeded". Interpret only the
+        # unambiguous zero-exit variant; never rewrite history or guess success.
+        status = (
+            RunStatus.COMPLETED
+            if row.status == "succeeded" and row.exit_code == 0
+            else RunStatus(row.status)
+        )
         return Run(
             id=row.id,
             task=row.task,
             workspace=row.workspace,
             harness_id=row.harness_id,
             subscription_id=row.subscription_id,
-            status=RunStatus(row.status),
+            status=status,
             created_at=row.created_at,
             started_at=row.started_at,
             finished_at=row.finished_at,

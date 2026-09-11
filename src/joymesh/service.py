@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import tempfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from uuid import uuid4
 
@@ -58,7 +58,7 @@ from joymesh.models import (
 from joymesh.persistence import Database
 from joymesh.registry import AdapterRegistry
 from joymesh.routing import Router
-from joymesh.runtime import HarnessRuntime, HarnessTimeoutError
+from joymesh.runtime import HarnessRuntime, HarnessStreamOverflowError, HarnessTimeoutError
 from joymesh.runtime_v1.service import RuntimeService
 from joymesh.runtime_v1.store import RuntimeStore
 from joymesh.workspace import resolve_workspace
@@ -69,6 +69,9 @@ TERMINAL_STATUSES = {
     RunStatus.CANCELLED,
     RunStatus.TIMED_OUT,
 }
+
+_MAX_FAILURE_LEAVES = 8
+_MAX_FAILURE_ERROR_CHARS = 240
 
 
 class NoRouteError(RuntimeError):
@@ -758,10 +761,12 @@ class JoyMesh:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            classification = classify_execution_exception(exc)
+            error = format_safe_failure_error(classification)
             await self.database.update_run(
-                run_id, status=RunStatus.FAILED, finished_at=utc_now(), error=str(exc)
+                run_id, status=RunStatus.FAILED, finished_at=utc_now(), error=error
             )
-            await self._event(run_id, EventType.RUN_FAILED, str(exc))
+            await self._event(run_id, EventType.RUN_FAILED, error, classification)
         finally:
             self._requests.pop(run_id, None)
 
@@ -822,6 +827,71 @@ class JoyMesh:
                 payload=payload or {},
             )
         )
+
+
+def _exception_leaves(exc: BaseException) -> tuple[BaseException, ...]:
+    """Flatten ExceptionGroup / TaskGroup wrappers to concrete leaf exceptions."""
+
+    if isinstance(exc, BaseExceptionGroup):
+        leaves: list[BaseException] = []
+        for item in exc.exceptions:
+            leaves.extend(_exception_leaves(item))
+        return tuple(leaves)
+    return (exc,)
+
+
+def _controlled_leaf_reason(leaf: BaseException) -> str:
+    """Map known leaf types to controlled reason codes; never echo arbitrary text."""
+
+    if isinstance(leaf, HarnessStreamOverflowError):
+        return "stream_record_overflow"
+    if isinstance(leaf, HarnessTimeoutError):
+        return "harness_timeout"
+    if isinstance(leaf, ValueError) and "harness command cannot be empty" in str(leaf):
+        return "empty_harness_command"
+    return "unexpected_error"
+
+
+def classify_execution_exception(exc: BaseException) -> dict[str, object]:
+    """Bounded structured classification for persisted run failure metadata.
+
+    Surfaces leaf exception *types* and controlled reason codes. Does not embed
+    arbitrary exception text (secrets, oversized records, argv, etc.).
+    """
+
+    leaves = _exception_leaves(exc)[:_MAX_FAILURE_LEAVES]
+    leaf_rows = [
+        {"type": type(leaf).__name__, "reason": _controlled_leaf_reason(leaf)} for leaf in leaves
+    ]
+    wrapper = type(exc).__name__
+    if isinstance(exc, BaseExceptionGroup):
+        wrapper = "ExceptionGroup"
+    return {
+        "exception_type": wrapper,
+        "leaves": leaf_rows,
+    }
+
+
+def format_safe_failure_error(classification: Mapping[str, object] | dict[str, object]) -> str:
+    """Compact, bounded string for ``Run.error`` / event message (no leaf text)."""
+
+    leaves = classification.get("leaves")
+    if not isinstance(leaves, list) or not leaves:
+        return "unexpected_error"
+    parts: list[str] = []
+    for item in leaves[:_MAX_FAILURE_LEAVES]:
+        if not isinstance(item, dict):
+            continue
+        type_name = str(item.get("type") or "Exception")
+        reason = str(item.get("reason") or "unexpected_error")
+        parts.append(f"{type_name}:{reason}")
+    if not parts:
+        return "unexpected_error"
+    if len(parts) == 1 and classification.get("exception_type") != "ExceptionGroup":
+        text = parts[0]
+    else:
+        text = f"ExceptionGroup:[{','.join(parts)}]"
+    return text[:_MAX_FAILURE_ERROR_CHARS]
 
 
 def _create_certification_workspace() -> str:

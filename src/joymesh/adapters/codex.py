@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from joymesh.adapters.base import HarnessAdapter
 from joymesh.models import (
@@ -16,6 +17,10 @@ from joymesh.models import (
     UsageDelta,
 )
 from joymesh.security import redact_secrets
+
+# macOS seatbelt treats AF_UNIX bind/connect as network. JoyMux native tests
+# and live `runtime.sock` fail with EPERM unless workspace-write can use IPC.
+UNIX_IPC_CONFIG = "sandbox_workspace_write.network_access=true"
 
 
 class CodexAdapter(HarnessAdapter):
@@ -49,13 +54,20 @@ class CodexAdapter(HarnessAdapter):
             "--json",
             "--sandbox",
             "workspace-write",
+            "-c",
+            UNIX_IPC_CONFIG,
             "--cd",
             request.workspace,
         ]
         if request.model:
             argv.extend(["--model", request.model])
-        for directory in request.additional_writable_directories:
-            argv.extend(["--add-dir", directory])
+        seen: set[str] = set()
+        for directory in (*request.additional_writable_directories, *_joymux_writable_roots()):
+            resolved = str(Path(directory).expanduser())
+            if not resolved or resolved in seen:
+                continue
+            seen.add(resolved)
+            argv.extend(["--add-dir", resolved])
         if request.resume_session_id:
             argv.extend(["resume", request.resume_session_id])
         argv.append(request.task)
@@ -110,3 +122,11 @@ class CodexAdapter(HarnessAdapter):
             native_session_id=str(session_id) if session_id else None,
             usage=usage,
         )
+
+
+def _joymux_writable_roots() -> tuple[str, ...]:
+    """Allow the live JoyMux runtime dir without opening the whole homedir."""
+    runtime = Path.home() / ".joymux"
+    if runtime.is_dir():
+        return (str(runtime),)
+    return ()

@@ -17,7 +17,14 @@ from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
-from joymesh.models import BillingRoute, Run, SubscriptionCreate
+from joymesh.models import (
+    BillingRoute,
+    PermissionMode,
+    Run,
+    RunRequest,
+    RunStatus,
+    SubscriptionCreate,
+)
 from joymesh.service import JoyMesh, NoRouteError
 from joymesh.telemetry import (
     MetricsMode,
@@ -1096,6 +1103,11 @@ def run_launch(
     workspace: str | None = typer.Option(None, "--workspace"),
     task: str | None = typer.Option(None, "--task"),
     harness: str = typer.Option("auto", "--harness", help="Harness id or 'auto'"),
+    permission_mode: PermissionMode = typer.Option(  # noqa: B008
+        PermissionMode.AUTO_APPROVE,
+        "--permission-mode",
+        help="Headless runs default to auto-approve so the harness can execute tools.",
+    ),
 ) -> None:
     """Launch a run when called without a run subcommand."""
 
@@ -1107,7 +1119,12 @@ def run_launch(
     _maybe_prompt_telemetry_consent()
 
     async def operation(mesh: JoyMesh) -> Run:
-        run = await mesh.run(task=task, workspace=workspace, harness=harness)
+        request = RunRequest(
+            task=task,
+            workspace=workspace,
+            permission_mode=permission_mode,
+        )
+        run = await mesh.run(request=request, harness=harness)
         return await mesh.wait(run.id)
 
     try:
@@ -1119,6 +1136,12 @@ def run_launch(
         raise typer.Exit(2) from exc
     _print(completed)
     _maybe_send_run_telemetry(completed, task=task)
+    if completed.status in {
+        RunStatus.FAILED,
+        RunStatus.TIMED_OUT,
+        RunStatus.CANCELLED,
+    }:
+        raise typer.Exit(1)
 
 
 @run_app.command("inspect")

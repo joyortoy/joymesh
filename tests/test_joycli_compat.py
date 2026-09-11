@@ -348,20 +348,127 @@ async def test_execution_events_include_mission_and_step_ids(tmp_path: Path) -> 
                 )
 
 
+async def test_create_execution_default_remains_queue_only_without_route_opt_in(
+    tmp_path: Path,
+) -> None:
+    """Without local_compat_route, /executions must not silently route."""
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "mission_queue_only",
+                    "step_id": "step_queue_only",
+                    "repository_path": str(tmp_path),
+                    "instruction": "queue only probe",
+                    "policy_grant": "read_only",
+                    "capabilities": ["repository.read"],
+                },
+            )
+            assert response.status_code == 200
+            execution_id = response.json()["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            assert task.status is RuntimeTaskStatus.QUEUED
+            assert task.preferred_connectors == ()
+            assert task.selected_connector_id is None
+
+
+async def test_create_execution_opt_in_routes_to_cursor_fixture(tmp_path: Path) -> None:
+    """Explicit local_compat_route + cursor node fixture must select Cursor."""
+    from joymesh.runtime_v1.service import build_ready_cursor_node
+
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    workspace = str(tmp_path)
+    app = create_app(mesh)
+
+    async with app.router.lifespan_context(app):
+        mesh.runtime_service.register_node(
+            build_ready_cursor_node(
+                node_id="mac-compat",
+                workspace_id=workspace,
+                local_path=workspace,
+            )
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "mission_route_cursor",
+                    "step_id": "step_route_cursor",
+                    "repository_path": workspace,
+                    "instruction": "Summarise repository layout",
+                    "policy_grant": "read_only",
+                    "capabilities": [
+                        "repository.read",
+                        "repository.summarise",
+                        "structured_output",
+                    ],
+                    "constraints": {
+                        "local_compat_route": True,
+                        "preferred_connectors": ["cursor"],
+                    },
+                },
+            )
+            assert response.status_code == 200, response.text
+            execution_id = response.json()["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            assert task.preferred_connectors == ("cursor",)
+            assert task.selected_connector_id == "cursor"
+            assert task.status is RuntimeTaskStatus.LEASED
+            # Queued-only must not be treated as success: leased is the routed start.
+            assert task.status is not RuntimeTaskStatus.SUCCEEDED
+
+
+async def test_create_execution_env_opt_in_defaults_preferred_connector_to_cursor(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """JOYMESH_JOYCLI_COMPAT_ROUTE alone must default preferred connector to cursor."""
+    monkeypatch.setenv("JOYMESH_JOYCLI_COMPAT_ROUTE", "1")
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
+    app = create_app(mesh)
+
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/executions",
+                json={
+                    "mission_id": "mission_env_route",
+                    "step_id": "step_env_route",
+                    "repository_path": str(tmp_path),
+                    "instruction": "env opt-in probe",
+                    "policy_grant": "read_only",
+                    "capabilities": ["repository.read"],
+                },
+            )
+            assert response.status_code == 200
+            execution_id = response.json()["execution_id"]
+            task = await mesh.runtime_service.store.get_task(execution_id)
+            assert task.preferred_connectors == ("cursor",)
+            # Without a node, routing may reject/queue — but skip_routing queue detail
+            # must not be the path taken when env opt-in is set.
+            assert task.detail != "Queued for routing when workers available"
+
+
 async def test_create_execution_returns_immediately_with_no_nodes(tmp_path: Path) -> None:
     """Test that POST /executions returns quickly even when no nodes are connected."""
     import time
-    
+
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
-    
+
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # Verify no nodes connected
             ready_response = await client.get("/ready")
             assert ready_response.json()["connected_nodes"] == 0
-            
+
             # Time the execution creation
             start_time = time.time()
             response = await client.post(
@@ -376,18 +483,22 @@ async def test_create_execution_returns_immediately_with_no_nodes(tmp_path: Path
                 },
             )
             elapsed_time = time.time() - start_time
-            
+
             # Should return quickly (under 2 seconds)
             assert elapsed_time < 2.0, f"Request took {elapsed_time:.2f}s, expected < 2s"
-            
+
             # Should return 200 with execution_id
             assert response.status_code == 200
             data = response.json()
             assert "execution_id" in data
-            
+
             # Task should be queued (not rejected)
             execution_id = data["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
             assert task.task_id == execution_id
-            assert task.status in [RuntimeTaskStatus.QUEUED, RuntimeTaskStatus.ROUTING, 
-                                   RuntimeTaskStatus.PENDING, RuntimeTaskStatus.APPROVAL_REQUIRED]
+            assert task.status in [
+                RuntimeTaskStatus.QUEUED,
+                RuntimeTaskStatus.ROUTING,
+                RuntimeTaskStatus.PENDING,
+                RuntimeTaskStatus.APPROVAL_REQUIRED,
+            ]
