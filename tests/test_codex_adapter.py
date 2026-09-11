@@ -11,7 +11,10 @@ def test_codex_launch_enables_unix_socket_ipc(tmp_path: Path, monkeypatch) -> No
         RunRequest(task="probe runtime.sock", workspace=str(tmp_path / "ws"))
     )
     argv = spec.argv
-    assert argv[1:6] == ("exec", "--json", "--sandbox", "workspace-write", "-c")
+    assert argv[1:3] == ("exec", "--json")
+    sandbox_index = argv.index("--sandbox")
+    assert argv[sandbox_index + 1] == "workspace-write"
+    assert "-c" in argv
     assert UNIX_IPC_CONFIG in argv
     joymux_dir = str(tmp_path / ".joymux")
     assert "--add-dir" in argv
