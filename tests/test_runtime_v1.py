@@ -184,12 +184,18 @@ def test_cursor_connector_owns_trust_argv() -> None:
     argv = cursor.build_read_only_cert_argv(
         executable="/bin/cursor-agent", prompt="hi", workspace=Path("/tmp/ws")
     )
-    assert argv == (
+    assert argv[0] == "/usr/bin/sandbox-exec"
+    assert "(deny file-write*)" in argv[2]
+    assert tuple(argv[argv.index("/bin/cursor-agent") :]) == (
         "/bin/cursor-agent",
         "--print",
         "--output-format",
         "stream-json",
         "--trust",
+        "--sandbox",
+        "enabled",
+        "--mode",
+        "plan",
         "hi",
     )
     assert "repository.read" in cursor.declared_capabilities()
