@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
 from typer.testing import CliRunner
 
 from joymesh.cli import app
@@ -15,6 +16,19 @@ from joymesh.service import NoRouteError
 from joymesh.telemetry import reset_telemetry_service_for_tests
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def placement_for_exit_tests(monkeypatch):
+    monkeypatch.setattr(
+        "joymesh.cli.fetch_context_placement",
+        lambda **kwargs: {
+            "schema": "joy.context_placement_decision/v1",
+            "selected_harness": "fake",
+            "requirements_id": "req-cli-exit",
+            "executable": True,
+        },
+    )
 
 
 def _completed_run(*, status: RunStatus, error: str | None = None) -> Run:

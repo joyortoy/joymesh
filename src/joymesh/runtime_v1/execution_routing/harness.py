@@ -214,12 +214,15 @@ class ConnectorHarnessAdapter(HarnessAdapter):
                 events = tuple(parse(result.stdout))
             except Exception:
                 events = ()
+        process = result.as_dict()
+        process["stdout"] = result.stdout
+        process["stderr"] = result.stderr
         return {
             "ok": result.ok,
             "harness_id": self.harness_id,
             "message": "harness execution completed" if result.ok else result.classification,
             "failure_class": None if result.ok else result.classification,
-            "process": result.as_dict(),
+            "process": process,
             "events": list(events),
             "version": prepared.get("version"),
             "stub": False,

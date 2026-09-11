@@ -12,13 +12,21 @@ from joymesh.models import (
     SubscriptionState,
 )
 from joymesh.persistence import Database
+from joymesh.quota.service import QuotaService
 from joymesh.registry import AdapterRegistry
 
 
 class Router:
-    def __init__(self, registry: AdapterRegistry, database: Database) -> None:
+    def __init__(
+        self,
+        registry: AdapterRegistry,
+        database: Database,
+        *,
+        quota: QuotaService | None = None,
+    ) -> None:
         self.registry = registry
         self.database = database
+        self.quota = quota
 
     async def preview(self, request: RoutePreviewRequest) -> RoutePreview:
         detected = {item.manifest.harness_id: item for item in await self.registry.detect()}
@@ -110,6 +118,23 @@ class Router:
         if harness_id in request.denied_harnesses:
             eligible = False
             reasons.append("excluded by harness denylist")
+
+        # Explicit override: the allowlist is locked to exactly this harness
+        # (e.g. `joymesh run --harness X`). Preferred alone does not bypass
+        # quota hard-blocks — routing still auto-avoids unavailable harnesses.
+        explicit_quota_request = (
+            len(request.allowed_harnesses) == 1 and harness_id in request.allowed_harnesses
+        )
+        if self.quota is not None:
+            snapshot = await self.quota.snapshot(harness_id)
+            hard_block, score_delta, quota_reason = self.quota.routing_adjustment(
+                snapshot,
+                explicit_request=explicit_quota_request,
+            )
+            score += score_delta
+            reasons.append(quota_reason)
+            if hard_block:
+                eligible = False
 
         subscription_id = None
         concurrency_limit = harness_concurrency

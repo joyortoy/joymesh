@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "cwd": "/Users/joytan/Documents/joymesh",
+      "ok": true,
+      "returncode": 0,
+      "stdout_tail": [
+        ".                                                                        [100%]"
+      ],
+      "target": "tests/test_fault_injection_production.py::test_outbox_max_entries_from_production_config"
+    },
+    {
+      "cwd": "/Users/joytan/Documents/joymesh",
+      "ok": true,
+      "returncode": 0,
+      "stdout_tail": [
+        "....                                                                     [100%]"
+      ],
+      "target": "tests/test_production_readiness.py"
+    },
+    {
+      "cwd": "/Users/joytan/intexta-buildweek/joycli",
+      "ok": true,
+      "returncode": 0,
+      "stdout_tail": [
+        "  /Users/joytan/intexta-buildweek/joycli/tests/test_resource_bounds.py:92: RuntimeWarning: runtime intake accepts unsigned envelopes; insecure test mode is active",
+        "    intake = RuntimeStateIntakeService(store, allow_unsigned=True, bounds=bounds)",
+        "",
+        "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+        "5 passed, 2 warnings in 0.06s"
+      ],
+      "target": "tests/test_resource_bounds.py"
+    }
+  ],
+  "generated_at": "2026-08-03T14:15:27.050364+00:00",
+  "ok": true
+}

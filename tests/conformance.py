@@ -58,10 +58,19 @@ async def assert_runtime_conformance(
     *,
     definitions: tuple[HarnessDefinition, ...] | None = None,
 ) -> None:
+    from joymesh.harnesses.catalogue import builtin_catalogue
+    from tests.fixtures.fake_harness_definition import fake_harness_definition
+
+    definitions = builtin_catalogue()
+    if adapter.manifest.harness_id == "fake":
+        definitions = (fake_harness_definition(), *definitions)
     mesh = JoyMesh(
         database_url=database_url,
         registry=AdapterRegistry([adapter], definitions=definitions),
     )
+    from tests.quota_test_utils import install_ready_quota
+
+    install_ready_quota(mesh)
     await mesh.initialize()
     try:
         await mesh.create_subscription(

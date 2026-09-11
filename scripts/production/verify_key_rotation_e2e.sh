@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# End-to-end key rotation using packaged/source CLIs.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+WORKDIR="$(mktemp -d -t jm-keyrot-XXXXXX)"
+WORKDIR="$(cd "${WORKDIR}" && pwd -P)"
+cleanup() { rm -rf "${WORKDIR}"; }
+trap cleanup EXIT
+
+PYTHON="${PYTHON:-/Users/joytan/Documents/joymesh-rc1-verify/venv-joymesh-src/bin/python}"
+JOYCLI_ROOT="${JOYCLI_ROOT:-/Users/joytan/intexta-buildweek/joycli}"
+export JOYCLI_STATE="${WORKDIR}/joycli-state"
+mkdir -p "${JOYCLI_STATE}" "${WORKDIR}/keys"
+
+# Generate key A
+"${PYTHON}" - <<PY
+from pathlib import Path
+from joymesh.delivery.key_lifecycle import generate_runtime_signing_key
+a = generate_runtime_signing_key(destination=Path("${WORKDIR}/keys/a.key"), key_id="rot-a")
+b = generate_runtime_signing_key(destination=Path("${WORKDIR}/keys/b.key"), key_id="rot-b")
+Path("${WORKDIR}/keys/a.pub").write_text(a.public_key)
+Path("${WORKDIR}/keys/b.pub").write_text(b.public_key)
+print(a.key_id, b.key_id)
+PY
+
+PUB_A="$(cat "${WORKDIR}/keys/a.pub")"
+PUB_B="$(cat "${WORKDIR}/keys/b.pub")"
+
+# Register A on JoyCLI
+(
+  cd "${JOYCLI_ROOT}"
+  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key add \
+    --key-id rot-a --public-key "${PUB_A}" --publisher-id joymesh --organisation-id local >/dev/null
+)
+
+# Rotate: add B overlapping, then disable A
+(
+  cd "${JOYCLI_ROOT}"
+  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key rotate \
+    --new-key-id rot-b --public-key "${PUB_B}" --old-key-id rot-a --publisher-id joymesh --organisation-id local
+  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key disable rot-a --reason rollback-window
+  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key revoke rot-a --reason retired
+  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key list
+)
+
+echo "key_rotation_e2e: ok"

@@ -1,0 +1,244 @@
+{
+  "$defs": {
+    "ClaimStatus": {
+      "enum": [
+        "submitted",
+        "evaluated",
+        "withdrawn"
+      ],
+      "title": "ClaimStatus",
+      "type": "string"
+    },
+    "IntegrationRef": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Ref",
+          "type": "string"
+        },
+        "system": {
+          "$ref": "#/$defs/IntegrationSystem"
+        }
+      },
+      "required": [
+        "system",
+        "ref"
+      ],
+      "title": "IntegrationRef",
+      "type": "object"
+    },
+    "IntegrationSystem": {
+      "enum": [
+        "joycli",
+        "joymesh",
+        "joymux",
+        "joypay",
+        "joyui",
+        "joyview"
+      ],
+      "title": "IntegrationSystem",
+      "type": "string"
+    },
+    "JsonScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "JsonValue": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonScalar"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://joyuniverse.dev/schemas/joylegal/claim-v2.json",
+  "additionalProperties": false,
+  "properties": {
+    "applicable_rule_ids": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Applicable Rule Ids",
+      "type": "array"
+    },
+    "applicable_version": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applicable Version"
+    },
+    "claim_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Claim Id",
+      "type": "string"
+    },
+    "claim_type": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Claim Type",
+      "type": "string"
+    },
+    "claimant": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Claimant",
+      "type": "string"
+    },
+    "correlation_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "environment": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Environment",
+      "type": "string"
+    },
+    "integration_refs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/IntegrationRef"
+      },
+      "title": "Integration Refs",
+      "type": "array"
+    },
+    "integrity_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Integrity Hash",
+      "type": "string"
+    },
+    "jurisdiction": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Jurisdiction",
+      "type": "string"
+    },
+    "producer_system": {
+      "$ref": "#/$defs/IntegrationSystem"
+    },
+    "requested_valid_from": {
+      "format": "date-time",
+      "title": "Requested Valid From",
+      "type": "string"
+    },
+    "requested_valid_until": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Requested Valid Until"
+    },
+    "scope": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Scope",
+      "type": "object"
+    },
+    "status": {
+      "$ref": "#/$defs/ClaimStatus",
+      "default": "submitted"
+    },
+    "subject": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Subject",
+      "type": "string"
+    },
+    "supporting_evidence": {
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Supporting Evidence",
+      "type": "array"
+    },
+    "version": {
+      "pattern": "^joylegal\\.claim/v2$",
+      "title": "Version",
+      "type": "string"
+    },
+    "workspace_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Workspace Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "claim_id",
+    "claimant",
+    "subject",
+    "claim_type",
+    "scope",
+    "environment",
+    "jurisdiction",
+    "requested_valid_from",
+    "supporting_evidence",
+    "applicable_rule_ids",
+    "producer_system",
+    "workspace_id",
+    "correlation_id",
+    "integrity_hash"
+  ],
+  "title": "ClaimV2",
+  "type": "object"
+}

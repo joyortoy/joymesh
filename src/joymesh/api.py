@@ -240,6 +240,21 @@ async def browser_identity(
 BrowserIdentityDependency = Annotated[BrowserIdentity, Depends(browser_identity)]
 
 
+async def require_service_token(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    token = os.getenv("JOYMESH_TOKEN") or os.getenv("JOYMESH_SERVICE_TOKEN")
+    if token is None:
+        return
+    expected = f"Bearer {token}"
+    if authorization is None or not hmac.compare_digest(authorization, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing service token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 async def _build_node_snapshot(
     service: JoyMesh,
     *,
@@ -249,16 +264,16 @@ async def _build_node_snapshot(
     """Build a SchedulerNodeSnapshot from connector readiness data for runtime registration."""
     from joymesh.connectors.lifecycle_models import NodeConnectorState
     from joymesh.runtime_v1.scheduler import SchedulerConnectorSnapshot, SchedulerNodeSnapshot
-    
+
     node = service.control_plane.store.nodes.get(node_id)
     revoked = node.revoked_at is not None if node else False
-    
+
     # Fetch connector readiness for this node
     try:
         readiness_list = await service.list_connector_readiness(node_id=node_id)
     except Exception:
         readiness_list = ()
-    
+
     # Convert readiness to connector snapshots
     connectors: dict[str, SchedulerConnectorSnapshot] = {}
     for readiness in readiness_list:
@@ -280,7 +295,7 @@ async def _build_node_snapshot(
             NodeConnectorState.ROUTING_DISABLED,
             NodeConnectorState.READY,
         }
-        
+
         # Derive authenticated from state
         authenticated = readiness.state in {
             NodeConnectorState.AUTHENTICATED,
@@ -288,12 +303,12 @@ async def _build_node_snapshot(
             NodeConnectorState.CERTIFIED,
             NodeConnectorState.READY,
         }
-        
+
         # Fetch certified capabilities from database
         certified_capabilities = await _fetch_certified_capabilities(
             service, node_id=node_id, connector_id=readiness.connector_id
         )
-        
+
         connectors[readiness.connector_id] = SchedulerConnectorSnapshot(
             connector_id=readiness.connector_id,
             installed=installed,
@@ -304,14 +319,14 @@ async def _build_node_snapshot(
             trust_level=readiness.evidence_trust_level,
             execution_origin=readiness.execution_origin,
         )
-    
+
     # Fetch workspace placements for this node
     placements: list[Any] = []
     for _workspace_id, placement_list in service.runtime_service.store.placements.items():
         for placement in placement_list:
             if placement.node_id == node_id:
                 placements.append(placement)
-    
+
     return SchedulerNodeSnapshot(
         node_id=node_id,
         online=online,
@@ -332,14 +347,14 @@ async def _fetch_certified_capabilities(
     from sqlalchemy import select
 
     from joymesh.runtime_v1.store import CertifiedCapabilityRow
-    
+
     db = service.runtime_service.store.database
     if db is None:
         # No database, return empty set (safe default for in-memory testing)
         return frozenset()
-    
+
     try:
-        async with db.session() as session:
+        async with db.sessions() as session:
             stmt = (
                 select(CertifiedCapabilityRow.capability_id)
                 .where(CertifiedCapabilityRow.node_id == node_id)
@@ -1556,6 +1571,60 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return route.as_dict()
 
+    class QuotaRefreshRequest(BaseModel):
+        harness_id: str | None = None
+
+    class RuntimeSnapshotRefreshRequest(BaseModel):
+        harness_id: str | None = None
+
+    @app.get("/quota")
+    @app.get("/api/v1/quota")
+    async def list_quota() -> list[dict[str, object]]:
+        snapshots = await service.list_quota(
+            harness_ids=("opencode", "claude-code", "codex", "gemini-cli", "grok")
+        )
+        return service.quota.as_json(snapshots)
+
+    @app.get("/quota/{harness_id}")
+    @app.get("/api/v1/quota/{harness_id}")
+    async def get_quota(harness_id: str) -> dict[str, object]:
+        snapshot = await service.get_quota(harness_id)
+        return snapshot.as_dict()
+
+    @app.post("/quota/refresh")
+    @app.post("/api/v1/quota/refresh")
+    async def refresh_quota(body: QuotaRefreshRequest | None = None) -> list[dict[str, object]]:
+        harness_id = body.harness_id if body is not None else None
+        if harness_id:
+            snapshots = await service.refresh_quota(harness_id)
+        else:
+            snapshots = await service.list_quota(
+                harness_ids=("opencode", "claude-code", "codex", "gemini-cli", "grok"),
+                refresh=True,
+            )
+        return service.quota.as_json(snapshots)
+
+    @app.get("/runtime/snapshot")
+    @app.get("/api/v1/runtime/snapshot")
+    async def get_runtime_snapshot() -> dict[str, object]:
+        snapshot = await service.get_runtime_snapshot()
+        return service.runtime_snapshots.as_json(snapshot)
+
+    @app.get("/runtime/snapshot/{harness_id}")
+    @app.get("/api/v1/runtime/snapshot/{harness_id}")
+    async def get_runtime_snapshot_harness(harness_id: str) -> dict[str, object]:
+        entry = await service.get_harness_runtime_snapshot(harness_id)
+        return entry.as_dict()
+
+    @app.post("/runtime/snapshot/refresh")
+    @app.post("/api/v1/runtime/snapshot/refresh")
+    async def refresh_runtime_snapshot(
+        body: RuntimeSnapshotRefreshRequest | None = None,
+    ) -> dict[str, object]:
+        harness_id = body.harness_id if body is not None else None
+        snapshot = await service.refresh_runtime_snapshot(harness_id)
+        return service.runtime_snapshots.as_json(snapshot)
+
     @app.get("/api/v1/subscriptions", response_model=list[SubscriptionProfile])
     async def subscriptions() -> tuple[SubscriptionProfile, ...]:
         return await service.list_subscriptions()
@@ -1584,12 +1653,25 @@ def create_app(
         )
 
     @app.post("/api/v1/runs", response_model=Run, status_code=status.HTTP_202_ACCEPTED)
-    async def create_run(request: RunRequest) -> Run:
+    async def create_run(
+        request: RunRequest,
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> Run:
         try:
             route = request.route or await service.resolve_route(request=request)
             return await service.start_run(request=request, route=route)
         except NoRouteError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            detail: dict[str, object] | str
+            if exc.code:
+                detail = {
+                    "message": str(exc),
+                    "code": exc.code,
+                    "remediation": exc.remediation,
+                    "details": exc.details,
+                }
+            else:
+                detail = str(exc)
+            raise HTTPException(status_code=409, detail=detail) from exc
 
     @app.get("/api/v1/runs/{run_id}", response_model=Run)
     async def get_run(run_id: str) -> Run:
@@ -1669,7 +1751,10 @@ def create_app(
     # --- JoyMesh Runtime v1 (capability-first) ---
 
     @app.post("/runtime/tasks")
-    async def create_runtime_task(body: dict[str, object]) -> dict[str, object]:
+    async def create_runtime_task(
+        body: dict[str, object],
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
         from joymesh.runtime_v1.models import CreateRuntimeTaskBody
 
         try:
@@ -1700,7 +1785,10 @@ def create_app(
         return task.model_dump(mode="json")
 
     @app.post("/runtime/tasks/{task_id}/cancel")
-    async def cancel_runtime_task(task_id: str) -> dict[str, object]:
+    async def cancel_runtime_task(
+        task_id: str,
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
         try:
             task = await service.runtime_service.cancel_task(task_id)
         except KeyError as exc:
@@ -1708,7 +1796,10 @@ def create_app(
         return task.model_dump(mode="json")
 
     @app.post("/runtime/tasks/{task_id}/retry")
-    async def retry_runtime_task(task_id: str) -> dict[str, object]:
+    async def retry_runtime_task(
+        task_id: str,
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
         from joymesh.runtime_v1.models import FailureClass
 
         try:
@@ -1829,6 +1920,62 @@ def create_app(
             for item in placements
         ]
 
+    @app.post("/runtime/placements")
+    async def register_runtime_placement(
+        body: dict[str, object],
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
+        from joymesh.models import utc_now
+        from joymesh.runtime_v1.models import WorkspacePlacement
+
+        workspace_id = str(body.get("workspace_id") or "")
+        local_path = str(body.get("local_path") or "")
+        node_id = str(body.get("node_id") or "local-codex-worker")
+        if not workspace_id or not local_path:
+            raise HTTPException(status_code=422, detail="workspace_id and local_path required")
+        placement = WorkspacePlacement(
+            workspace_id=workspace_id,
+            node_id=node_id,
+            local_path=local_path,
+            fingerprint=str(body.get("fingerprint") or "registered"),
+            writable=bool(body.get("writable", True)),
+            last_verified_at=utc_now(),
+            expose_path=bool(body.get("expose_path", False)),
+        )
+        saved = await service.runtime_service.register_placement(placement)
+        return {
+            "workspace_id": saved.workspace_id,
+            "node_id": saved.node_id,
+            "writable": saved.writable,
+            "fingerprint": saved.fingerprint,
+        }
+
+    @app.post("/runtime/tasks/{task_id}/heartbeat")
+    async def runtime_task_heartbeat(
+        task_id: str,
+        body: dict[str, object],
+        _service_auth: Annotated[None, Depends(require_service_token)],
+    ) -> dict[str, object]:
+        raw_token = body.get("fencing_token")
+        if not isinstance(raw_token, int) or isinstance(raw_token, bool):
+            raise HTTPException(status_code=422, detail="fencing_token must be an integer")
+        fencing_token = raw_token
+        try:
+            lease = service.runtime_service.leases.heartbeat(task_id, fencing_token)
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "lease_id": lease.lease_id,
+            "task_id": lease.task_id,
+            "fencing_token": lease.fencing_token,
+            "expires_at": lease.expires_at.isoformat(),
+            "status": lease.status.value,
+        }
+
+    @app.get("/runtime/coding-worker/health")
+    async def coding_worker_health() -> dict[str, object]:
+        return service.runtime_service.coding_worker_health()
+
     # --- JoyCLI Compatibility Routes ---
 
     @app.get("/ready")
@@ -1851,14 +1998,14 @@ def create_app(
         """Extract policy profile from JoyCLI policy_grant (string or dict)."""
         if isinstance(policy_grant, str):
             return policy_grant
-        
+
         # Try common keys that might hold the profile
         for key in ("profile", "mode", "policy_profile"):
             if key in policy_grant:
                 value = policy_grant[key]
                 if isinstance(value, str):
                     return value
-        
+
         # If we have a dict but no recognized keys, try JSON serialization
         # or default to read_only
         return "read_only"
@@ -1915,7 +2062,7 @@ def create_app(
     @app.get("/executions/{execution_id}/events")
     async def joycli_execution_events(execution_id: str) -> dict[str, list[dict[str, object]]]:
         """JoyCLI compatibility: retrieve normalized events for an execution.
-        
+
         Every event MUST include execution_id, mission_id, step_id for JoyCLI reconciliation.
         """
         try:
@@ -1927,10 +2074,7 @@ def create_app(
         mission_id = None
         step_id = None
         for audit in service.runtime_service.store.audits:
-            if (
-                audit.task_id == execution_id
-                and audit.event_type == "joycli.execution_metadata"
-            ):
+            if audit.task_id == execution_id and audit.event_type == "joycli.execution_metadata":
                 mission_id = audit.payload.get("mission_id")
                 step_id = audit.payload.get("step_id")
                 break
@@ -1941,67 +2085,79 @@ def create_app(
         for event in raw_events:
             event_type = str(event.get("event_type", "unknown"))
             payload = event.get("payload", {})
-            
+
             # Map internal event types to JoyCLI event types
             joycli_type = _map_to_joycli_event_type(event_type, task.status.value)
-            
-            normalized.append({
-                "event_type": joycli_type,
-                "execution_id": execution_id,
-                "mission_id": mission_id,
-                "step_id": step_id,
-                "timestamp": event.get("timestamp", ""),
-                "sequence": event.get("sequence", 0),
-                "payload": payload,
-            })
+
+            normalized.append(
+                {
+                    "event_type": joycli_type,
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "timestamp": event.get("timestamp", ""),
+                    "sequence": event.get("sequence", 0),
+                    "payload": payload,
+                }
+            )
 
         # Add a synthetic status event based on current task status
         # JoyCLI requires execution_id, mission_id, step_id on EVERY event
         if task.status.value in ["queued", "leased", "offered"]:
             if not any(e["event_type"] == "queued" for e in normalized):
-                normalized.append({
-                    "event_type": "queued",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "queued",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
         elif task.status.value in ["accepted", "running"]:
             if not any(e["event_type"] == "started" for e in normalized):
-                normalized.append({
-                    "event_type": "started",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "started",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
         elif task.status.value == "succeeded":
             if not any(e["event_type"] == "completed" for e in normalized):
-                normalized.append({
-                    "event_type": "completed",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "completed",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
         elif task.status.value == "failed":
             if not any(e["event_type"] == "failed" for e in normalized):
-                normalized.append({
-                    "event_type": "failed",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value, "detail": task.detail},
-                })
+                normalized.append(
+                    {
+                        "event_type": "failed",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value, "detail": task.detail},
+                    }
+                )
         elif task.status.value == "cancelled":
             if not any(e["event_type"] == "cancelled" for e in normalized):
-                normalized.append({
-                    "event_type": "cancelled",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "cancelled",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
 
         return {"events": normalized}
 
@@ -2034,16 +2190,16 @@ def _map_to_joycli_event_type(internal_type: str, task_status: str) -> str:
         "backend.selected": "accepted",
         "route.selected": "started",
     }
-    
+
     # Try exact match first
     if internal_type in mapping:
         return mapping[internal_type]
-    
+
     # Check for partial matches
     for key, value in mapping.items():
         if key in internal_type:
             return value
-    
+
     # Default based on task status
     if task_status in ["succeeded", "completed"]:
         return "completed"
@@ -2055,7 +2211,7 @@ def _map_to_joycli_event_type(internal_type: str, task_status: str) -> str:
         return "started"
     elif task_status in ["queued", "leased", "offered"]:
         return "queued"
-    
+
     return "output"
 
 

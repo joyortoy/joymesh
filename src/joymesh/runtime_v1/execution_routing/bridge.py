@@ -42,7 +42,7 @@ def mission_spec_from_task(
     return MissionSpec(
         prompt=prompt,
         workspace_path=workspace_path,
-        mission_id=task.task_id,
+        mission_id=task.mission_id or task.task_id,
         project_id=task.workspace_id,
         workspace_ref=workspace_ref or task.workspace_id,
         preferred_harness=preferred_harness,
@@ -61,8 +61,10 @@ def mission_spec_from_task(
             "required_provider": task.required_provider,
         },
         organisation_policy={"policy_profile": task.policy_profile},
-        correlation_id=task.task_id,
+        correlation_id=task.correlation_id or task.task_id,
         metadata={
+            **task.metadata,
+            "runtime_task_id": task.task_id,
             "user_id": task.user_id,
             "max_attempts": task.max_attempts,
         },
