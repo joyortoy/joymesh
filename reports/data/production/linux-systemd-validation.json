@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-08-03T14:28:59Z",
+  "host": "lima prod-qual (Ubuntu 24.04 x86_64)",
+  "wheel_install": {
+    "ok": true,
+    "venv": "/tmp/joymux-qual",
+    "wheels": "candidate joycli+joymesh"
+  },
+  "validate_config_cli": {
+    "joymesh": true,
+    "joyctl": true
+  },
+  "systemd": {
+    "ok": false,
+    "joycli_runtime_intake": "ExecStartPre /usr/bin/joyctl status=203/EXEC (unit not wired to venv; ProtectSystem/joycli user)",
+    "joymesh_delivery": "ExecStart status=203/EXEC (joymesh user cannot execute host-mounted venv shebang reliably)",
+    "note": "Units copied and daemon-reloaded; full start/stop/reboot lifecycle not passed"
+  }
+}

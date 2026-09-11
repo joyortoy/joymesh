@@ -109,6 +109,10 @@ class LocalBackend:
             harness_id=decision.selected_harness_id,
             display_name=decision.selected_harness_id,
         )
+        policy_profile = str(
+            (intent.organisation_policy or {}).get("policy_profile") or "read_only"
+        )
+        read_only = policy_profile in {"read_only", "production_restricted"}
         try:
             output = dict(
                 await adapter.run(
@@ -119,7 +123,8 @@ class LocalBackend:
                         "backend_id": self.backend_id,
                         "provider_routing": False,
                         "timeout_seconds": intent.timeout_seconds,
-                        "read_only": True,
+                        "read_only": read_only,
+                        "policy_profile": policy_profile,
                     },
                 )
             )

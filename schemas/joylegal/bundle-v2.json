@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "BundleFileHashV2": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "BundleFileHashV2",
+      "type": "object"
+    },
+    "IntegrationSystem": {
+      "enum": [
+        "joycli",
+        "joymesh",
+        "joymux",
+        "joypay",
+        "joyui",
+        "joyview"
+      ],
+      "title": "IntegrationSystem",
+      "type": "string"
+    }
+  },
+  "$id": "https://joyuniverse.dev/schemas/joylegal/bundle-v2.json",
+  "additionalProperties": false,
+  "properties": {
+    "bundle_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "bundle_type": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Bundle Type",
+      "type": "string"
+    },
+    "canonical_content_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Canonical Content Hash",
+      "type": "string"
+    },
+    "export_policy": {
+      "default": "standard",
+      "maxLength": 80,
+      "title": "Export Policy",
+      "type": "string"
+    },
+    "file_hashes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/BundleFileHashV2"
+      },
+      "title": "File Hashes",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "generator_version": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Generator Version",
+      "type": "string"
+    },
+    "graph_ids": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Graph Ids",
+      "type": "array"
+    },
+    "included_evidence": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Included Evidence",
+      "type": "array"
+    },
+    "included_records": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Included Records",
+      "type": "array"
+    },
+    "included_schemas": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Included Schemas",
+      "type": "array"
+    },
+    "integration_targets": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/IntegrationSystem"
+      },
+      "title": "Integration Targets",
+      "type": "array"
+    },
+    "manifest_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Manifest Hash",
+      "type": "string"
+    },
+    "subject": {
+      "maxLength": 200,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Subject",
+      "type": "string"
+    },
+    "timeline_ids": {
+      "default": [],
+      "items": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Timeline Ids",
+      "type": "array"
+    },
+    "version": {
+      "pattern": "^joylegal\\.bundle/v2$",
+      "title": "Version",
+      "type": "string"
+    },
+    "workspace": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace"
+    }
+  },
+  "required": [
+    "version",
+    "bundle_id",
+    "bundle_type",
+    "subject",
+    "generated_at",
+    "generator_version",
+    "manifest_hash",
+    "canonical_content_hash"
+  ],
+  "title": "BundleManifestV2",
+  "type": "object"
+}

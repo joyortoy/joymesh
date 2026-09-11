@@ -1,0 +1,27 @@
+{
+  "exercises": {
+    "key_compromise": {
+      "action": "revoke_and-rotate_key",
+      "ok": true,
+      "pending_before_close": 1
+    },
+    "outbox_not_draining": {
+      "detection_stub": "alert_if_pending_unchanged_over_threshold",
+      "ok": true,
+      "stalled_detected": true,
+      "worker_health": {
+        "outbox_size": 0,
+        "stats": {
+          "acked": 0,
+          "failed": 0,
+          "published": 0,
+          "replays": 0,
+          "unavailable": 0
+        },
+        "transport": "memory"
+      }
+    }
+  },
+  "generated_at": "2026-08-03T14:15:27.542040+00:00",
+  "ok": true
+}

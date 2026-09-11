@@ -1,0 +1,29 @@
+# JoyMesh delivery worker companion (systemd)
+# JoyMesh itself is typically invoked via API/worker process; this unit documents
+# the required environment for signed Unix-socket delivery to JoyCLI.
+[Unit]
+Description=JoyMesh signed runtime delivery environment
+Documentation=file:///usr/share/doc/joymesh/docs/release/OPERATIONS.md
+After=network.target joycli-runtime-intake.service
+Wants=joycli-runtime-intake.service
+RequiresMountsFor=/var/lib/joymesh
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=joymesh
+Group=joymesh
+WorkingDirectory=/var/lib/joymesh
+EnvironmentFile=-/etc/joymesh/runtime.env
+ExecStart=/opt/joymux/venv/bin/joymesh production validate-config
+ExecStartPost=/bin/true
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/joymesh /run/joymesh /run/joymux /run/joycli /etc/joymesh/keys
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

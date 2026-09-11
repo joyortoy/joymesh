@@ -73,17 +73,31 @@ def test_codex_exec_argv_is_sandbox_read_only() -> None:
         workspace_path="/tmp/ws",
         read_only=True,
     )
-    assert argv[:4] == ("/usr/bin/codex", "exec", "--json", "--sandbox")
+    assert argv[:5] == (
+        "/usr/bin/codex",
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "--sandbox",
+    )
     assert "read-only" in argv
     assert "-C" in argv
     assert "/tmp/ws" in argv
     assert argv[-1] == "summarise"
+    write_argv = CodexConnectorRuntime().build_exec_argv(
+        executable="/usr/bin/codex",
+        prompt="edit",
+        workspace_path="/tmp/ws",
+        read_only=False,
+    )
+    assert "workspace-write" in write_argv
     cert = CodexConnectorRuntime().build_read_only_cert_argv(
         executable="/usr/bin/codex",
         prompt="summarise",
         workspace=Path("/tmp/ws"),
     )
     assert "-C" in cert and "/tmp/ws" in cert
+    assert "--skip-git-repo-check" in cert
 
 
 @pytest.mark.asyncio

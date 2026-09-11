@@ -610,6 +610,20 @@ async def test_non_explicit_routing_may_select_compatible_alternative(
         registry=registry,
     )
     await mesh.initialize()
+    from dataclasses import replace
+
+    from joymesh.quota.contracts import HarnessAvailability, QuotaState
+    from joymesh.quota.providers import UnknownQuotaProvider
+
+    mesh.quota.cache.put(
+        replace(
+            UnknownQuotaProvider("codex").quota_snapshot(),
+            availability=HarnessAvailability.READY,
+            state=QuotaState.AVAILABLE,
+            authenticated=True,
+            configured=True,
+        )
+    )
     for harness_id in ("my-custom-harness", "codex"):
         await mesh.create_subscription(
             SubscriptionCreate(
