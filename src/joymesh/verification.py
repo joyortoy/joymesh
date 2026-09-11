@@ -1,4 +1,5 @@
 """Deterministic macOS verification; no model routing or worker-authored receipts."""
+
 from __future__ import annotations
 
 import hashlib
@@ -12,13 +13,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from joymesh.cursor_sandbox import write_confinement_profile
 
 OUTPUT_LIMIT = 4 * 1024 * 1024
 
 
-def _capture(process: subprocess.Popen, deadline: float, *, tail_bytes: int = 2000) -> tuple[str | None, dict]:
+def _capture(
+    process: subprocess.Popen[bytes], deadline: float, *, tail_bytes: int = 2000
+) -> tuple[str | None, dict[str, Any]]:
     """Bounded pipe capture: no child-controlled output file can fill the disk."""
     buffers = {"stdout": bytearray(), "stderr": bytearray()}
     failure = None
@@ -70,13 +74,18 @@ def _capture(process: subprocess.Popen, deadline: float, *, tail_bytes: int = 20
                 if len(data) > remaining:
                     failure = "output_limit"
             stream.close()
-    return failure, {name: {"size_bytes": len(data), "captured_bytes": len(data),
-                            "sha256": hashlib.sha256(data).hexdigest(),
-                            "tail": data[-tail_bytes:].decode("utf-8", errors="replace")}
-                     for name, data in buffers.items()}
+    return failure, {
+        name: {
+            "size_bytes": len(data),
+            "captured_bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "tail": data[-tail_bytes:].decode("utf-8", errors="replace"),
+        }
+        for name, data in buffers.items()
+    }
 
 
-def verify_commands(commands: list[str], workspace: str, timeout: float) -> list[dict]:
+def verify_commands(commands: list[str], workspace: str, timeout: float) -> list[dict[str, Any]]:
     if sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file():
         raise RuntimeError("verification sandbox unavailable")
     if not commands or timeout <= 0:
@@ -95,27 +104,47 @@ def verify_commands(commands: list[str], workspace: str, timeout: float) -> list
         with tempfile.TemporaryDirectory(prefix="joymesh-verify-") as directory:
             scratch = Path(directory).resolve()
             profile = write_confinement_profile(Path(workspace), scratch, (), read_only=True)
-            profile = "\n".join(line for line in profile.splitlines() if "network-outbound" not in line)
+            profile = "\n".join(
+                line for line in profile.splitlines() if "network-outbound" not in line
+            )
             profile += "\n(deny network* (with send-signal SIGKILL))"
-            profile += "\n(deny syscall-unix (syscall-number SYS_setsid) (syscall-number SYS_setpgid) (syscall-number SYS_posix_spawn) (with send-signal SIGKILL))"
+            profile += (
+                "\n(deny syscall-unix (syscall-number SYS_setsid) (syscall-number SYS_setpgid) "
+                "(syscall-number SYS_posix_spawn) (with send-signal SIGKILL))"
+            )
             # Fatal forbidden writes cannot be caught and ignored by the command.
-            profile = profile.replace("(deny file-write*)", "(deny file-write* (with send-signal SIGKILL))")
+            profile = profile.replace(
+                "(deny file-write*)", "(deny file-write* (with send-signal SIGKILL))"
+            )
             # CPython probes DTrace at startup. Keep it denied, nonfatal.
             profile += '\n(deny file-write* (literal "/dev/dtracehelper"))'
             started = time.time_ns()
             process = subprocess.Popen(
-                [sys.executable, "-I", "-S", str(Path(__file__).with_name("verification_bootstrap.py"))],
-                cwd=workspace, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                [
+                    sys.executable,
+                    "-I",
+                    "-S",
+                    str(Path(__file__).with_name("verification_bootstrap.py")),
+                ],
+                cwd=workspace,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 start_new_session=True,
-                env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(scratch),
-                     "TMPDIR": str(scratch), "PYTHONDONTWRITEBYTECODE": "1",
-                     "PYTHONPYCACHEPREFIX": str(scratch / 'pycache'),
-                     "LANG": "en_US.UTF-8"},
+                env={
+                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                    "HOME": str(scratch),
+                    "TMPDIR": str(scratch),
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                    "PYTHONPYCACHEPREFIX": str(scratch / "pycache"),
+                    "LANG": "en_US.UTF-8",
+                },
             )
             try:
                 bootstrap = json.dumps({"profile": profile, "argv": argv}).encode()
                 if len(bootstrap) >= 65536:
                     raise ValueError("verification bootstrap request too large")
+                assert process.stdin is not None
                 process.stdin.write(bootstrap)
                 process.stdin.close()
                 failure, outputs = _capture(process, deadline)
@@ -125,10 +154,20 @@ def verify_commands(commands: list[str], workspace: str, timeout: float) -> list
                 except ProcessLookupError:
                     pass
                 process.wait()
-            receipts.append({"command": command, "argv": argv, "cwd": str(Path(workspace).resolve()),
-                                 "started_ns": started, "ended_ns": time.time_ns(), "pid": process.pid,
-                                 "exit_code": process.returncode, "failure": failure,
-                                 "sandbox": "macos-readonly-no-network-v2", **outputs})
+            receipts.append(
+                {
+                    "command": command,
+                    "argv": argv,
+                    "cwd": str(Path(workspace).resolve()),
+                    "started_ns": started,
+                    "ended_ns": time.time_ns(),
+                    "pid": process.pid,
+                    "exit_code": process.returncode,
+                    "failure": failure,
+                    "sandbox": "macos-readonly-no-network-v2",
+                    **outputs,
+                }
+            )
             if failure or process.returncode:
                 break
     return receipts

@@ -249,16 +249,16 @@ async def _build_node_snapshot(
     """Build a SchedulerNodeSnapshot from connector readiness data for runtime registration."""
     from joymesh.connectors.lifecycle_models import NodeConnectorState
     from joymesh.runtime_v1.scheduler import SchedulerConnectorSnapshot, SchedulerNodeSnapshot
-    
+
     node = service.control_plane.store.nodes.get(node_id)
     revoked = node.revoked_at is not None if node else False
-    
+
     # Fetch connector readiness for this node
     try:
         readiness_list = await service.list_connector_readiness(node_id=node_id)
     except Exception:
         readiness_list = ()
-    
+
     # Convert readiness to connector snapshots
     connectors: dict[str, SchedulerConnectorSnapshot] = {}
     for readiness in readiness_list:
@@ -280,7 +280,7 @@ async def _build_node_snapshot(
             NodeConnectorState.ROUTING_DISABLED,
             NodeConnectorState.READY,
         }
-        
+
         # Derive authenticated from state
         authenticated = readiness.state in {
             NodeConnectorState.AUTHENTICATED,
@@ -288,12 +288,12 @@ async def _build_node_snapshot(
             NodeConnectorState.CERTIFIED,
             NodeConnectorState.READY,
         }
-        
+
         # Fetch certified capabilities from database
         certified_capabilities = await _fetch_certified_capabilities(
             service, node_id=node_id, connector_id=readiness.connector_id
         )
-        
+
         connectors[readiness.connector_id] = SchedulerConnectorSnapshot(
             connector_id=readiness.connector_id,
             installed=installed,
@@ -304,14 +304,14 @@ async def _build_node_snapshot(
             trust_level=readiness.evidence_trust_level,
             execution_origin=readiness.execution_origin,
         )
-    
+
     # Fetch workspace placements for this node
     placements: list[Any] = []
     for _workspace_id, placement_list in service.runtime_service.store.placements.items():
         for placement in placement_list:
             if placement.node_id == node_id:
                 placements.append(placement)
-    
+
     return SchedulerNodeSnapshot(
         node_id=node_id,
         online=online,
@@ -332,14 +332,14 @@ async def _fetch_certified_capabilities(
     from sqlalchemy import select
 
     from joymesh.runtime_v1.store import CertifiedCapabilityRow
-    
+
     db = service.runtime_service.store.database
     if db is None:
         # No database, return empty set (safe default for in-memory testing)
         return frozenset()
-    
+
     try:
-        async with db.session() as session:
+        async with db.sessions() as session:
             stmt = (
                 select(CertifiedCapabilityRow.capability_id)
                 .where(CertifiedCapabilityRow.node_id == node_id)
@@ -1851,14 +1851,14 @@ def create_app(
         """Extract policy profile from JoyCLI policy_grant (string or dict)."""
         if isinstance(policy_grant, str):
             return policy_grant
-        
+
         # Try common keys that might hold the profile
         for key in ("profile", "mode", "policy_profile"):
             if key in policy_grant:
                 value = policy_grant[key]
                 if isinstance(value, str):
                     return value
-        
+
         # If we have a dict but no recognized keys, try JSON serialization
         # or default to read_only
         return "read_only"
@@ -1915,7 +1915,7 @@ def create_app(
     @app.get("/executions/{execution_id}/events")
     async def joycli_execution_events(execution_id: str) -> dict[str, list[dict[str, object]]]:
         """JoyCLI compatibility: retrieve normalized events for an execution.
-        
+
         Every event MUST include execution_id, mission_id, step_id for JoyCLI reconciliation.
         """
         try:
@@ -1927,10 +1927,7 @@ def create_app(
         mission_id = None
         step_id = None
         for audit in service.runtime_service.store.audits:
-            if (
-                audit.task_id == execution_id
-                and audit.event_type == "joycli.execution_metadata"
-            ):
+            if audit.task_id == execution_id and audit.event_type == "joycli.execution_metadata":
                 mission_id = audit.payload.get("mission_id")
                 step_id = audit.payload.get("step_id")
                 break
@@ -1941,67 +1938,79 @@ def create_app(
         for event in raw_events:
             event_type = str(event.get("event_type", "unknown"))
             payload = event.get("payload", {})
-            
+
             # Map internal event types to JoyCLI event types
             joycli_type = _map_to_joycli_event_type(event_type, task.status.value)
-            
-            normalized.append({
-                "event_type": joycli_type,
-                "execution_id": execution_id,
-                "mission_id": mission_id,
-                "step_id": step_id,
-                "timestamp": event.get("timestamp", ""),
-                "sequence": event.get("sequence", 0),
-                "payload": payload,
-            })
+
+            normalized.append(
+                {
+                    "event_type": joycli_type,
+                    "execution_id": execution_id,
+                    "mission_id": mission_id,
+                    "step_id": step_id,
+                    "timestamp": event.get("timestamp", ""),
+                    "sequence": event.get("sequence", 0),
+                    "payload": payload,
+                }
+            )
 
         # Add a synthetic status event based on current task status
         # JoyCLI requires execution_id, mission_id, step_id on EVERY event
         if task.status.value in ["queued", "leased", "offered"]:
             if not any(e["event_type"] == "queued" for e in normalized):
-                normalized.append({
-                    "event_type": "queued",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "queued",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
         elif task.status.value in ["accepted", "running"]:
             if not any(e["event_type"] == "started" for e in normalized):
-                normalized.append({
-                    "event_type": "started",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "started",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
         elif task.status.value == "succeeded":
             if not any(e["event_type"] == "completed" for e in normalized):
-                normalized.append({
-                    "event_type": "completed",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "completed",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
         elif task.status.value == "failed":
             if not any(e["event_type"] == "failed" for e in normalized):
-                normalized.append({
-                    "event_type": "failed",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value, "detail": task.detail},
-                })
+                normalized.append(
+                    {
+                        "event_type": "failed",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value, "detail": task.detail},
+                    }
+                )
         elif task.status.value == "cancelled":
             if not any(e["event_type"] == "cancelled" for e in normalized):
-                normalized.append({
-                    "event_type": "cancelled",
-                    "execution_id": execution_id,
-                    "mission_id": mission_id,
-                    "step_id": step_id,
-                    "payload": {"status": task.status.value},
-                })
+                normalized.append(
+                    {
+                        "event_type": "cancelled",
+                        "execution_id": execution_id,
+                        "mission_id": mission_id,
+                        "step_id": step_id,
+                        "payload": {"status": task.status.value},
+                    }
+                )
 
         return {"events": normalized}
 
@@ -2034,16 +2043,16 @@ def _map_to_joycli_event_type(internal_type: str, task_status: str) -> str:
         "backend.selected": "accepted",
         "route.selected": "started",
     }
-    
+
     # Try exact match first
     if internal_type in mapping:
         return mapping[internal_type]
-    
+
     # Check for partial matches
     for key, value in mapping.items():
         if key in internal_type:
             return value
-    
+
     # Default based on task status
     if task_status in ["succeeded", "completed"]:
         return "completed"
@@ -2055,7 +2064,7 @@ def _map_to_joycli_event_type(internal_type: str, task_status: str) -> str:
         return "started"
     elif task_status in ["queued", "leased", "offered"]:
         return "queued"
-    
+
     return "output"
 
 
