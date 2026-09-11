@@ -100,3 +100,8 @@ Run focused tests only for the changed surface; focused green tests do not imply
 ## JoyLegal ownership boundary
 
 JoyLegal owns certification verdicts, legitimacy decisions, obligations, and context-readiness. JoyMesh produces evidence and submitted claims only.
+
+## Development environment checks
+
+- Run `./scripts/check.sh` before committing changes to the Codex environment setup.
+- Keep side effects explicit and retry-safe, and preserve auditable runtime evidence.

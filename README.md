@@ -214,3 +214,10 @@ tests, documentation, and small end-to-end examples. Read
 ## License
 
 JoyMesh is licensed under the [Apache License 2.0](LICENSE).
+
+## Codex development environment
+
+The shared Codex environment runs `./scripts/setup.sh` when creating a worktree.
+Use its **Check** action or run `./scripts/check.sh` to validate repository
+whitespace and Codex TOML configuration. These checks supplement the Python
+tests and lint commands described in CONTRIBUTING.md.
