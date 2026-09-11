@@ -16,7 +16,8 @@ concurrency:
 jobs:
   quality:
     name: Python 3.12 quality gate
-    runs-on: ubuntu-latest
+    # Cursor host confinement and verification use the macOS kernel sandbox.
+    runs-on: macos-latest
     timeout-minutes: 15
 
     steps:

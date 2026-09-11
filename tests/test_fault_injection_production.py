@@ -52,7 +52,7 @@ def test_invalid_signature_rejected_by_verifier(tmp_path: Path) -> None:
             idempotency_key="fault-invalid-sig",
         )
         with pytest.raises(InvalidSignature):
-            verify_bytes(envelope.canonical_signed_bytes(), "invalid-signature", public_key)
+            verify_bytes(envelope.canonical_signed_bytes(), "A" * 86, public_key)
     finally:
         outbox.close()
 

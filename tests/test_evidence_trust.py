@@ -31,6 +31,10 @@ def test_parse_cursor_auth_unauthenticated() -> None:
 
 
 def test_assert_live_production_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    from joymesh.control_plane.security import generate_node_keypair
+
+    private_key, _ = generate_node_keypair()
+    monkeypatch.setenv("JOYMESH_RUNTIME_SIGNING_KEY", private_key)
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.setenv("JOYMESH_INLINE_CONNECTOR_NODE", "0")
     monkeypatch.delenv("JOYMESH_MOCK_CERTIFY", raising=False)
@@ -182,6 +186,10 @@ def test_production_accepts_node_attested_evidence(monkeypatch: pytest.MonkeyPat
 async def test_enable_routing_rejects_mock_in_production(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from joymesh.control_plane.security import generate_node_keypair
+
+    private_key, _ = generate_node_keypair()
+    monkeypatch.setenv("JOYMESH_RUNTIME_SIGNING_KEY", private_key)
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.setenv("JOYMESH_INLINE_CONNECTOR_NODE", "0")
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'trust.db'}")
