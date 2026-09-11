@@ -1,0 +1,12 @@
+{
+  "revision":"2026-07-29.1","harness_id":"warp","display_name":"Warp Oz CLI","vendor":"Warp",
+  "description":"Warp's Oz CLI for local and cloud agent runs.","homepage_domain":"warp.dev","category":"enterprise","maturity":"authenticatable",
+  "executable_names":["oz"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"homebrew","mechanism":"homebrew","platforms":["darwin"],"argv":["brew","install","--cask","oz"],"package_source":"homebrew:oz"},{"id":"winget-bundle","mechanism":"winget","platforms":["win32"],"argv":["winget","install","Warp.Warp"],"package_source":"winget:Warp.Warp"}],
+  "authentication_methods":[{"id":"warp","kind":"browser_oauth","login_argv":["oz","login"],"status_argv":["oz","whoami","--output-format","json"]},{"id":"api-key","kind":"environment_variable","environment_variables":["WARP_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"warp","display_name":"Warp account","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["oz","agent","run","--prompt","{task}"],"protocol":"jsonl"},
+  "adapter_id":"warp","certification_profile_id":"warp-v1",
+  "official_source":{"documentation_source":"https://docs.warp.dev/reference/cli","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"warp-oz-homebrew-winget-v1"}
+}

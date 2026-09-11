@@ -1,0 +1,17 @@
+{
+  "revision":"2026-07-29.1","harness_id":"opencode","display_name":"OpenCode","vendor":"Anomaly",
+  "description":"Open-source provider-flexible coding agent.","homepage_domain":"opencode.ai","category":"open-source","open_source":true,"maturity":"adapter_conformant",
+  "executable_names":["opencode"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[
+    {"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","opencode-ai"],"package_source":"npm:opencode-ai"},
+    {"id":"homebrew","mechanism":"homebrew","platforms":["darwin","linux"],"argv":["brew","install","anomalyco/tap/opencode"],"package_source":"homebrew:anomalyco/tap/opencode"}
+  ],
+  "upgrade_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","update","--global","opencode-ai"],"package_source":"npm:opencode-ai"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","opencode-ai"],"package_source":"npm:opencode-ai"}],
+  "authentication_methods":[{"id":"provider-login","kind":"vendor_cli","login_argv":["opencode","auth","login"],"status_argv":["opencode","auth","list"]}],
+  "provider_modes":[{"provider_id":"opencode","display_name":"OpenCode Zen","funding_source":"provider","authentication_method":"vendor_cli","separately_billed":true},{"provider_id":"direct","display_name":"Direct provider","funding_source":"api","authentication_method":"provider_key","separately_billed":true},{"provider_id":"local","display_name":"Local model","funding_source":"local","authentication_method":"none","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["opencode","run","--format","json","{task}"],"protocol":"jsonl"},
+  "adapter_id":"opencode","certification_profile_id":"opencode-v1",
+  "official_source":{"documentation_source":"https://opencode.ai/docs/cli/","source_repository":"https://github.com/anomalyco/opencode","package_source":"npm:opencode-ai","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"opencode-official-npm-brew-v1"}
+}

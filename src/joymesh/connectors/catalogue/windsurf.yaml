@@ -1,0 +1,10 @@
+{
+  "revision":"2026-07-29.1","harness_id":"windsurf","display_name":"Windsurf","vendor":"Cognition",
+  "description":"Windsurf editor agent integration; independent remote CLI not verified.","homepage_domain":"windsurf.com","tier":"ide","category":"ide","maturity":"discoverable",
+  "remote_execution_supported":false,"interactive_execution_supported":true,"non_interactive_execution_supported":false,
+  "structured_output_supported":false,"streaming_output_supported":false,"supported_platforms":["darwin","linux","win32"],
+  "prerequisites":[{"kind":"ide","name":"Windsurf"}],"authentication_methods":[{"id":"windsurf","kind":"ide_login","interactive":true}],
+  "execution":{"mode":"ide_only","protocol":"none"},
+  "ide_extension":{"ecosystem":"windsurf","identifier":"builtin-agent","marketplace_url":"https://windsurf.com/editor"},
+  "official_source":{"documentation_source":"https://docs.windsurf.com/windsurf/getting-started","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"windsurf-editor-integration-v1"}
+}

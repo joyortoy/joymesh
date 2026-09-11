@@ -1,0 +1,15 @@
+{
+  "revision":"2026-07-29.1","harness_id":"qwen-code","display_name":"Qwen Code","vendor":"Alibaba Cloud",
+  "description":"Open-source coding agent from the Qwen team.","homepage_domain":"github.com","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["qwen"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","@qwen-code/qwen-code@latest"],"package_source":"npm:@qwen-code/qwen-code"},{"id":"homebrew","mechanism":"homebrew","platforms":["darwin","linux"],"argv":["brew","install","qwen-code"],"package_source":"homebrew:qwen-code"}],
+  "upgrade_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","update","--global","@qwen-code/qwen-code"],"package_source":"npm:@qwen-code/qwen-code"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@qwen-code/qwen-code"],"package_source":"npm:@qwen-code/qwen-code"}],
+  "prerequisites":[{"kind":"runtime","name":"Node.js","minimum_version":"22"}],
+  "authentication_methods":[{"id":"api-key","kind":"environment_variable","environment_variables":["OPENAI_API_KEY","DASHSCOPE_API_KEY"],"interactive":false},{"id":"coding-plan","kind":"subscription","interactive":true}],
+  "provider_modes":[{"provider_id":"dashscope","display_name":"Alibaba DashScope","funding_source":"api","authentication_method":"api_key","separately_billed":true},{"provider_id":"coding-plan","display_name":"Alibaba Coding Plan","funding_source":"subscription","authentication_method":"subscription","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["qwen","--prompt","{task}","--output-format","stream-json"],"resume_argv":["qwen","--prompt","{task}","--resume","{session_id}","--output-format","stream-json"],"protocol":"stream_json"},
+  "adapter_id":"qwen-code","certification_profile_id":"qwen-code-v1",
+  "official_source":{"documentation_source":"https://github.com/QwenLM/qwen-code","source_repository":"https://github.com/QwenLM/qwen-code","package_source":"npm:@qwen-code/qwen-code","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"qwen-code-npm-homebrew-v1"}
+}

@@ -1,0 +1,19 @@
+{
+  "revision":"2026-07-29.1","harness_id":"github-copilot","display_name":"GitHub Copilot CLI","vendor":"GitHub",
+  "description":"GitHub Copilot coding agent CLI for interactive and programmatic use.","homepage_domain":"github.com","category":"enterprise","maturity":"authenticatable",
+  "executable_names":["copilot"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":false,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[
+    {"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","@github/copilot"],"package_source":"npm:@github/copilot"},
+    {"id":"homebrew","mechanism":"homebrew","platforms":["darwin"],"argv":["brew","install","--cask","copilot-cli"],"package_source":"homebrew:copilot-cli"},
+    {"id":"winget","mechanism":"winget","platforms":["win32"],"argv":["winget","install","GitHub.Copilot"],"package_source":"winget:GitHub.Copilot"}
+  ],
+  "upgrade_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","update","--global","@github/copilot"],"package_source":"npm:@github/copilot"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@github/copilot"],"package_source":"npm:@github/copilot"}],
+  "prerequisites":[{"kind":"runtime","name":"Node.js","minimum_version":"22"},{"kind":"subscription","name":"GitHub Copilot"}],
+  "authentication_methods":[{"id":"github","kind":"browser_oauth","login_argv":["copilot"],"interactive":true},{"id":"token","kind":"environment_variable","environment_variables":["COPILOT_GITHUB_TOKEN","GH_TOKEN"],"interactive":false}],
+  "provider_modes":[{"provider_id":"copilot-subscription","display_name":"GitHub Copilot subscription","funding_source":"subscription","authentication_method":"github","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["copilot","--prompt","{task}","--output-format=json","--no-ask-user"],"protocol":"json"},
+  "adapter_id":"github-copilot","certification_profile_id":"github-copilot-v1",
+  "official_source":{"documentation_source":"https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli","package_source":"npm:@github/copilot","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"github-copilot-cli-npm-brew-winget-v1"}
+}

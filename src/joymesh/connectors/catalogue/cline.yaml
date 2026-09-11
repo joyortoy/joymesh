@@ -1,0 +1,16 @@
+{
+  "revision":"2026-07-29.1","harness_id":"cline","display_name":"Cline CLI","vendor":"Cline",
+  "description":"Preview terminal and headless CLI built on the Cline agent core.","homepage_domain":"cline.bot","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["cline"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux"],
+  "installation_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux"],"argv":["npm","install","--global","cline"],"package_source":"npm:cline"}],
+  "upgrade_options":[{"id":"native","mechanism":"native","platforms":["darwin","linux"],"argv":["cline","update"],"package_source":"cline-updater"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux"],"argv":["npm","uninstall","--global","cline"],"package_source":"npm:cline"}],
+  "prerequisites":[{"kind":"runtime","name":"Node.js","minimum_version":"20"}],
+  "authentication_methods":[{"id":"cline","kind":"vendor_cli","login_argv":["cline","auth"]},{"id":"provider","kind":"provider_key","interactive":true}],
+  "provider_modes":[{"provider_id":"cline","display_name":"Cline account","funding_source":"subscription","authentication_method":"vendor_cli","separately_billed":false},{"provider_id":"direct","display_name":"Direct provider","funding_source":"api","authentication_method":"api_key","separately_billed":true},{"provider_id":"local","display_name":"Local provider","funding_source":"local","authentication_method":"endpoint","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["cline","--json","{task}"],"protocol":"jsonl"},
+  "adapter_id":"cline","certification_profile_id":"cline-v1","experimental":true,
+  "ide_extension":{"ecosystem":"vscode","identifier":"saoudrizwan.claude-dev","marketplace_url":"https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev"},
+  "official_source":{"documentation_source":"https://docs.cline.bot/usage/cli-overview","source_repository":"https://github.com/cline/cline","package_source":"npm:cline","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"cline-preview-npm-cli-v1"}
+}

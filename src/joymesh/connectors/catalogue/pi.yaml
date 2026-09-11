@@ -1,0 +1,14 @@
+{
+  "revision":"2026-07-29.1","harness_id":"pi","display_name":"Pi coding agent","vendor":"Earendil Works",
+  "description":"Minimal open-source terminal coding harness with JSON and RPC modes.","homepage_domain":"pi.dev","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["pi"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","--ignore-scripts","@earendil-works/pi-coding-agent"],"package_source":"npm:@earendil-works/pi-coding-agent"}],
+  "upgrade_options":[{"id":"native","mechanism":"native","platforms":["darwin","linux","win32"],"argv":["pi","update","--self"],"package_source":"pi-updater"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@earendil-works/pi-coding-agent"],"package_source":"npm:@earendil-works/pi-coding-agent"}],
+  "authentication_methods":[{"id":"provider-login","kind":"interactive","interactive":true},{"id":"provider-key","kind":"environment_variable","environment_variables":["ANTHROPIC_API_KEY","OPENAI_API_KEY"],"interactive":false}],
+  "provider_modes":[{"provider_id":"subscription","display_name":"Provider subscription","funding_source":"subscription","authentication_method":"oauth","separately_billed":false},{"provider_id":"api","display_name":"Provider API","funding_source":"api","authentication_method":"api_key","separately_billed":true},{"provider_id":"local","display_name":"Local provider","funding_source":"local","authentication_method":"endpoint","separately_billed":false}],
+  "execution":{"mode":"structured_headless","argv":["pi","--print","{task}","--mode","json"],"protocol":"jsonl"},
+  "adapter_id":"pi","certification_profile_id":"pi-v1",
+  "official_source":{"documentation_source":"https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/index.md","source_repository":"https://github.com/earendil-works/pi","package_source":"npm:@earendil-works/pi-coding-agent","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"pi-earendil-npm-ignore-scripts-v1"}
+}

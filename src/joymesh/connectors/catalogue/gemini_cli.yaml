@@ -1,0 +1,18 @@
+{
+  "revision":"2026-07-29.1","harness_id":"gemini-cli","display_name":"Gemini CLI","vendor":"Google",
+  "description":"Open-source Google coding agent with headless streaming JSON.","homepage_domain":"github.com","category":"open-source","open_source":true,"maturity":"authenticatable",
+  "executable_names":["gemini"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[
+    {"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","@google/gemini-cli"],"package_source":"npm:@google/gemini-cli"},
+    {"id":"homebrew","mechanism":"homebrew","platforms":["darwin"],"argv":["brew","install","gemini-cli"],"package_source":"homebrew:gemini-cli"}
+  ],
+  "upgrade_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","update","--global","@google/gemini-cli"],"package_source":"npm:@google/gemini-cli"}],
+  "uninstall_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","uninstall","--global","@google/gemini-cli"],"package_source":"npm:@google/gemini-cli"}],
+  "prerequisites":[{"kind":"runtime","name":"Node.js"}],
+  "authentication_methods":[{"id":"google","kind":"browser_oauth","login_argv":["gemini"]},{"id":"gemini-api","kind":"environment_variable","environment_variables":["GEMINI_API_KEY"],"interactive":false},{"id":"vertex","kind":"cloud_credential_chain","environment_variables":["GOOGLE_CLOUD_PROJECT"],"interactive":false}],
+  "provider_modes":[{"provider_id":"google-account","display_name":"Google account","funding_source":"subscription","authentication_method":"browser_oauth","separately_billed":false},{"provider_id":"gemini-api","display_name":"Gemini API","funding_source":"api","authentication_method":"api_key","separately_billed":true},{"provider_id":"vertex","display_name":"Vertex AI","funding_source":"cloud","authentication_method":"google_credential_chain","separately_billed":true}],
+  "execution":{"mode":"structured_headless","argv":["gemini","--prompt","{task}","--output-format","stream-json"],"resume_argv":["gemini","--prompt","{task}","--resume","{session_id}","--output-format","stream-json"],"protocol":"stream_json"},
+  "adapter_id":"gemini-cli","certification_profile_id":"gemini-cli-v1",
+  "official_source":{"documentation_source":"https://github.com/google-gemini/gemini-cli","source_repository":"https://github.com/google-gemini/gemini-cli","package_source":"npm:@google/gemini-cli","verified_at":"2026-07-29T00:00:00Z","installation_method_fingerprint":"google-gemini-cli-npm-brew-v1"}
+}

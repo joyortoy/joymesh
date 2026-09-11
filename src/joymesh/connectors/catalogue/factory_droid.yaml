@@ -1,0 +1,13 @@
+{
+  "revision":"2026-07-29.1","harness_id":"factory-droid","display_name":"Factory Droid CLI","vendor":"Factory",
+  "description":"Factory's coding-agent CLI with bounded exec mode.","homepage_domain":"factory.ai","category":"enterprise","maturity":"authenticatable",
+  "executable_names":["droid"],"remote_execution_supported":true,"interactive_execution_supported":true,"non_interactive_execution_supported":true,
+  "structured_output_supported":true,"streaming_output_supported":true,"session_resume_supported":true,"supported_platforms":["darwin","linux","win32"],
+  "installation_options":[{"id":"npm","mechanism":"npm","platforms":["darwin","linux","win32"],"argv":["npm","install","--global","droid"],"package_source":"npm:droid"}],
+  "upgrade_options":[{"id":"native","mechanism":"native","platforms":["darwin","linux","win32"],"argv":["droid","update"],"package_source":"droid-updater"}],
+  "authentication_methods":[{"id":"factory","kind":"browser_oauth","interactive":true}],
+  "provider_modes":[{"provider_id":"factory","display_name":"Factory account","funding_source":"subscription","authentication_method":"browser_oauth","usage_reporting_supported":true,"separately_billed":false},{"provider_id":"byok","display_name":"Custom model provider","funding_source":"api","authentication_method":"provider_key","separately_billed":true}],
+  "execution":{"mode":"structured_headless","argv":["droid","exec","--output-format","json","{task}"],"resume_argv":["droid","exec","--output-format","json","-s","{session_id}","{task}"],"protocol":"jsonl"},
+  "adapter_id":"factory-droid","certification_profile_id":"factory-droid-v1",
+  "official_source":{"documentation_source":"https://docs.factory.ai/droid-cli/cli-reference","package_source":"npm:droid","verified_at":"2026-07-29T00:00:00Z","verified_version":"0.174.0","installation_method_fingerprint":"factory-droid-npm-direct-sha256-v1"}
+}
