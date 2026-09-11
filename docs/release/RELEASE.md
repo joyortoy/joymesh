@@ -1,15 +1,15 @@
-# JoyCLI Release
+# JoyCTL Release
 
 ## Version
 
-Package version is defined in `src/joycli/__init__.py` (`__version__`).
+Package version is defined in `src/joyctl/__init__.py` (`__version__`).
 
 Current candidate: **0.26.0** (RC1 packaging track).
 
 ## Build
 
 ```bash
-python -c "from joycli_build_backend import build_wheel, build_sdist; print(build_wheel('dist')); print(build_sdist('dist'))"
+python -c "from joyctl_build_backend import build_wheel, build_sdist; print(build_wheel('dist')); print(build_sdist('dist'))"
 ```
 
 Wheel METADATA must include:

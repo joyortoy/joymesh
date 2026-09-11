@@ -1,4 +1,4 @@
-"""Canonical execution directive — JoyCLI decides; JoyMesh validates and executes."""
+"""Canonical execution directive — JoyCTL decides; JoyMesh validates and executes."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from joymesh.models import Capability
 
 
 class ExecutionDirective(BaseModel):
-    """Authoritative launch directive produced by JoyCLI routing."""
+    """Authoritative launch directive produced by JoyCTL routing."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -39,7 +39,5 @@ class ExecutionDirective(BaseModel):
             "runtime_projection_revision": self.runtime_projection_revision,
             "authorization_reference": self.authorization_reference,
             "expires_at": self.expires_at.isoformat(),
-            "fallback_authorization_references": sorted(
-                self.fallback_authorization_references
-            ),
+            "fallback_authorization_references": sorted(self.fallback_authorization_references),
         }

@@ -1,10 +1,10 @@
-# JoyCLI Security
+# JoyCTL Security
 
 ## Defaults
 
-* `JOYCLI_RUNTIME_ALLOW_UNSIGNED=false` (secure)
+* `JOYCTL_RUNTIME_ALLOW_UNSIGNED=false` (secure)
 * Durable production composition refuses unsigned mode
-* Private keys never stored in JoyCLI
+* Private keys never stored in JoyCTL
 * Signature verification uses `cryptography` Ed25519
 * Tenant/organisation binding enforced on intake
 * Privacy allowlist rejects prompts, code, credentials, paths
@@ -12,7 +12,7 @@
 ## Key handling
 
 * JoyMesh: private key via env or `0600` file
-* JoyCLI: public key registry only
+* JoyCTL: public key registry only
 * Rotate by registering a new `key_id`, then revoking the old key
 
 ## Residual risks (accepted for RC1)

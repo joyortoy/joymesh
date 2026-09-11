@@ -1,6 +1,6 @@
 # Anonymous execution metrics
 
-JoyMesh can optionally send **anonymous execution metrics** to JoyCLI to help
+JoyMesh can optionally send **anonymous execution metrics** to JoyCTL to help
 improve routing, performance, and future model evaluation.
 
 Metrics are **opt-in**. Nothing is sent until you explicitly choose a mode.

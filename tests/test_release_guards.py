@@ -25,8 +25,9 @@ def test_production_unix_mode_does_not_instantiate_memory() -> None:
 
 
 def test_socket_listener_delegates_to_intake(tmp_path: Path) -> None:
-    from joymesh.delivery import RuntimeStateIntakeService
     import warnings
+
+    from joymesh.delivery import RuntimeStateIntakeService
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -44,7 +45,7 @@ def test_joymesh_intake_is_deprecated_reference() -> None:
 
     text = Path(intake_mod.__file__).read_text(encoding="utf-8")
     assert "DEPRECATED" in text
-    assert "joycli.runtime.intake" in text
+    assert "joyctl.runtime.intake" in text
 
 
 def test_outbox_removed_only_after_ack(tmp_path: Path) -> None:

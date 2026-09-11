@@ -16,7 +16,8 @@ from joymesh.connectors.planning import ConnectorAction
 from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
-from joymesh.models import BillingRoute, Run, SubscriptionCreate
+from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
+from joymesh.models import BillingRoute, Run, RunRequest, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
 from joymesh.telemetry import (
     MetricsMode,
@@ -53,11 +54,11 @@ app.add_typer(metrics_app, name="metrics")
 app.add_typer(telemetry_app, name="telemetry")
 app.add_typer(quota_app, name="quota")
 runtime_app = typer.Typer(
-    help="Inspect factual harness runtime snapshots for JoyCLI.",
+    help="Inspect factual harness runtime snapshots for JoyCTL.",
     invoke_without_command=True,
 )
 app.add_typer(runtime_app, name="runtime")
-delivery_app = typer.Typer(help="JoyCLI runtime-state delivery intake (Unix socket).")
+delivery_app = typer.Typer(help="JoyCTL runtime-state delivery intake (Unix socket).")
 app.add_typer(delivery_app, name="delivery")
 production_app = typer.Typer(help="Production readiness utilities.")
 app.add_typer(production_app, name="production")
@@ -73,6 +74,187 @@ legal_app.add_typer(legal_bundle_app, name="bundle")
 legal_app.add_typer(legal_compat_app, name="compatibility")
 runtime_key_app = typer.Typer(help="Runtime signing key lifecycle.")
 runtime_app.add_typer(runtime_key_app, name="key")
+secrets_app = typer.Typer(
+    help="OS Keychain vault for provider API keys (never stored in JoyMesh DB).",
+)
+app.add_typer(secrets_app, name="secrets")
+
+
+@secrets_app.command("backend")
+def secrets_backend() -> None:
+    """Show which credential backend is active."""
+
+    from joymesh.secrets import backend_name, keychain_available
+
+    _print({"backend": backend_name(), "keychain_available": keychain_available()})
+
+
+@secrets_app.command("set")
+def secrets_set(
+    name: str = typer.Argument(..., help="Provider id, e.g. opencode-go, openrouter, openai"),
+    value: str | None = typer.Option(
+        None,
+        "--value",
+        help="Secret value; if omitted, prompts with hidden input",
+    ),
+) -> None:
+    """Store a provider API key in the OS Keychain (preferred) or secure file."""
+
+    from joymesh.secrets import SecretsError, mask_secret, set_secret
+
+    secret = value
+    if secret is None:
+        secret = typer.prompt("API key", hide_input=True)
+    try:
+        meta = set_secret(name, secret)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({**meta.as_dict(), "masked": mask_secret(secret)})
+
+
+@secrets_app.command("get")
+def secrets_get(
+    name: str = typer.Argument(...),
+    show: bool = typer.Option(False, "--show", help="Print full secret (dangerous)"),
+) -> None:
+    """Fetch a secret; default output is masked."""
+
+    from joymesh.secrets import get_secret, mask_secret
+
+    value = get_secret(name)
+    if value is None:
+        typer.echo(f"missing: {name}", err=True)
+        raise typer.Exit(1)
+    if show:
+        typer.echo(value)
+        return
+    _print({"name": name.lower(), "masked": mask_secret(value), "present": True})
+
+
+@secrets_app.command("list")
+def secrets_list() -> None:
+    """List stored secret names (never prints values)."""
+
+    from joymesh.secrets import list_secrets
+
+    _print({"secrets": [item.as_dict() for item in list_secrets()]})
+
+
+@secrets_app.command("delete")
+def secrets_delete(name: str = typer.Argument(...)) -> None:
+    """Delete a secret from the vault."""
+
+    from joymesh.secrets import delete_secret
+
+    ok = delete_secret(name)
+    _print({"deleted": ok, "name": name.lower()})
+    if not ok:
+        raise typer.Exit(1)
+
+
+@secrets_app.command("import-opencode")
+def secrets_import_opencode(
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="OpenCode auth.json path (default: ~/.local/share/opencode/auth.json)",
+    ),
+) -> None:
+    """Import API keys from OpenCode auth.json into Keychain."""
+
+    from pathlib import Path as P
+
+    from joymesh.secrets import SecretsError, import_opencode_auth
+
+    try:
+        imported = import_opencode_auth(P(path) if path else None)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({"imported": imported, "count": len(imported)})
+
+
+@secrets_app.command("sync-opencode")
+def secrets_sync_opencode(
+    path: str | None = typer.Option(
+        None,
+        "--path",
+        help="OpenCode auth.json path to rewrite from Keychain",
+    ),
+) -> None:
+    """Rebuild OpenCode auth.json from Keychain so restarts keep working."""
+
+    from pathlib import Path as P
+
+    from joymesh.secrets import SecretsError, sync_opencode_auth
+
+    try:
+        out = sync_opencode_auth(P(path) if path else None)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print({"synced": str(out), "mode": 0o600})
+
+
+@secrets_app.command("ensure")
+def secrets_ensure(
+    name: str = typer.Argument(..., help="Provider id required for the upcoming task"),
+) -> None:
+    """Ensure a provider key exists in the vault; prompt to store it if missing.
+
+    Use this before a task so the same API key is reused after restart::
+
+        joymesh secrets ensure opencode-go
+        joymesh secrets sync-opencode
+    """
+
+    from joymesh.secrets import SecretsError, get_secret, mask_secret, set_secret
+
+    existing = get_secret(name)
+    if existing:
+        _print(
+            {
+                "name": name.lower(),
+                "present": True,
+                "masked": mask_secret(existing),
+                "action": "reused_existing",
+                "hint": "joymesh secrets sync-opencode  # if OpenCode needs auth.json refreshed",
+            }
+        )
+        return
+    typer.echo(
+        f"No Keychain secret for {name!r}. Store it once so restarts keep the same API.",
+        err=True,
+    )
+    secret = typer.prompt(f"Paste API key for {name}", hide_input=True)
+    try:
+        meta = set_secret(name, secret)
+    except SecretsError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    _print(
+        {
+            **meta.as_dict(),
+            "masked": mask_secret(secret),
+            "action": "stored_new",
+            "hint": "joymesh secrets sync-opencode",
+        }
+    )
+
+
+@secrets_app.command("export-env")
+def secrets_export_env() -> None:
+    """Print export lines for env-backed providers (eval carefully)."""
+
+    from joymesh.secrets import export_env_lines
+
+    lines = export_env_lines()
+    if not lines:
+        typer.echo("# no env-mapped secrets present", err=True)
+        raise typer.Exit(1)
+    for line in lines:
+        typer.echo(line)
 
 
 @app.command("init")
@@ -241,7 +423,7 @@ def _runtime_ids() -> tuple[str, ...]:
 
 @runtime_app.callback(invoke_without_command=True)
 def runtime_root(ctx: typer.Context) -> None:
-    """Show factual harness runtime status for JoyCLI."""
+    """Show factual harness runtime status for JoyCTL."""
 
     if ctx.invoked_subcommand is not None:
         return
@@ -259,9 +441,7 @@ def runtime_status() -> None:
         filtered = type(snapshot)(
             snapshot_id=snapshot.snapshot_id,
             observed_at=snapshot.observed_at,
-            harnesses=tuple(
-                item for item in snapshot.harnesses if item.harness_id in wanted
-            ),
+            harnesses=tuple(item for item in snapshot.harnesses if item.harness_id in wanted),
             schema_version=snapshot.schema_version,
         )
         if filtered.harnesses:
@@ -311,7 +491,7 @@ def delivery_intake(
 ) -> None:
     """DEPRECATED: reference/test intake only.
 
-    Production ownership is JoyCLI:
+    Production ownership is JoyCTL:
       joyctl runtime intake-serve
     """
 
@@ -319,7 +499,7 @@ def delivery_intake(
 
     warnings.warn(
         "joymesh delivery intake is deprecated; use `joyctl runtime intake-serve` "
-        "(JoyCLI owns the canonical Unix socket receiver).",
+        "(JoyCTL owns the canonical Unix socket receiver).",
         DeprecationWarning,
         stacklevel=1,
     )
@@ -492,7 +672,11 @@ def legal_evidence_export(
 
     root = _legal_repo_root(repo)
     identity = _legal_identity(repo)
-    _print(export_evidence(identity=identity, output_dir=Path(output), evidence_items=[], repo_root=root))
+    _print(
+        export_evidence(
+            identity=identity, output_dir=Path(output), evidence_items=[], repo_root=root
+        )
+    )
 
 
 @legal_bundle_app.command("create")
@@ -699,7 +883,6 @@ def _maybe_send_run_telemetry(run: Run, *, task: str | None = None) -> None:
     except Exception:
         # Metrics must never interrupt task execution or CLI output.
         return
-
 
 
 @node_app.command("init")
@@ -1283,18 +1466,14 @@ def harness_select() -> None:
 
     defs = _run_value(lambda mesh: mesh.list_harnesses())
     detected = {
-        item.manifest.harness_id: item
-        for item in _run(lambda mesh: mesh.detect_harnesses())
+        item.manifest.harness_id: item for item in _run(lambda mesh: mesh.detect_harnesses())
     }
     typer.echo("Choose the harnesses JoyMesh may use (comma-separated ids):")
     for definition in defs:
         if definition.id in FORBIDDEN_PRODUCTION_HARNESS_IDS:
             continue
         descriptor = detected.get(definition.id)
-        ready = (
-            descriptor is not None
-            and descriptor.availability is HarnessAvailability.AVAILABLE
-        )
+        ready = descriptor is not None and descriptor.availability is HarnessAvailability.AVAILABLE
         state = "ready" if ready else "not ready"
         typer.echo(f"  [ ] {definition.id:20} {definition.display_name} ({state})")
     prefs = load_user_config().harnesses
@@ -1617,7 +1796,40 @@ def run_launch(
     _maybe_prompt_telemetry_consent()
 
     async def operation(mesh: JoyMesh) -> Run:
-        run = await mesh.run(task=task, workspace=workspace, harness=harness)
+        # Phase 3.5: attach JoyMux context placement before execution.
+        try:
+            placement = fetch_context_placement(
+                harness=harness,
+                workspace=workspace,
+                task=task,
+                client_name="joymesh-cli",
+            )
+        except JoyMuxPlacementError as exc:
+            typer.echo(str(exc), err=True)
+            typer.echo(
+                "Ensure JoyMux is running (`joymux daemon start`) "
+                "and JOYMUX_SOCKET points at runtime.sock.",
+                err=True,
+            )
+            raise typer.Exit(2) from exc
+
+        selected_harness = str(placement.get("selected_harness") or harness)
+        requirements = {
+            "requirements_id": placement.get("requirements_id"),
+        }
+        request = RunRequest(
+            task=task,
+            workspace=workspace,
+            preferred_harness=selected_harness,
+            allowed_harnesses=frozenset({selected_harness}),
+            context_placement=placement,
+            strategic_requirements=requirements,
+            strategic_requirements_id=str(placement.get("requirements_id") or ""),
+            runtime_snapshot_revision=str(placement.get("runtime_snapshot_revision") or "") or None,
+            correlation_id=str(placement.get("correlation_id") or "") or None,
+            mission_id=str(placement.get("mission_id") or "") or None,
+        )
+        run = await mesh.run(request=request, harness=selected_harness)
         return await mesh.wait(run.id)
 
     try:

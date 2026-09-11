@@ -13,7 +13,9 @@ from joymesh.delivery.publisher import RuntimeDeliveryPublisher
 from joymesh.production.validate import validate_production_config
 
 
-def test_production_validate_requires_signing_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_validate_requires_signing_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY", raising=False)
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", raising=False)
@@ -25,13 +27,43 @@ def test_production_validate_requires_signing_key(tmp_path: Path, monkeypatch: p
     assert any(i.code == "missing_signing_key" for i in result.issues)
 
 
-def test_publisher_fails_closed_in_production(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_publisher_fails_closed_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY", raising=False)
     monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", raising=False)
     outbox = DeliveryOutbox(tmp_path / "outbox.sqlite3")
     with pytest.raises(RuntimeError, match="production signing key required"):
         RuntimeDeliveryPublisher(outbox)
+
+
+def test_production_accepts_valid_signed_runtime_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ephemeral test-only key proves production validation + publisher succeed."""
+    key_path = tmp_path / "ephemeral-runtime-signing.key"
+    generated = generate_runtime_signing_key(destination=key_path, key_id="test-ephemeral")
+    monkeypatch.setenv("JOYMESH_ENV", "production")
+    monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", str(key_path))
+    monkeypatch.setenv("JOYMESH_RUNTIME_SIGNING_KEY_ID", generated.key_id)
+    monkeypatch.setenv("JOYMESH_DELIVERY_SOCKET", str(tmp_path / "sock"))
+    monkeypatch.setenv("JOYMESH_OUTBOX_PATH", str(tmp_path / "outbox.sqlite3"))
+    monkeypatch.setenv("JOYMESH_BACKUP_PATH", str(tmp_path / "backups"))
+    try:
+        result = validate_production_config()
+        assert result.ok is True
+        outbox = DeliveryOutbox(tmp_path / "outbox.sqlite3")
+        publisher = RuntimeDeliveryPublisher(outbox)
+        assert publisher.key_id
+        assert publisher.identity.public_key
+    finally:
+        monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", raising=False)
+        monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_ID", raising=False)
+        monkeypatch.delenv("JOYMESH_ENV", raising=False)
+        if key_path.exists():
+            key_path.unlink()
 
 
 def test_key_generate_never_returns_private(tmp_path: Path) -> None:

@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from joymesh.api import create_app
+from joymesh.connectors import ConnectorCatalogue
 from joymesh.connectors.lifecycle_models import (
     ConnectorEvidence,
     ConnectorEvidenceType,
@@ -28,6 +29,10 @@ from joymesh.persistence import (
     NodeConnectorInstallationRow,
 )
 from joymesh.service import JoyMesh
+
+# Keep revisions aligned with the live catalogue so stale-revision
+# short-circuits do not mask authentication/verification assertions.
+_CURSOR_REVISION = ConnectorCatalogue.builtins().get("cursor").revision
 
 
 def _snapshot(**overrides: object) -> _NodeConnectorSnapshot:
@@ -64,7 +69,7 @@ def test_catalogue_maturity_does_not_override_node_state() -> None:
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/codex",
             discovery_version="0.1.0",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
             evidence_by_type={
                 ConnectorEvidenceType.FAILURE: {
                     "status": "broken_executable",
@@ -94,7 +99,7 @@ def test_installed_requires_authentication() -> None:
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/cursor-agent",
             discovery_version="2025.09.18",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
         ),
     )
     assert readiness.state is NodeConnectorState.AUTHENTICATION_REQUIRED
@@ -106,7 +111,7 @@ def test_authenticated_requires_verification() -> None:
         connector_id="cursor",
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/cursor-agent",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
             auth_status="authenticated",
             auth_verified_at=datetime.now(UTC),
         ),
@@ -120,7 +125,7 @@ def test_active_verification_task_in_progress() -> None:
         connector_id="cursor",
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/cursor-agent",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
             auth_status="authenticated",
             auth_verified_at=datetime.now(UTC),
             active_task_status=ConnectorTaskStatus.RUNNING,
@@ -137,7 +142,7 @@ def test_adapter_passed_requires_certification() -> None:
         connector_id="cursor",
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/cursor-agent",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
             auth_status="authenticated",
             auth_verified_at=datetime.now(UTC),
             evidence_by_type={
@@ -154,9 +159,9 @@ def test_certified_routing_enabled_is_ready() -> None:
         connector_id="cursor",
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/cursor-agent",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
             installation_executable="/usr/local/bin/cursor-agent",
-            installation_revision="2026-07-29.1",
+            installation_revision=_CURSOR_REVISION,
             installation_routing_enabled=True,
             auth_status="authenticated",
             auth_verified_at=datetime.now(UTC),
@@ -176,9 +181,9 @@ def test_certified_routing_disabled() -> None:
         connector_id="cursor",
         snapshot=_snapshot(
             discovery_executable="/usr/local/bin/cursor-agent",
-            discovery_revision="2026-07-29.1",
+            discovery_revision=_CURSOR_REVISION,
             installation_executable="/usr/local/bin/cursor-agent",
-            installation_revision="2026-07-29.1",
+            installation_revision=_CURSOR_REVISION,
             installation_routing_enabled=False,
             auth_status="authenticated",
             auth_verified_at=datetime.now(UTC),
@@ -216,7 +221,7 @@ async def test_discovery_evidence_advances_readiness(tmp_path: Path) -> None:
             evidence_id=str(uuid4()),
             node_id="node-1",
             connector_id="cursor",
-            connector_revision="2026-07-29.1",
+            connector_revision=_CURSOR_REVISION,
             task_id=str(uuid4()),
             evidence_type=ConnectorEvidenceType.DISCOVERY,
             status="discovered",

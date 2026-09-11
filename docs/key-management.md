@@ -3,7 +3,7 @@
 ## Principles
 
 * Private keys exist only on JoyMesh hosts.
-* JoyCLI stores public keys only.
+* JoyCTL stores public keys only.
 * Never silently generate production signing keys.
 * Rotation uses overlapping active keys.
 

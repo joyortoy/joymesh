@@ -4,7 +4,7 @@ Revision ID: f6a7b8c9d0e1
 Revises: e5f6a7b8c9d0
 Create Date: 2026-07-30
 
-Fleet scheduling moved to JoyCLI. JoyMesh no longer persists authoritative
+Fleet scheduling moved to JoyCTL. JoyMesh no longer persists authoritative
 worker registry, queues, placements, worker leases, or scheduler leadership.
 """
 

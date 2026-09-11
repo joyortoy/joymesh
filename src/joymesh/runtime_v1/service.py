@@ -30,7 +30,11 @@ from joymesh.runtime_v1.execution_routing import (
 from joymesh.runtime_v1.execution_routing.backends.joymesh import JoyMeshBackend
 from joymesh.runtime_v1.execution_routing.bridge import mission_spec_from_task
 from joymesh.runtime_v1.execution_routing.cancellation import CancellationRegistry
-from joymesh.runtime_v1.execution_routing.models import ExecutionDecision, ExecutionIntent
+from joymesh.runtime_v1.execution_routing.models import (
+    ExecutionDecision,
+    ExecutionIntent,
+    ExecutionResult,
+)
 from joymesh.runtime_v1.leases import LeaseService
 from joymesh.runtime_v1.models import (
     CreateRuntimeTaskBody,
@@ -179,6 +183,9 @@ class RuntimeService:
                 "trace_id": body.trace_id,
                 "actor_id": body.actor_id,
                 "idempotency_key": body.idempotency_key,
+                "context_placement": body.context_placement,
+                "strategic_requirements": body.strategic_requirements,
+                "runtime_snapshot_revision": body.runtime_snapshot_revision,
             }.items()
             if value is not None
         }
@@ -389,10 +396,7 @@ class RuntimeService:
             )
             await self.store.save_task(task)
 
-        if (
-            decision.selected_backend_id == "local"
-            and decision.selected_harness_id == "codex"
-        ):
+        if decision.selected_backend_id == "local" and decision.selected_harness_id == "codex":
             result = await self._execute_coding_worker(
                 task=task,
                 prompt=prompt,
@@ -1011,7 +1015,6 @@ class RuntimeService:
             task_from_runtime,
         )
         from joymesh.runtime_v1.execution_routing.models import (
-            ExecutionResult,
             ExecutionStatus,
         )
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Cross-repository JoyMesh publisher → JoyCLI intake integration proof.
+"""Cross-repository JoyMesh publisher → JoyCTL intake integration proof.
 
-Exit 0 on success, 1 on failure, 2 if JoyCLI unavailable.
+Exit 0 on success, 1 on failure, 2 if JoyCTL unavailable.
 """
 
 from __future__ import annotations
@@ -14,12 +14,26 @@ from pathlib import Path
 from uuid import uuid4
 
 
+def _joycli_src() -> Path | None:
+    for candidate in (
+        Path.home() / "joycli" / "src",
+        Path.home() / "joyuniverse-rc" / "joycli" / "src",
+        Path.home() / "Documents" / "joycli" / "src",
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def main() -> int:
-    joycli_src = Path("/Users/joytan/intexta-buildweek/joycli/src")
-    if joycli_src.is_dir() and str(joycli_src) not in sys.path:
+    joycli_src = _joycli_src()
+    if joycli_src is None:
+        print("SKIP: joycli src not found")
+        return 2
+    if str(joycli_src) not in sys.path:
         sys.path.insert(0, str(joycli_src))
     try:
-        from joycli.runtime.intake import (
+        from joyctl.runtime.intake import (
             PublisherKey,
             PublisherKeyRegistry,
             PublisherKeyStatus,
@@ -30,9 +44,10 @@ def main() -> int:
             select_eligible_harness,
         )
     except ImportError:
-        print("SKIP: joycli.runtime.intake not importable")
+        print("SKIP: joyctl.runtime.intake not importable")
         return 2
 
+    from joymesh.control_plane.security import generate_node_keypair
     from joymesh.delivery import (
         DeliveryOutbox,
         DeliverySettings,
@@ -42,7 +57,6 @@ def main() -> int:
         RuntimeDeliveryPublisher,
         build_delivery_transport,
     )
-    from joymesh.control_plane.security import generate_node_keypair
     from joymesh.models import utc_now
     from joymesh.quota.contracts import (
         HarnessAvailability,
@@ -178,7 +192,7 @@ def main() -> int:
             payload={"ok": True},
             idempotency_key="probe-1",
         )
-        # Resend after ACK deletion creates new outbox row; JoyCLI idempotently ACKs.
+        # Resend after ACK deletion creates new outbox row; JoyCTL idempotently ACKs.
         assert await worker.flush_once() == 1
 
         listener.stop_background()
@@ -207,7 +221,7 @@ def main() -> int:
     try:
         asyncio.run(_run())
         return 0
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         import traceback
 
         traceback.print_exc()

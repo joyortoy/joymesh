@@ -1,4 +1,4 @@
-# JoyCLI Upgrade
+# JoyCTL Upgrade
 
 ## Schema migrations
 
@@ -21,5 +21,5 @@ Downgrade of applied migration SQL is not supported. Restore from backup.
 
 ## Compatibility
 
-* Wire protocol / schema version must match between JoyMesh and JoyCLI packages released together.
+* Wire protocol / schema version must match between JoyMesh and JoyCTL packages released together.
 * Ed25519 key IDs must remain registered across upgrades.

@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from joymesh.control_plane.security import generate_node_keypair, public_key_from_private, store_private_key
+from joymesh.control_plane.security import (
+    generate_node_keypair,
+    public_key_from_private,
+    store_private_key,
+)
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass(frozen=True)

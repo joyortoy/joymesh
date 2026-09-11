@@ -1,0 +1,9 @@
+{
+  "prior_pid": 10991,
+  "prior_output": "/tmp/qualification-8h.json",
+  "finding": "prod-qual VM was Stopped when qualification resumed; PID 10991 gone; /tmp/qualification-8h.json absent (tmpfs cleared on reboot).",
+  "prior_boot_window": "2026-08-03T22:16+08 to 2026-08-04T03:04+08 (~4h48m uptime)",
+  "approx_8h_start": "2026-08-03T16:35:00Z",
+  "approx_elapsed_before_stop": "~2.5h (incomplete; JSON only written at end)",
+  "action": "restart full 8h soak with durable home output + /tmp copy"
+}

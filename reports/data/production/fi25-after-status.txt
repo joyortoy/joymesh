@@ -1,0 +1,22 @@
+● joycli-runtime-intake.service - JoyCLI runtime-state intake (Unix socket)
+     Loaded: loaded (/etc/systemd/system/joycli-runtime-intake.service; disabled; preset: enabled)
+     Active: active (running) since Tue 2026-08-04 03:13:08 +08; 606ms ago
+       Docs: file:///usr/share/doc/joycli/OPERATIONS.md
+    Process: 2737 ExecStartPre=/bin/bash -c JOYCLI_RUNTIME_SOCKET=/run/joymux/joymesh-delivery.sock /opt/joymux/venv/bin/joyctl --state /var/lib/joycli/state production validate-config (code=exited, status=0/SUCCESS)
+   Main PID: 2739 (joyctl)
+      Tasks: 1 (limit: 9477)
+     Memory: 9.4M (max: 1.0G available: 1014.5M peak: 15.4M)
+        CPU: 2.848s
+     CGroup: /system.slice/joycli-runtime-intake.service
+             └─2739 /opt/joymux/venv/bin/python3 /opt/joymux/venv/bin/joyctl --mode durable-local --state /var/lib/joycli/state runtime intake-serve --socket /run/joymux/joymesh-delivery.sock
+
+Aug 04 03:13:08 lima-prod-qual bash[2737]:     "session_limits": 256,
+Aug 04 03:13:08 lima-prod-qual bash[2737]:     "shutdown_grace_seconds": 15.0,
+Aug 04 03:13:08 lima-prod-qual bash[2737]:     "socket_path": "/run/joymux/joymesh-delivery.sock",
+Aug 04 03:13:08 lima-prod-qual bash[2737]:     "stale_seconds": 1800,
+Aug 04 03:13:08 lima-prod-qual bash[2737]:     "unsigned_mode": false
+Aug 04 03:13:08 lima-prod-qual bash[2737]:   },
+Aug 04 03:13:08 lima-prod-qual bash[2737]:   "issues": [],
+Aug 04 03:13:08 lima-prod-qual bash[2737]:   "ok": true
+Aug 04 03:13:08 lima-prod-qual bash[2737]: }
+Aug 04 03:13:08 lima-prod-qual systemd[1]: Started joycli-runtime-intake.service - JoyCLI runtime-state intake (Unix socket).

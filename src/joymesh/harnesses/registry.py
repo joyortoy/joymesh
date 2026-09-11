@@ -34,10 +34,7 @@ class HarnessRegistry:
         self._aliases: dict[str, str] = {}
         for definition in self._definitions.values():
             for alias in (definition.id, *definition.aliases):
-                if (
-                    adapters is None
-                    and alias in FORBIDDEN_PRODUCTION_HARNESS_IDS
-                ):
+                if adapters is None and alias in FORBIDDEN_PRODUCTION_HARNESS_IDS:
                     continue
                 previous = self._aliases.get(alias)
                 if previous is not None and previous != definition.id:
@@ -75,10 +72,7 @@ class HarnessRegistry:
 
     def register(self, adapter: HarnessAdapter, *, replace: bool = False) -> None:
         harness_id = adapter.manifest.harness_id
-        if (
-            harness_id in FORBIDDEN_PRODUCTION_HARNESS_IDS
-            and not self._allow_test_harnesses
-        ):
+        if harness_id in FORBIDDEN_PRODUCTION_HARNESS_IDS and not self._allow_test_harnesses:
             raise ValueError(
                 "refusing to register removed/test-only harness in production "
                 f"registry: {harness_id}"

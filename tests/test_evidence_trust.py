@@ -182,62 +182,81 @@ def test_production_accepts_node_attested_evidence(monkeypatch: pytest.MonkeyPat
 async def test_enable_routing_rejects_mock_in_production(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Production must reject mock certification even with a valid signing key.
+
+    Isolated failure mode: constructing JoyMesh in production requires
+    JOYMESH_RUNTIME_SIGNING_KEY(_PATH). Use an ephemeral key under tmp_path only.
+    """
+    from joymesh.delivery.key_lifecycle import generate_runtime_signing_key
+
+    key_path = tmp_path / "ephemeral-runtime-signing.key"
+    generated = generate_runtime_signing_key(destination=key_path, key_id="test-ephemeral")
     monkeypatch.setenv("JOYMESH_ENV", "production")
     monkeypatch.setenv("JOYMESH_INLINE_CONNECTOR_NODE", "0")
-    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'trust.db'}")
-    await mesh.initialize()
-    store = mesh.connector_lifecycle.store
-    revision = mesh.connector("cursor").revision
-    for kind, status, trust, origin in (
-        (
-            ConnectorEvidenceType.DISCOVERY,
-            "discovered",
-            EvidenceTrustLevel.NODE_ATTESTED,
-            ConnectorExecutionOrigin.REMOTE_NODE,
-        ),
-        (
-            ConnectorEvidenceType.AUTHENTICATION,
-            "authenticated",
-            EvidenceTrustLevel.NODE_ATTESTED,
-            ConnectorExecutionOrigin.REMOTE_NODE,
-        ),
-        (
-            ConnectorEvidenceType.ADAPTER_CONFORMANCE,
-            "passed",
-            EvidenceTrustLevel.NODE_ATTESTED,
-            ConnectorExecutionOrigin.REMOTE_NODE,
-        ),
-        (
-            ConnectorEvidenceType.CERTIFICATION,
-            "certified",
-            EvidenceTrustLevel.MOCK,
-            ConnectorExecutionOrigin.MOCK_TEST,
-        ),
-    ):
-        await store.record_evidence(
-            ConnectorEvidence(
-                evidence_id=str(uuid4()),
-                node_id="node-1",
-                connector_id="cursor",
-                connector_revision=revision,
-                task_id=str(uuid4()),
-                evidence_type=kind,
-                status=status,
-                executable_path="/tmp/cursor-agent",
-                executable_fingerprint="fp",
-                harness_version="2025.09.18-7ae6800",
-                provider_mode=None,
-                details={"routing_profile": "read_only_repository", "method_id": "cursor"},
-                created_at=utc_now(),
-                expires_at=None,
-                trust_level=trust,
-                execution_origin=origin,
+    monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", str(key_path))
+    monkeypatch.setenv("JOYMESH_RUNTIME_SIGNING_KEY_ID", generated.key_id)
+    try:
+        mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'trust.db'}")
+        await mesh.initialize()
+        store = mesh.connector_lifecycle.store
+        revision = mesh.connector("cursor").revision
+        for kind, status, trust, origin in (
+            (
+                ConnectorEvidenceType.DISCOVERY,
+                "discovered",
+                EvidenceTrustLevel.NODE_ATTESTED,
+                ConnectorExecutionOrigin.REMOTE_NODE,
+            ),
+            (
+                ConnectorEvidenceType.AUTHENTICATION,
+                "authenticated",
+                EvidenceTrustLevel.NODE_ATTESTED,
+                ConnectorExecutionOrigin.REMOTE_NODE,
+            ),
+            (
+                ConnectorEvidenceType.ADAPTER_CONFORMANCE,
+                "passed",
+                EvidenceTrustLevel.NODE_ATTESTED,
+                ConnectorExecutionOrigin.REMOTE_NODE,
+            ),
+            (
+                ConnectorEvidenceType.CERTIFICATION,
+                "certified",
+                EvidenceTrustLevel.MOCK,
+                ConnectorExecutionOrigin.MOCK_TEST,
+            ),
+        ):
+            await store.record_evidence(
+                ConnectorEvidence(
+                    evidence_id=str(uuid4()),
+                    node_id="node-1",
+                    connector_id="cursor",
+                    connector_revision=revision,
+                    task_id=str(uuid4()),
+                    evidence_type=kind,
+                    status=status,
+                    executable_path="/tmp/cursor-agent",
+                    executable_fingerprint="fp",
+                    harness_version="2025.09.18-7ae6800",
+                    provider_mode=None,
+                    details={"routing_profile": "read_only_repository", "method_id": "cursor"},
+                    created_at=utc_now(),
+                    expires_at=None,
+                    trust_level=trust,
+                    execution_origin=origin,
+                )
             )
+        readiness = await mesh.connector_lifecycle.get_readiness(
+            node_id="node-1", connector_id="cursor"
         )
-    readiness = await mesh.connector_lifecycle.get_readiness(
-        node_id="node-1", connector_id="cursor"
-    )
-    assert readiness.state is NodeConnectorState.CERTIFICATION_REQUIRED
-    with pytest.raises(PermissionError):
-        await mesh.connector_lifecycle.enable_routing(node_id="node-1", connector_id="cursor")
-    await mesh.close()
+        assert readiness.state is NodeConnectorState.CERTIFICATION_REQUIRED
+        with pytest.raises(PermissionError):
+            await mesh.connector_lifecycle.enable_routing(node_id="node-1", connector_id="cursor")
+        await mesh.close()
+    finally:
+        monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_PATH", raising=False)
+        monkeypatch.delenv("JOYMESH_RUNTIME_SIGNING_KEY_ID", raising=False)
+        monkeypatch.delenv("JOYMESH_ENV", raising=False)
+        if key_path.exists():
+            key_path.unlink()

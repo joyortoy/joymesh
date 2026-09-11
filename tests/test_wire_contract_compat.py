@@ -1,8 +1,7 @@
-"""Schema compatibility between JoyMesh wire contracts and JoyCLI mirrored contracts."""
+"""Schema compatibility between JoyMesh wire contracts and JoyCTL mirrored contracts."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from joymesh.delivery.contracts import (
@@ -15,7 +14,7 @@ from joymesh.delivery.contracts import (
 
 
 def test_wire_contract_field_parity_with_joycli_fixture():
-    # Fixture generated from JoyCLI contract field names (no JoyCLI import required).
+    # Fixture generated from JoyCTL contract field names (no JoyCTL import required).
     fixture = {
         "schema_version": 1,
         "transport_version": 1,
@@ -36,16 +35,16 @@ def test_wire_contract_field_parity_with_joycli_fixture():
             "schema_version",
             "transport_version",
             "signature",
-                "key_id",
-                "signature_algorithm",
+            "key_id",
+            "signature_algorithm",
             "idempotency_key",
         ],
-            "publisher_fields": [
-                "publisher_id",
-                "public_key",
-                "instance_id",
-                "organisation_id",
-            ],
+        "publisher_fields": [
+            "publisher_id",
+            "public_key",
+            "instance_id",
+            "organisation_id",
+        ],
     }
     assert SCHEMA_VERSION == fixture["schema_version"]
     assert TRANSPORT_VERSION == fixture["transport_version"]
@@ -67,4 +66,4 @@ def test_joymesh_does_not_own_canonical_intake_in_production_docs():
     intake = Path(__file__).resolve().parents[1] / "src" / "joymesh" / "delivery" / "intake.py"
     text = intake.read_text(encoding="utf-8")
     assert "DEPRECATED" in text
-    assert "joycli.runtime.intake" in text
+    assert "joyctl.runtime.intake" in text

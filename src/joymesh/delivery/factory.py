@@ -10,6 +10,7 @@ from joymesh.delivery.settings import (
     DeliverySettings,
     DeliveryTransportMode,
 )
+from joymesh.delivery.transports.http import HttpDeliveryTransport
 from joymesh.delivery.transports.memory import MemoryDeliveryTransport
 from joymesh.delivery.transports.protocol import DeliveryTransport
 from joymesh.delivery.transports.unix_socket import (
@@ -50,6 +51,14 @@ def build_delivery_transport(settings: DeliverySettings) -> DeliveryTransport:
         return MemoryDeliveryTransport()
     if settings.transport is DeliveryTransportMode.DISABLED:
         return DisabledDeliveryTransport()
+    if settings.transport is DeliveryTransportMode.HTTP:
+        base = (settings.http_base_url or "").strip()
+        if not base:
+            raise DeliveryConfigError(
+                "delivery_http_base_required",
+                "http delivery requires JOYMESH_JOYCTL_BASE_URL or delivery.http_base_url",
+            )
+        return HttpDeliveryTransport(base, path=settings.http_path)
     if settings.transport is DeliveryTransportMode.UNIX_SOCKET:
         explicit = settings.socket_path is not None
         path = settings.socket_path or default_socket_path()

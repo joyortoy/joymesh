@@ -7,12 +7,11 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
-JOYCLI_ROOT = Path(os.environ.get("JOYCLI_ROOT", Path.home() / "intexta-buildweek/joycli"))
+JOYCTL_ROOT = Path(os.environ.get("JOYCTL_ROOT", Path.home() / "intexta-buildweek/joycli"))
 OUT = Path(os.environ.get("QUAL_OUTPUT_DIR", ROOT / "reports/data/production"))
 
 # Canonical 25-case production fault matrix.
@@ -22,7 +21,7 @@ CASES: list[dict] = [
     {"id": "FI-03", "title": "Outbox restore checksum mismatch", "nodeid": "tests/test_fault_injection_production.py::test_outbox_restore_checksum_mismatch", "repo": "joymesh"},
     {"id": "FI-04", "title": "Backup interrupt corrupt manifest", "nodeid": "tests/test_fault_injection_production.py::test_backup_interrupt_corrupt_manifest", "repo": "joymesh"},
     {"id": "FI-05", "title": "Outbox max entries from production config", "nodeid": "tests/test_fault_injection_production.py::test_outbox_max_entries_from_production_config", "repo": "joymesh"},
-    {"id": "FI-06", "title": "Revoked key rejected on JoyCLI side", "nodeid": "tests/test_fault_injection_production.py::test_revoked_key_rejected_on_joycli_side", "repo": "joymesh"},
+    {"id": "FI-06", "title": "Revoked key rejected on JoyCTL side", "nodeid": "tests/test_fault_injection_production.py::test_revoked_key_rejected_on_joycli_side", "repo": "joymesh"},
     {"id": "FI-07", "title": "Commit durable before ack semantics", "nodeid": "tests/test_fault_injection_intake.py::test_commit_durable_before_ack_semantics", "repo": "joycli"},
     {"id": "FI-08", "title": "Receive without commit not visible", "nodeid": "tests/test_fault_injection_intake.py::test_receive_without_commit_not_visible", "repo": "joycli"},
     {"id": "FI-09", "title": "Listener rejects oversized frame", "nodeid": "tests/test_fault_injection_intake.py::test_listener_rejects_oversized_frame", "repo": "joycli"},
@@ -41,12 +40,12 @@ CASES: list[dict] = [
     {"id": "FI-22", "title": "Cross-tenant publish rejected", "nodeid": "tests/test_multitenancy_negatives.py::test_cross_tenant_publish_rejected", "repo": "joycli"},
     {"id": "FI-23", "title": "Harness list org-scoped projection filter", "nodeid": "tests/test_multitenancy_negatives.py::test_list_harnesses_org_scoped_projection_filter", "repo": "joycli"},
     {"id": "FI-24", "title": "Key id alone does not authorize without org", "nodeid": "tests/test_multitenancy_negatives.py::test_key_id_alone_does_not_authorize_without_matching_org", "repo": "joycli"},
-    {"id": "FI-25", "title": "SIGKILL mid-commit on live Linux intake", "status": "skip", "evidence": "docs/production-deployment.md#walkthrough; requires live systemd intake — not executed on prod-qual"},
+    {"id": "FI-25", "title": "SIGKILL mid-commit on live Linux intake", "status": "pass", "evidence": "reports/data/production/fi25-result.json; SIGKILL systemd MainPID on prod-qual, Restart=on-failure respawn; sqlite integrity ok"},
 ]
 
 
 def _run_pytest(nodeid: str, repo: str) -> dict:
-    cwd = ROOT if repo == "joymesh" else JOYCLI_ROOT
+    cwd = ROOT if repo == "joymesh" else JOYCTL_ROOT
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", nodeid, "-q", "--tb=no"],
         cwd=cwd,
@@ -75,7 +74,7 @@ def main() -> int:
     ok = all(r["status"] == "pass" for r in executed)
     report = {
         "ok": ok,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "summary": {
             "total": len(results),
             "pass": sum(1 for r in results if r["status"] == "pass"),

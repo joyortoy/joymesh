@@ -170,9 +170,7 @@ class JoyMesh:
         if isinstance(delivery_settings, DeliverySettings):
             resolved_settings = delivery_settings
         else:
-            user_delivery = delivery_settings_from_mapping(
-                load_user_config().delivery.as_dict()
-            )
+            user_delivery = delivery_settings_from_mapping(load_user_config().delivery.as_dict())
             resolved_settings = resolve_delivery_settings(config_delivery=user_delivery)
         self.delivery_settings = resolved_settings
         if delivery_transport is not None:
@@ -312,9 +310,7 @@ class JoyMesh:
             pass
         return await self.runtime_snapshots.harness_snapshot(resolved, refresh=refresh)
 
-    async def refresh_runtime_snapshot(
-        self, harness_id: str | None = None
-    ) -> RuntimeSnapshot:
+    async def refresh_runtime_snapshot(self, harness_id: str | None = None) -> RuntimeSnapshot:
         await self.initialize()
         if harness_id:
             resolved = harness_id
@@ -617,9 +613,7 @@ class JoyMesh:
             )
         )
 
-    def _assert_capabilities(
-        self, *, harness_id: str, required: frozenset[Capability]
-    ) -> None:
+    def _assert_capabilities(self, *, harness_id: str, required: frozenset[Capability]) -> None:
         from joymesh.harnesses.selection import find_capability_mismatch
 
         adapter = self.registry.get(harness_id)
@@ -651,18 +645,75 @@ class JoyMesh:
     ) -> Run:
         await self.initialize()
         resolved = resolve_workspace(request.workspace)
+        from joymesh.execution import (
+            DirectiveValidationError,
+            ExecutionDirective,
+            validate_directive,
+        )
+        from joymesh.placement_validation import enforce_placement, extract_placement_payloads
+        from joymesh.runtime_snapshot import RuntimeLaunchError
+
+        # Phase 3.5: every production execution requires JoyMux placement
+        # before capability/route work begins.
+        placement_payload, requirements_payload = extract_placement_payloads(
+            directive=request.directive if isinstance(request.directive, dict) else None,
+            context_placement=getattr(request, "context_placement", None),
+            strategic_requirements=getattr(request, "strategic_requirements", None),
+        )
+        facts = {
+            "worker_alive": True,
+            "runtime_alive": True,
+            "available_harnesses": {route.harness_id},
+            "available_capabilities": set(request.required_capabilities or ()),
+            "quota_available": True,
+            "authentication_valid": True,
+            "compatible_runtimes": (
+                [placement_payload.get("selected_runtime")]
+                if placement_payload and placement_payload.get("selected_runtime")
+                else []
+            ),
+            "runtime_snapshot_revision": (
+                getattr(request, "runtime_snapshot_revision", None)
+                or (placement_payload or {}).get("runtime_snapshot_revision")
+            ),
+            "is_fallback": bool(continuation_of_run_id),
+            "fallback_authorized": True,
+        }
+        validation = enforce_placement(
+            placement=placement_payload,
+            requirements=requirements_payload
+            or (
+                {"requirements_id": placement_payload.get("requirements_id")}
+                if placement_payload
+                else None
+            ),
+            runtime_facts=facts,
+        )
+        if validation is not None and not validation.valid:
+            raise NoRouteError(
+                "placement validation failed",
+                code=(
+                    validation.reason_codes[0] if validation.reason_codes else "placement_required"
+                ),
+                details=validation.to_dict(),
+            )
         if not route.eligible:
             raise NoRouteError("selected route is not eligible")
         self._assert_capabilities(
             harness_id=route.harness_id,
             required=request.required_capabilities,
         )
-        from joymesh.execution import (
-            DirectiveValidationError,
-            ExecutionDirective,
-            validate_directive,
-        )
-        from joymesh.runtime_snapshot import RuntimeLaunchError
+        if placement_payload is not None:
+            selected_harness = placement_payload.get("selected_harness")
+            if selected_harness and selected_harness != route.harness_id:
+                raise NoRouteError(
+                    "placement selected_harness does not match route",
+                    code="runtime_changed",
+                    details={
+                        "placement_harness": selected_harness,
+                        "route_harness": route.harness_id,
+                    },
+                )
 
         if request.directive is not None:
             try:
@@ -773,9 +824,50 @@ class JoyMesh:
             if task is None or workspace is None:
                 raise TypeError("task and workspace are required when request is omitted")
             selected_request = RunRequest(task=task, workspace=str(workspace))
+
+        from joymesh.placement_validation import (
+            extract_placement_payloads,
+            test_without_placement_allowed,
+        )
+
+        placement_payload, _requirements = extract_placement_payloads(
+            directive=selected_request.directive
+            if isinstance(selected_request.directive, dict)
+            else None,
+            context_placement=getattr(selected_request, "context_placement", None),
+            strategic_requirements=getattr(selected_request, "strategic_requirements", None),
+        )
+        # Production: JoyMux placement is mandatory; JoyMesh must not select harness.
+        if placement_payload is None and not test_without_placement_allowed():
+            raise NoRouteError(
+                "JoyMux context placement is required before execution",
+                code="placement_required",
+                details={"compat_sunset": "phase3.5-placement-required-v1"},
+            )
+
         if route is not None:
             return await self.start_run(request=selected_request, route=route)
 
+        # When JoyMux placement is present, resolve the already-selected harness ID.
+        if placement_payload is not None and placement_payload.get("selected_harness"):
+            harness_id = str(placement_payload["selected_harness"])
+            try:
+                harness_id = self.registry.resolve_id(harness_id)
+            except KeyError:
+                pass
+            locked = selected_request.model_copy(
+                update={
+                    "allowed_harnesses": frozenset({harness_id}),
+                    "preferred_harness": harness_id,
+                }
+            )
+            selected = await self.resolve_route(
+                request=locked,
+                preferred_harness=harness_id,
+            )
+            return await self.start_run(request=locked, route=selected)
+
+        # Legacy test-only path (JOYMESH_ALLOW_TEST_WITHOUT_PLACEMENT=1).
         from joymesh.config import load_user_config
         from joymesh.harnesses.selection import HarnessSelectionError, resolve_harness
         from joymesh.models import HarnessAvailability
@@ -811,9 +903,7 @@ class JoyMesh:
                 interactive=False,
                 known_ids=[item.manifest.harness_id for item in detected],
                 allow_disabled_override=bool(override),
-                allow_test_harnesses=bool(
-                    getattr(self.registry, "_allow_test_harnesses", False)
-                ),
+                allow_test_harnesses=bool(getattr(self.registry, "_allow_test_harnesses", False)),
             )
         except HarnessSelectionError as exc:
             raise NoRouteError(
@@ -823,7 +913,6 @@ class JoyMesh:
                 details=exc.details,
             ) from exc
 
-        # Explicit per-run override: never silently fall back to another harness.
         if override:
             self._assert_capabilities(
                 harness_id=resolution.harness_id,
@@ -953,7 +1042,21 @@ class JoyMesh:
             },
             idempotency_key=f"approval:{approval_req.approval_id}",
         )
-        # Cross-harness fallback is a clean retry — never resume the failed session.
+        # Cross-harness fallback requires a new JoyMux placement (clean attempt).
+        # JoyMesh must not pick the next harness from the proposal alone in production.
+        from joymesh.placement_validation import test_without_placement_allowed
+
+        if not test_without_placement_allowed():
+            raise NoRouteError(
+                "JoyMux reselection required before fallback execution",
+                code="placement_required",
+                details={
+                    "proposal_id": proposal.id,
+                    "original_run_id": original.id,
+                    "hint": "attach context_placement from JoyMux before approve_fallback",
+                },
+            )
+        # Test-only legacy path (explicit bypass).
         request = RunRequest(task=original.task, workspace=original.workspace)
         continuation = await self.start_run(
             request=request,

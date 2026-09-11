@@ -1,6 +1,6 @@
 """Bounded durable delivery outbox (crash-safe, atomic SQLite).
 
-Exists only to guarantee JoyCLI delivery of runtime facts — not analytics.
+Exists only to guarantee JoyCTL delivery of runtime facts — not analytics.
 """
 
 from __future__ import annotations
@@ -187,9 +187,7 @@ class DeliveryOutbox:
             deleted = 0
             while True:
                 count = int(
-                    self._conn.execute(
-                        "SELECT COUNT(*) AS c FROM delivery_outbox"
-                    ).fetchone()["c"]
+                    self._conn.execute("SELECT COUNT(*) AS c FROM delivery_outbox").fetchone()["c"]
                 )
                 if count <= self.max_entries:
                     break

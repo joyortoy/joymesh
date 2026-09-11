@@ -46,7 +46,11 @@ class ExecutionPlanner:
         _ = mission.optional_capabilities
 
         routing_prefs = dict(mission.routing_preferences)
-        if mission.cost_preference and "preset" not in routing_prefs and "policy" not in routing_prefs:
+        if (
+            mission.cost_preference
+            and "preset" not in routing_prefs
+            and "policy" not in routing_prefs
+        ):
             routing_prefs.setdefault("preset", mission.cost_preference)
         if mission.locality_preference == "local":
             routing_prefs.setdefault("prefer_local", True)

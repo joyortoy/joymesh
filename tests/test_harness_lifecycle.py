@@ -92,7 +92,12 @@ async def test_lifecycle_plan_requires_matching_explicit_approval(tmp_path: Path
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'lifecycle.db'}")
     try:
         plan = mesh.plan_install("gemini-cli")
-        assert plan.argv == ("npm", "install", "--global", "@google/gemini-cli")
+        # Prefer whichever official install tool is available on the host
+        # (npm vs brew). Both are catalogue-backed.
+        assert plan.argv in {
+            ("npm", "install", "--global", "@google/gemini-cli"),
+            ("brew", "install", "gemini-cli"),
+        }
         assert plan.dry_run
         wrong = ApprovalToken(
             action=LifecycleAction.UPGRADE,

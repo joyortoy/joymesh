@@ -167,7 +167,7 @@ def test_architecture_no_joycli_or_joypay_imports() -> None:
     offenders: list[str] = []
     for path in root.rglob("*.py"):
         text = path.read_text()
-        if "import joycli" in text or "from joycli" in text:
+        if "import joyctl" in text or "from joyctl" in text:
             offenders.append(str(path))
         if "import joypay" in text or "from joypay" in text:
             offenders.append(str(path))

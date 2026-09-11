@@ -1,0 +1,31 @@
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "database_path": "",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "environment": "production",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "health_address": "127.0.0.1:9201",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "log_level": "INFO",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "max_outbox_entries": 2000,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "maximum_frame_size": 262144,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "metrics_address": "127.0.0.1:9202",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "organisation_id": "local",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "outbox_path": "/var/lib/joymesh/data/delivery_outbox.sqlite3",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "outbox_retention_seconds": 86400,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "poll_interval_seconds": 0.25,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "publisher_id": "joymesh",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "queue_limits": 2000,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "require_absolute_paths": true,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "retry_max_attempts": 8,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "shutdown_grace_seconds": 15.0,
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "signing_key_id": "prod-qual-1",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "signing_key_path": "***",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "socket_path": "/run/joymux/joymesh-delivery.sock",
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:     "unsigned_mode": false
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:   },
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:   "issues": [],
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]:   "ok": true
+Aug 03 23:40:39 lima-prod-qual joymesh[8856]: }
+Aug 03 23:40:39 lima-prod-qual systemd[1]: Finished joymesh-delivery.service - JoyMesh signed runtime delivery environment.
+-- Boot c9a1ece1805f4359b8497901f952b37e --
+Aug 04 03:13:23 lima-prod-qual systemd[1]: Starting joymesh-delivery.service - JoyMesh signed runtime delivery environment...
+Aug 04 03:13:23 lima-prod-qual (joymesh)[2781]: joymesh-delivery.service: Failed to set up mount namespacing: /run/joymesh: No such file or directory
+Aug 04 03:13:23 lima-prod-qual systemd[1]: joymesh-delivery.service: Main process exited, code=exited, status=226/NAMESPACE
+Aug 04 03:13:23 lima-prod-qual systemd[1]: joymesh-delivery.service: Failed with result 'exit-code'.
+Aug 04 03:13:23 lima-prod-qual systemd[1]: Failed to start joymesh-delivery.service - JoyMesh signed runtime delivery environment.

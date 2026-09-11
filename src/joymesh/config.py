@@ -11,7 +11,7 @@ from typing import Any
 
 REMOVED_HARNESS_IDS = frozenset({"fake", "joy"})
 LEGACY_JOY_MIGRATION_MESSAGE = (
-    'The previously selected “joy” harness has been removed.\n'
+    "The previously selected “joy” harness has been removed.\n"
     "Choose a supported or custom harness to continue."
 )
 
@@ -118,7 +118,7 @@ class HarnessPreferences:
 
 @dataclass(frozen=True)
 class DeliveryConfig:
-    """JoyMesh → JoyCLI runtime-update delivery preferences."""
+    """JoyMesh → JoyCTL runtime-update delivery preferences."""
 
     transport: str | None = None
     socket_path: str | None = None
@@ -323,14 +323,14 @@ def migrate_legacy_harness_preferences(
             message = LEGACY_JOY_MIGRATION_MESSAGE
         else:
             message = (
-                'The previously selected “fake” harness has been removed.\n'
+                "The previously selected “fake” harness has been removed.\n"
                 "Choose a supported or custom harness to continue."
             )
     elif any(item == "joy" for item in prefs.enabled):
         message = LEGACY_JOY_MIGRATION_MESSAGE
     elif had_removed and message is None:
         message = (
-            'The previously selected “fake” harness has been removed.\n'
+            "The previously selected “fake” harness has been removed.\n"
             "Choose a supported or custom harness to continue."
         )
 

@@ -1,4 +1,4 @@
-"""Runtime update delivery contracts (JoyMesh → JoyCLI).
+"""Runtime update delivery contracts (JoyMesh → JoyCTL).
 
 Facts only. No prompts, source, credentials, or workspace content.
 """
@@ -53,7 +53,7 @@ class PublisherIdentity:
 
 @dataclass(frozen=True)
 class DeliveryEnvelope:
-    """Authenticated delivery envelope for JoyCLI consumption."""
+    """Authenticated delivery envelope for JoyCTL consumption."""
 
     envelope_id: str
     kind: DeliveryKind

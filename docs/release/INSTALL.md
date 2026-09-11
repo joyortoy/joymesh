@@ -1,4 +1,4 @@
-# JoyCLI Installation
+# JoyCTL Installation
 
 ## Requirements
 
@@ -21,7 +21,7 @@ python -m pip install /path/to/joymesh-*.whl
 Verify:
 
 ```bash
-python -c "import joycli, cryptography; print(joycli.__version__, cryptography.__version__)"
+python -c "import joyctl, cryptography; print(joycli.__version__, cryptography.__version__)"
 joyctl --version
 ```
 
@@ -29,12 +29,12 @@ Do not set `PYTHONPATH` to a source checkout for production.
 
 ## Key provisioning
 
-JoyCLI stores **public** publisher keys only.
+JoyCTL stores **public** publisher keys only.
 
 ```bash
-export JOYCLI_RUNTIME_PUBLISHER_PUBLIC_KEY="<ed25519-public-base64url>"
-export JOYCLI_RUNTIME_PUBLISHER_KEY_ID="joymesh-ed25519-1"
-export JOYCLI_RUNTIME_ALLOW_UNSIGNED=0   # default secure posture
+export JOYCTL_RUNTIME_PUBLISHER_PUBLIC_KEY="<ed25519-public-base64url>"
+export JOYCTL_RUNTIME_PUBLISHER_KEY_ID="joymesh-ed25519-1"
+export JOYCTL_RUNTIME_ALLOW_UNSIGNED=0   # default secure posture
 ```
 
 JoyMesh holds the private key:

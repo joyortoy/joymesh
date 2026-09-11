@@ -33,15 +33,11 @@ def from_availability(availability: HarnessAvailability) -> ProviderDiagnosticCo
         HarnessAvailability.AUTHENTICATION_REQUIRED: (
             ProviderDiagnosticCode.AUTHENTICATION_REQUIRED
         ),
-        HarnessAvailability.CONFIGURATION_REQUIRED: (
-            ProviderDiagnosticCode.CONFIGURATION_REQUIRED
-        ),
+        HarnessAvailability.CONFIGURATION_REQUIRED: (ProviderDiagnosticCode.CONFIGURATION_REQUIRED),
         HarnessAvailability.QUOTA_EXHAUSTED: ProviderDiagnosticCode.QUOTA_EXHAUSTED,
         HarnessAvailability.RATE_LIMITED: ProviderDiagnosticCode.RATE_LIMITED,
         HarnessAvailability.OFFLINE: ProviderDiagnosticCode.OFFLINE,
-        HarnessAvailability.PROVIDER_UNAVAILABLE: (
-            ProviderDiagnosticCode.PROVIDER_UNAVAILABLE
-        ),
+        HarnessAvailability.PROVIDER_UNAVAILABLE: (ProviderDiagnosticCode.PROVIDER_UNAVAILABLE),
         HarnessAvailability.UNKNOWN: ProviderDiagnosticCode.UNKNOWN_FAILURE,
     }
     return mapping.get(availability, ProviderDiagnosticCode.UNKNOWN_FAILURE)
@@ -71,12 +67,8 @@ def from_runtime_validation(code: RuntimeValidationCode) -> ProviderDiagnosticCo
         RuntimeValidationCode.CONFIGURATION_REQUIRED: (
             ProviderDiagnosticCode.CONFIGURATION_REQUIRED
         ),
-        RuntimeValidationCode.CAPABILITY_MISMATCH: (
-            ProviderDiagnosticCode.CAPABILITY_MISMATCH
-        ),
-        RuntimeValidationCode.PROVIDER_UNAVAILABLE: (
-            ProviderDiagnosticCode.PROVIDER_UNAVAILABLE
-        ),
+        RuntimeValidationCode.CAPABILITY_MISMATCH: (ProviderDiagnosticCode.CAPABILITY_MISMATCH),
+        RuntimeValidationCode.PROVIDER_UNAVAILABLE: (ProviderDiagnosticCode.PROVIDER_UNAVAILABLE),
         RuntimeValidationCode.RUNTIME_CHANGED: ProviderDiagnosticCode.RUNTIME_CHANGED,
         RuntimeValidationCode.RATE_LIMITED: ProviderDiagnosticCode.RATE_LIMITED,
         RuntimeValidationCode.OFFLINE: ProviderDiagnosticCode.OFFLINE,

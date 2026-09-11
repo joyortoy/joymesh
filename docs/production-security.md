@@ -1,8 +1,8 @@
 # Production Security
 
-* Unsigned production intake impossible when `JOYCLI_ENV=production`
+* Unsigned production intake impossible when `JOYCTL_ENV=production`
 * JoyMesh production refuses ephemeral signing keys
-* Private keys never stored in JoyCLI
+* Private keys never stored in JoyCTL
 * Key files mode 0600
 * systemd: NoNewPrivileges, ProtectSystem, PrivateTmp, UMask=0077
 * Tenant organisation binding on publisher keys

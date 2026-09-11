@@ -7,10 +7,10 @@ WORKDIR="$(cd "${WORKDIR}" && pwd -P)"
 cleanup() { rm -rf "${WORKDIR}"; }
 trap cleanup EXIT
 
-PYTHON="${PYTHON:-/Users/joytan/Documents/joymesh-rc1-verify/venv-joymesh-src/bin/python}"
-JOYCLI_ROOT="${JOYCLI_ROOT:-/Users/joytan/intexta-buildweek/joycli}"
-export JOYCLI_STATE="${WORKDIR}/joycli-state"
-mkdir -p "${JOYCLI_STATE}" "${WORKDIR}/keys"
+PYTHON="${PYTHON:-python3}"
+JOYCTL_ROOT="${JOYCTL_ROOT:-${HOME}/joycli}"
+export JOYCTL_STATE="${WORKDIR}/joycli-state"
+mkdir -p "${JOYCTL_STATE}" "${WORKDIR}/keys"
 
 # Generate key A
 "${PYTHON}" - <<PY
@@ -26,21 +26,21 @@ PY
 PUB_A="$(cat "${WORKDIR}/keys/a.pub")"
 PUB_B="$(cat "${WORKDIR}/keys/b.pub")"
 
-# Register A on JoyCLI
+# Register A on JoyCTL
 (
-  cd "${JOYCLI_ROOT}"
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key add \
+  cd "${JOYCTL_ROOT}"
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime publisher-key add \
     --key-id rot-a --public-key "${PUB_A}" --publisher-id joymesh --organisation-id local >/dev/null
 )
 
 # Rotate: add B overlapping, then disable A
 (
-  cd "${JOYCLI_ROOT}"
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key rotate \
+  cd "${JOYCTL_ROOT}"
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime publisher-key rotate \
     --new-key-id rot-b --public-key "${PUB_B}" --old-key-id rot-a --publisher-id joymesh --organisation-id local
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key disable rot-a --reason rollback-window
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key revoke rot-a --reason retired
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime publisher-key list
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime publisher-key disable rot-a --reason rollback-window
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime publisher-key revoke rot-a --reason retired
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime publisher-key list
 )
 
 echo "key_rotation_e2e: ok"

@@ -1,6 +1,6 @@
 # Production Configuration
 
-See also JoyCLI `docs/production-configuration.md` and `joyctl production validate-config`.
+See also JoyCTL `docs/production-configuration.md` and `joyctl production validate-config`.
 
 ## JoyMesh variables
 

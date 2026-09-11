@@ -1,0 +1,2497 @@
+[
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "aider"
+    ],
+    "installation_options": [
+      {
+        "id": "uv",
+        "mechanism": "uv",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "uv",
+          "tool",
+          "install",
+          "--force",
+          "--python",
+          "python3.12",
+          "--with",
+          "pip",
+          "aider-chat@latest"
+        ],
+        "package_source": "pypi:aider-chat"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "provider-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "OPENAI_API_KEY",
+          "ANTHROPIC_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "multi-provider",
+        "display_name": "Configured provider",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "local",
+        "display_name": "Local/OpenAI-compatible",
+        "funding_source": "local",
+        "authentication_method": "endpoint",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "aider",
+    "display_name": "Aider",
+    "vendor": "Aider AI",
+    "description": "Open-source Git-aware pair programming agent.",
+    "homepage_domain": "aider.chat",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": false,
+    "streaming_output_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "uv",
+        "mechanism": "uv",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "uv",
+          "tool",
+          "upgrade",
+          "aider-chat"
+        ],
+        "package_source": "pypi:aider-chat"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "uv",
+        "mechanism": "uv",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "uv",
+          "tool",
+          "uninstall",
+          "aider-chat"
+        ],
+        "package_source": "pypi:aider-chat"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "package_manager",
+        "name": "uv"
+      },
+      {
+        "kind": "executable",
+        "name": "git"
+      }
+    ],
+    "execution": {
+      "mode": "text_headless",
+      "argv": [
+        "aider",
+        "--message",
+        "{task}",
+        "--no-auto-commits",
+        "--no-pretty"
+      ],
+      "protocol": "text"
+    },
+    "adapter_id": "aider",
+    "certification_profile_id": "aider-v1",
+    "official_source": {
+      "documentation_source": "https://aider.chat/docs/install.html",
+      "source_repository": "https://github.com/Aider-AI/aider",
+      "package_source": "pypi:aider-chat",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "aider-uv-python312-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "qchat"
+    ],
+    "installation_options": [],
+    "authentication_methods": [
+      {
+        "id": "builder-id",
+        "kind": "browser_oauth",
+        "interactive": true
+      },
+      {
+        "id": "identity-center",
+        "kind": "cloud_credential_chain",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "amazon-q",
+        "display_name": "Amazon Q Developer",
+        "funding_source": "subscription",
+        "authentication_method": "aws_identity",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": "Official documentation reviewed on 2026-07-29 does not expose a stable general coding task headless contract for qchat.",
+    "revision": "2026-07-29.1",
+    "harness_id": "amazon-q",
+    "display_name": "Amazon Q Developer CLI",
+    "vendor": "Amazon Web Services",
+    "description": "Amazon Q Developer command-line experience; general coding headless contract remains under review.",
+    "homepage_domain": "aws.amazon.com",
+    "category": "enterprise",
+    "maturity": "blocked",
+    "remote_execution_supported": false,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": false,
+    "structured_output_supported": false,
+    "streaming_output_supported": false,
+    "supported_platforms": [
+      "darwin",
+      "linux"
+    ],
+    "execution": {
+      "mode": "discovery_only",
+      "protocol": "none"
+    },
+    "official_source": {
+      "documentation_source": "https://docs.aws.amazon.com/amazonq/latest/qdeveloper-ug/command-line-mcp-config-CLI.html",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "amazon-q-qchat-discovery-review-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "amp"
+    ],
+    "installation_options": [
+      {
+        "id": "homebrew",
+        "mechanism": "homebrew",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "brew",
+          "install",
+          "ampcode/tap/ampcode"
+        ],
+        "package_source": "homebrew:ampcode/tap/ampcode"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "amp-account",
+        "kind": "browser_oauth",
+        "interactive": true
+      },
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "AMP_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "amp",
+        "display_name": "Amp account",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "usage_reporting_supported": true,
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "amp",
+    "display_name": "Amp",
+    "vendor": "Sourcegraph",
+    "description": "Terminal coding agent with execute mode and streaming JSON.",
+    "homepage_domain": "ampcode.com",
+    "category": "terminal",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux"
+    ],
+    "upgrade_options": [
+      {
+        "id": "native",
+        "mechanism": "native",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "amp",
+          "update"
+        ],
+        "package_source": "amp-updater"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "amp",
+        "--execute",
+        "--stream-json",
+        "{task}"
+      ],
+      "protocol": "stream_json"
+    },
+    "adapter_id": "amp",
+    "certification_profile_id": "amp-v1",
+    "official_source": {
+      "documentation_source": "https://ampcode.com/manual",
+      "package_source": "homebrew:ampcode/tap/ampcode",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "amp-homebrew-execute-stream-json-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "claude"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "@anthropic-ai/claude-code"
+        ],
+        "package_source": "npm:@anthropic-ai/claude-code"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "claude-account",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "claude"
+        ],
+        "interactive": true
+      },
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "anthropic-subscription",
+        "display_name": "Claude subscription",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "separately_billed": false
+      },
+      {
+        "provider_id": "anthropic-api",
+        "display_name": "Anthropic API",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "bedrock",
+        "display_name": "Amazon Bedrock",
+        "funding_source": "cloud",
+        "authentication_method": "aws_credential_chain",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "vertex",
+        "display_name": "Vertex AI",
+        "funding_source": "cloud",
+        "authentication_method": "google_credential_chain",
+        "separately_billed": true
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "claude-code",
+    "display_name": "Claude Code",
+    "vendor": "Anthropic",
+    "description": "Anthropic coding agent for terminal automation.",
+    "homepage_domain": "anthropic.com",
+    "category": "terminal",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "native-update",
+        "mechanism": "native",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "claude",
+          "update"
+        ],
+        "package_source": "claude-native-updater"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "@anthropic-ai/claude-code"
+        ],
+        "package_source": "npm:@anthropic-ai/claude-code"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Node.js",
+        "minimum_version": "18"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "claude",
+        "--print",
+        "{task}",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "resume_argv": [
+        "claude",
+        "--print",
+        "{task}",
+        "--resume",
+        "{session_id}",
+        "--output-format",
+        "stream-json",
+        "--verbose"
+      ],
+      "protocol": "stream_json"
+    },
+    "adapter_id": "claude-code",
+    "certification_profile_id": "claude-code-v1",
+    "official_source": {
+      "documentation_source": "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+      "package_source": "npm:@anthropic-ai/claude-code",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "npm-global-anthropic-claude-code-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "cline"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "cline"
+        ],
+        "package_source": "npm:cline"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "cline",
+        "kind": "vendor_cli",
+        "login_argv": [
+          "cline",
+          "auth"
+        ]
+      },
+      {
+        "id": "provider",
+        "kind": "provider_key",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "cline",
+        "display_name": "Cline account",
+        "funding_source": "subscription",
+        "authentication_method": "vendor_cli",
+        "separately_billed": false
+      },
+      {
+        "provider_id": "direct",
+        "display_name": "Direct provider",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "local",
+        "display_name": "Local provider",
+        "funding_source": "local",
+        "authentication_method": "endpoint",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "cline",
+    "display_name": "Cline CLI",
+    "vendor": "Cline",
+    "description": "Preview terminal and headless CLI built on the Cline agent core.",
+    "homepage_domain": "cline.bot",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux"
+    ],
+    "upgrade_options": [
+      {
+        "id": "native",
+        "mechanism": "native",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "cline",
+          "update"
+        ],
+        "package_source": "cline-updater"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "cline"
+        ],
+        "package_source": "npm:cline"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Node.js",
+        "minimum_version": "20"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "cline",
+        "--json",
+        "{task}"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "cline",
+    "certification_profile_id": "cline-v1",
+    "ide_extension": {
+      "ecosystem": "vscode",
+      "identifier": "saoudrizwan.claude-dev",
+      "marketplace_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev"
+    },
+    "official_source": {
+      "documentation_source": "https://docs.cline.bot/usage/cli-overview",
+      "source_repository": "https://github.com/cline/cline",
+      "package_source": "npm:cline",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "cline-preview-npm-cli-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "codex"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "@openai/codex"
+        ],
+        "package_source": "npm:@openai/codex"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "chatgpt",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "codex",
+          "login"
+        ],
+        "status_argv": [
+          "codex",
+          "login",
+          "status"
+        ]
+      },
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "OPENAI_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "openai-subscription",
+        "display_name": "ChatGPT subscription",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "usage_reporting_supported": true,
+        "separately_billed": false
+      },
+      {
+        "provider_id": "openai-api",
+        "display_name": "OpenAI API",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "usage_reporting_supported": true,
+        "separately_billed": true
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "codex",
+    "display_name": "OpenAI Codex CLI",
+    "vendor": "OpenAI",
+    "description": "OpenAI coding agent CLI with structured non-interactive execution.",
+    "homepage_domain": "openai.com",
+    "category": "terminal",
+    "maturity": "adapter_conformant",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "update",
+          "--global",
+          "@openai/codex"
+        ],
+        "package_source": "npm:@openai/codex"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "@openai/codex"
+        ],
+        "package_source": "npm:@openai/codex"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Node.js",
+        "required": true
+      }
+    ],
+    "capabilities": {
+      "read_files": {
+        "declared": true,
+        "observed": true
+      },
+      "write_files": {
+        "declared": true,
+        "observed": true
+      },
+      "structured_output": {
+        "declared": true,
+        "observed": true
+      },
+      "session_resume": {
+        "declared": true,
+        "observed": true
+      },
+      "sandbox_mode": {
+        "declared": true,
+        "observed": true
+      }
+    },
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "codex",
+        "exec",
+        "--json",
+        "{task}"
+      ],
+      "resume_argv": [
+        "codex",
+        "exec",
+        "resume",
+        "{session_id}",
+        "{task}"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "codex",
+    "certification_profile_id": "codex-v1",
+    "official_source": {
+      "documentation_source": "https://developers.openai.com/codex/cli/reference/",
+      "source_repository": "https://github.com/openai/codex",
+      "package_source": "npm:@openai/codex",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "npm-global-openai-codex-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "cn"
+    ],
+    "installation_options": [
+      {
+        "id": "official-script-review",
+        "mechanism": "official_script",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "package_source": "github:continuedev/continue",
+        "official_origin": "https://raw.githubusercontent.com/continuedev/continue/main/extensions/cli/scripts/install.sh",
+        "digest_required": true,
+        "executable": false
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "continue",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "cn",
+          "login"
+        ]
+      },
+      {
+        "id": "continue-api",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "CONTINUE_API_KEY"
+        ],
+        "interactive": false
+      },
+      {
+        "id": "anthropic",
+        "kind": "local_api_key",
+        "environment_variables": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "continue",
+        "display_name": "Continue account",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "separately_billed": false
+      },
+      {
+        "provider_id": "anthropic",
+        "display_name": "Anthropic API",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "continue",
+    "display_name": "Continue CLI",
+    "vendor": "Continue",
+    "description": "Terminal coding agent sharing the Continue engine.",
+    "homepage_domain": "continue.dev",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": false,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "prerequisites": [
+      {
+        "kind": "account",
+        "name": "Continue account",
+        "required": false
+      },
+      {
+        "kind": "runtime",
+        "name": "Node.js",
+        "minimum_version": "20",
+        "required": false
+      }
+    ],
+    "execution": {
+      "mode": "text_headless",
+      "argv": [
+        "cn",
+        "-p",
+        "{task}"
+      ],
+      "resume_argv": [
+        "cn",
+        "-p",
+        "{task}",
+        "--resume"
+      ],
+      "protocol": "text"
+    },
+    "adapter_id": "continue",
+    "certification_profile_id": "continue-v1",
+    "official_source": {
+      "documentation_source": "https://docs.continue.dev/cli/quickstart",
+      "source_repository": "https://github.com/continuedev/continue",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "continue-cli-official-script-digest-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "cursor-agent"
+    ],
+    "installation_options": [
+      {
+        "id": "official-script-review",
+        "mechanism": "official_script",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "package_source": "cursor.com",
+        "official_origin": "https://cursor.com/install",
+        "digest_required": true,
+        "executable": false
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "cursor",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "cursor-agent",
+          "login"
+        ],
+        "status_argv": [
+          "cursor-agent",
+          "status"
+        ],
+        "interactive": true
+      },
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "CURSOR_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "cursor",
+        "display_name": "Cursor account",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "cursor",
+    "display_name": "Cursor Agent CLI",
+    "vendor": "Cursor",
+    "description": "Cursor's documented headless coding-agent CLI.",
+    "homepage_domain": "cursor.com",
+    "category": "terminal",
+    "maturity": "discoverable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "cursor-agent",
+        "--print",
+        "--output-format",
+        "stream-json",
+        "{task}"
+      ],
+      "protocol": "stream_json"
+    },
+    "adapter_id": "cursor",
+    "certification_profile_id": "cursor-v1",
+    "official_source": {
+      "documentation_source": "https://docs.cursor.com/en/cli/headless",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "cursor-agent-official-script-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "droid"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "droid"
+        ],
+        "package_source": "npm:droid"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "factory",
+        "kind": "browser_oauth",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "factory",
+        "display_name": "Factory account",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "usage_reporting_supported": true,
+        "separately_billed": false
+      },
+      {
+        "provider_id": "byok",
+        "display_name": "Custom model provider",
+        "funding_source": "api",
+        "authentication_method": "provider_key",
+        "separately_billed": true
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "factory-droid",
+    "display_name": "Factory Droid CLI",
+    "vendor": "Factory",
+    "description": "Factory's coding-agent CLI with bounded exec mode.",
+    "homepage_domain": "factory.ai",
+    "category": "enterprise",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "native",
+        "mechanism": "native",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "droid",
+          "update"
+        ],
+        "package_source": "droid-updater"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "droid",
+        "exec",
+        "--output-format",
+        "json",
+        "{task}"
+      ],
+      "resume_argv": [
+        "droid",
+        "exec",
+        "--output-format",
+        "json",
+        "-s",
+        "{session_id}",
+        "{task}"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "factory-droid",
+    "certification_profile_id": "factory-droid-v1",
+    "official_source": {
+      "documentation_source": "https://docs.factory.ai/droid-cli/cli-reference",
+      "package_source": "npm:droid",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "verified_version": "0.174.0",
+      "installation_method_fingerprint": "factory-droid-npm-direct-sha256-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "gemini"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "@google/gemini-cli"
+        ],
+        "package_source": "npm:@google/gemini-cli"
+      },
+      {
+        "id": "homebrew",
+        "mechanism": "homebrew",
+        "platforms": [
+          "darwin"
+        ],
+        "argv": [
+          "brew",
+          "install",
+          "gemini-cli"
+        ],
+        "package_source": "homebrew:gemini-cli"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "google",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "gemini"
+        ]
+      },
+      {
+        "id": "gemini-api",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "GEMINI_API_KEY"
+        ],
+        "interactive": false
+      },
+      {
+        "id": "vertex",
+        "kind": "cloud_credential_chain",
+        "environment_variables": [
+          "GOOGLE_CLOUD_PROJECT"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "google-account",
+        "display_name": "Google account",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "separately_billed": false
+      },
+      {
+        "provider_id": "gemini-api",
+        "display_name": "Gemini API",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "vertex",
+        "display_name": "Vertex AI",
+        "funding_source": "cloud",
+        "authentication_method": "google_credential_chain",
+        "separately_billed": true
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "gemini-cli",
+    "display_name": "Gemini CLI",
+    "vendor": "Google",
+    "description": "Open-source Google coding agent with headless streaming JSON.",
+    "homepage_domain": "github.com",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "update",
+          "--global",
+          "@google/gemini-cli"
+        ],
+        "package_source": "npm:@google/gemini-cli"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "@google/gemini-cli"
+        ],
+        "package_source": "npm:@google/gemini-cli"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Node.js"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "gemini",
+        "--prompt",
+        "{task}",
+        "--output-format",
+        "stream-json"
+      ],
+      "resume_argv": [
+        "gemini",
+        "--prompt",
+        "{task}",
+        "--resume",
+        "{session_id}",
+        "--output-format",
+        "stream-json"
+      ],
+      "protocol": "stream_json"
+    },
+    "adapter_id": "gemini-cli",
+    "certification_profile_id": "gemini-cli-v1",
+    "official_source": {
+      "documentation_source": "https://github.com/google-gemini/gemini-cli",
+      "source_repository": "https://github.com/google-gemini/gemini-cli",
+      "package_source": "npm:@google/gemini-cli",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "google-gemini-cli-npm-brew-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "copilot"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "@github/copilot"
+        ],
+        "package_source": "npm:@github/copilot"
+      },
+      {
+        "id": "homebrew",
+        "mechanism": "homebrew",
+        "platforms": [
+          "darwin"
+        ],
+        "argv": [
+          "brew",
+          "install",
+          "--cask",
+          "copilot-cli"
+        ],
+        "package_source": "homebrew:copilot-cli"
+      },
+      {
+        "id": "winget",
+        "mechanism": "winget",
+        "platforms": [
+          "win32"
+        ],
+        "argv": [
+          "winget",
+          "install",
+          "GitHub.Copilot"
+        ],
+        "package_source": "winget:GitHub.Copilot"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "github",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "copilot"
+        ],
+        "interactive": true
+      },
+      {
+        "id": "token",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "COPILOT_GITHUB_TOKEN",
+          "GH_TOKEN"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "copilot-subscription",
+        "display_name": "GitHub Copilot subscription",
+        "funding_source": "subscription",
+        "authentication_method": "github",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "github-copilot",
+    "display_name": "GitHub Copilot CLI",
+    "vendor": "GitHub",
+    "description": "GitHub Copilot coding agent CLI for interactive and programmatic use.",
+    "homepage_domain": "github.com",
+    "category": "enterprise",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": false,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "update",
+          "--global",
+          "@github/copilot"
+        ],
+        "package_source": "npm:@github/copilot"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "@github/copilot"
+        ],
+        "package_source": "npm:@github/copilot"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Node.js",
+        "minimum_version": "22"
+      },
+      {
+        "kind": "subscription",
+        "name": "GitHub Copilot"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "copilot",
+        "--prompt",
+        "{task}",
+        "--output-format=json",
+        "--no-ask-user"
+      ],
+      "protocol": "json"
+    },
+    "adapter_id": "github-copilot",
+    "certification_profile_id": "github-copilot-v1",
+    "official_source": {
+      "documentation_source": "https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli",
+      "package_source": "npm:@github/copilot",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "github-copilot-cli-npm-brew-winget-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "goose"
+    ],
+    "installation_options": [
+      {
+        "id": "official-script-review",
+        "mechanism": "official_script",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "package_source": "github:aaif-goose/goose",
+        "official_origin": "https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh",
+        "digest_required": true,
+        "executable": false
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "provider",
+        "kind": "provider_configuration",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "configured",
+        "display_name": "Configured provider",
+        "funding_source": "api",
+        "authentication_method": "provider_configuration",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "local",
+        "display_name": "Local model",
+        "funding_source": "local",
+        "authentication_method": "none",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "goose",
+    "display_name": "Goose",
+    "vendor": "Agentic AI Foundation",
+    "description": "Open-source extensible coding agent originally created by Block.",
+    "homepage_domain": "block.github.io",
+    "category": "open-source",
+    "maturity": "discoverable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": false,
+    "streaming_output_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "execution": {
+      "mode": "text_headless",
+      "argv": [
+        "goose",
+        "run",
+        "--text",
+        "{task}"
+      ],
+      "protocol": "text"
+    },
+    "adapter_id": "goose",
+    "certification_profile_id": "goose-v1",
+    "official_source": {
+      "documentation_source": "https://block.github.io/goose/",
+      "source_repository": "https://github.com/aaif-goose/goose",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "goose-aaif-official-script-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "kiro-cli"
+    ],
+    "installation_options": [
+      {
+        "id": "official-script-review",
+        "mechanism": "official_script",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "package_source": "cli.kiro.dev",
+        "official_origin": "https://cli.kiro.dev/install",
+        "digest_required": true,
+        "executable": false
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "kiro",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "kiro-cli",
+          "login"
+        ]
+      },
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "KIRO_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "kiro",
+        "display_name": "Kiro subscription",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth_or_api_key",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "kiro",
+    "display_name": "Kiro CLI",
+    "vendor": "Amazon Web Services",
+    "description": "Kiro terminal coding agent with documented headless mode.",
+    "homepage_domain": "kiro.dev",
+    "category": "enterprise",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": false,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "execution": {
+      "mode": "text_headless",
+      "argv": [
+        "kiro-cli",
+        "chat",
+        "--no-interactive",
+        "{task}"
+      ],
+      "resume_argv": [
+        "kiro-cli",
+        "chat",
+        "--no-interactive",
+        "--resume-id",
+        "{session_id}",
+        "{task}"
+      ],
+      "protocol": "text"
+    },
+    "adapter_id": "kiro",
+    "certification_profile_id": "kiro-v2",
+    "official_source": {
+      "documentation_source": "https://kiro.dev/docs/cli/reference/cli-commands/",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "verified_version": "2.x",
+      "installation_method_fingerprint": "kiro-cli-official-script-headless-v2"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "opencode"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "opencode-ai"
+        ],
+        "package_source": "npm:opencode-ai"
+      },
+      {
+        "id": "homebrew",
+        "mechanism": "homebrew",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "brew",
+          "install",
+          "anomalyco/tap/opencode"
+        ],
+        "package_source": "homebrew:anomalyco/tap/opencode"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "provider-login",
+        "kind": "vendor_cli",
+        "login_argv": [
+          "opencode",
+          "auth",
+          "login"
+        ],
+        "status_argv": [
+          "opencode",
+          "auth",
+          "list"
+        ]
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "opencode",
+        "display_name": "OpenCode Zen",
+        "funding_source": "provider",
+        "authentication_method": "vendor_cli",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "direct",
+        "display_name": "Direct provider",
+        "funding_source": "api",
+        "authentication_method": "provider_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "local",
+        "display_name": "Local model",
+        "funding_source": "local",
+        "authentication_method": "none",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "opencode",
+    "display_name": "OpenCode",
+    "vendor": "Anomaly",
+    "description": "Open-source provider-flexible coding agent.",
+    "homepage_domain": "opencode.ai",
+    "category": "open-source",
+    "maturity": "adapter_conformant",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "update",
+          "--global",
+          "opencode-ai"
+        ],
+        "package_source": "npm:opencode-ai"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "opencode-ai"
+        ],
+        "package_source": "npm:opencode-ai"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "opencode",
+        "run",
+        "--format",
+        "json",
+        "{task}"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "opencode",
+    "certification_profile_id": "opencode-v1",
+    "official_source": {
+      "documentation_source": "https://opencode.ai/docs/cli/",
+      "source_repository": "https://github.com/anomalyco/opencode",
+      "package_source": "npm:opencode-ai",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "opencode-official-npm-brew-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "openhands"
+    ],
+    "installation_options": [
+      {
+        "id": "uv",
+        "mechanism": "uv",
+        "platforms": [
+          "darwin",
+          "linux",
+          "wsl"
+        ],
+        "argv": [
+          "uv",
+          "tool",
+          "install",
+          "openhands",
+          "--python",
+          "3.12"
+        ],
+        "package_source": "pypi:openhands"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "openhands-cloud",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "openhands",
+          "login"
+        ]
+      },
+      {
+        "id": "provider",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "LLM_API_KEY",
+          "LLM_MODEL",
+          "LLM_BASE_URL"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "openhands",
+        "display_name": "OpenHands Cloud",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "separately_billed": false
+      },
+      {
+        "provider_id": "configured",
+        "display_name": "Configured LLM provider",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "local",
+        "display_name": "Local model",
+        "funding_source": "local",
+        "authentication_method": "endpoint",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "openhands",
+    "display_name": "OpenHands CLI",
+    "vendor": "OpenHands",
+    "description": "Open-source coding agent CLI with headless JSONL and ACP modes.",
+    "homepage_domain": "openhands.dev",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "wsl"
+    ],
+    "upgrade_options": [
+      {
+        "id": "uv",
+        "mechanism": "uv",
+        "platforms": [
+          "darwin",
+          "linux",
+          "wsl"
+        ],
+        "argv": [
+          "uv",
+          "tool",
+          "upgrade",
+          "openhands"
+        ],
+        "package_source": "pypi:openhands"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "uv",
+        "mechanism": "uv",
+        "platforms": [
+          "darwin",
+          "linux",
+          "wsl"
+        ],
+        "argv": [
+          "uv",
+          "tool",
+          "uninstall",
+          "openhands"
+        ],
+        "package_source": "pypi:openhands"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Python",
+        "minimum_version": "3.12"
+      },
+      {
+        "kind": "package_manager",
+        "name": "uv"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "openhands",
+        "--headless",
+        "--json",
+        "--task",
+        "{task}"
+      ],
+      "resume_argv": [
+        "openhands",
+        "--headless",
+        "--json",
+        "--resume",
+        "{session_id}",
+        "--task",
+        "{task}"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "openhands",
+    "certification_profile_id": "openhands-v1",
+    "official_source": {
+      "documentation_source": "https://docs.openhands.dev/openhands/usage/cli/command-reference",
+      "source_repository": "https://github.com/OpenHands/OpenHands",
+      "package_source": "pypi:openhands",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "openhands-uv-python312-headless-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "pi"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "--ignore-scripts",
+          "@earendil-works/pi-coding-agent"
+        ],
+        "package_source": "npm:@earendil-works/pi-coding-agent"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "provider-login",
+        "kind": "interactive",
+        "interactive": true
+      },
+      {
+        "id": "provider-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "ANTHROPIC_API_KEY",
+          "OPENAI_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "subscription",
+        "display_name": "Provider subscription",
+        "funding_source": "subscription",
+        "authentication_method": "oauth",
+        "separately_billed": false
+      },
+      {
+        "provider_id": "api",
+        "display_name": "Provider API",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "local",
+        "display_name": "Local provider",
+        "funding_source": "local",
+        "authentication_method": "endpoint",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "pi",
+    "display_name": "Pi coding agent",
+    "vendor": "Earendil Works",
+    "description": "Minimal open-source terminal coding harness with JSON and RPC modes.",
+    "homepage_domain": "pi.dev",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "native",
+        "mechanism": "native",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "pi",
+          "update",
+          "--self"
+        ],
+        "package_source": "pi-updater"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "@earendil-works/pi-coding-agent"
+        ],
+        "package_source": "npm:@earendil-works/pi-coding-agent"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "pi",
+        "--print",
+        "{task}",
+        "--mode",
+        "json"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "pi",
+    "certification_profile_id": "pi-v1",
+    "official_source": {
+      "documentation_source": "https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/index.md",
+      "source_repository": "https://github.com/earendil-works/pi",
+      "package_source": "npm:@earendil-works/pi-coding-agent",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "pi-earendil-npm-ignore-scripts-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": true,
+    "executable_names": [
+      "qwen"
+    ],
+    "installation_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "install",
+          "--global",
+          "@qwen-code/qwen-code@latest"
+        ],
+        "package_source": "npm:@qwen-code/qwen-code"
+      },
+      {
+        "id": "homebrew",
+        "mechanism": "homebrew",
+        "platforms": [
+          "darwin",
+          "linux"
+        ],
+        "argv": [
+          "brew",
+          "install",
+          "qwen-code"
+        ],
+        "package_source": "homebrew:qwen-code"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "OPENAI_API_KEY",
+          "DASHSCOPE_API_KEY"
+        ],
+        "interactive": false
+      },
+      {
+        "id": "coding-plan",
+        "kind": "subscription",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "dashscope",
+        "display_name": "Alibaba DashScope",
+        "funding_source": "api",
+        "authentication_method": "api_key",
+        "separately_billed": true
+      },
+      {
+        "provider_id": "coding-plan",
+        "display_name": "Alibaba Coding Plan",
+        "funding_source": "subscription",
+        "authentication_method": "subscription",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "qwen-code",
+    "display_name": "Qwen Code",
+    "vendor": "Alibaba Cloud",
+    "description": "Open-source coding agent from the Qwen team.",
+    "homepage_domain": "github.com",
+    "category": "open-source",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "session_resume_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "upgrade_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "update",
+          "--global",
+          "@qwen-code/qwen-code"
+        ],
+        "package_source": "npm:@qwen-code/qwen-code"
+      }
+    ],
+    "uninstall_options": [
+      {
+        "id": "npm",
+        "mechanism": "npm",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "npm",
+          "uninstall",
+          "--global",
+          "@qwen-code/qwen-code"
+        ],
+        "package_source": "npm:@qwen-code/qwen-code"
+      }
+    ],
+    "prerequisites": [
+      {
+        "kind": "runtime",
+        "name": "Node.js",
+        "minimum_version": "22"
+      }
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "qwen",
+        "--prompt",
+        "{task}",
+        "--output-format",
+        "stream-json"
+      ],
+      "resume_argv": [
+        "qwen",
+        "--prompt",
+        "{task}",
+        "--resume",
+        "{session_id}",
+        "--output-format",
+        "stream-json"
+      ],
+      "protocol": "stream_json"
+    },
+    "adapter_id": "qwen-code",
+    "certification_profile_id": "qwen-code-v1",
+    "official_source": {
+      "documentation_source": "https://github.com/QwenLM/qwen-code",
+      "source_repository": "https://github.com/QwenLM/qwen-code",
+      "package_source": "npm:@qwen-code/qwen-code",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "qwen-code-npm-homebrew-v1"
+    }
+  },
+  {
+    "tier": "ide",
+    "open_source": true,
+    "executable_names": [],
+    "installation_options": [
+      {
+        "id": "vscode-marketplace",
+        "mechanism": "vscode_extension",
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "argv": [
+          "code",
+          "--install-extension",
+          "RooVeterinaryInc.roo-cline"
+        ],
+        "package_source": "vscode:RooVeterinaryInc.roo-cline"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "provider",
+        "kind": "ide_configuration",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "roo-code",
+    "display_name": "Roo Code",
+    "vendor": "Roo Code",
+    "description": "VS Code-family agent integration; no reviewed independent machine CLI contract.",
+    "homepage_domain": "roocode.com",
+    "category": "ide",
+    "maturity": "discoverable",
+    "remote_execution_supported": false,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": false,
+    "structured_output_supported": false,
+    "streaming_output_supported": false,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "prerequisites": [
+      {
+        "kind": "ide",
+        "name": "Visual Studio Code"
+      }
+    ],
+    "execution": {
+      "mode": "ide_only",
+      "protocol": "none"
+    },
+    "ide_extension": {
+      "ecosystem": "vscode",
+      "identifier": "RooVeterinaryInc.roo-cline",
+      "marketplace_url": "https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline"
+    },
+    "official_source": {
+      "documentation_source": "https://docs.roocode.com/getting-started/installing",
+      "source_repository": "https://github.com/RooCodeInc/Roo-Code",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "roo-code-vscode-extension-v1"
+    }
+  },
+  {
+    "tier": "terminal",
+    "open_source": false,
+    "executable_names": [
+      "oz"
+    ],
+    "installation_options": [
+      {
+        "id": "homebrew",
+        "mechanism": "homebrew",
+        "platforms": [
+          "darwin"
+        ],
+        "argv": [
+          "brew",
+          "install",
+          "--cask",
+          "oz"
+        ],
+        "package_source": "homebrew:oz"
+      },
+      {
+        "id": "winget-bundle",
+        "mechanism": "winget",
+        "platforms": [
+          "win32"
+        ],
+        "argv": [
+          "winget",
+          "install",
+          "Warp.Warp"
+        ],
+        "package_source": "winget:Warp.Warp"
+      }
+    ],
+    "authentication_methods": [
+      {
+        "id": "warp",
+        "kind": "browser_oauth",
+        "login_argv": [
+          "oz",
+          "login"
+        ],
+        "status_argv": [
+          "oz",
+          "whoami",
+          "--output-format",
+          "json"
+        ]
+      },
+      {
+        "id": "api-key",
+        "kind": "environment_variable",
+        "environment_variables": [
+          "WARP_API_KEY"
+        ],
+        "interactive": false
+      }
+    ],
+    "provider_modes": [
+      {
+        "provider_id": "warp",
+        "display_name": "Warp account",
+        "funding_source": "subscription",
+        "authentication_method": "browser_oauth",
+        "separately_billed": false
+      }
+    ],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "warp",
+    "display_name": "Warp Oz CLI",
+    "vendor": "Warp",
+    "description": "Warp's Oz CLI for local and cloud agent runs.",
+    "homepage_domain": "warp.dev",
+    "category": "enterprise",
+    "maturity": "authenticatable",
+    "remote_execution_supported": true,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": true,
+    "structured_output_supported": true,
+    "streaming_output_supported": true,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "execution": {
+      "mode": "structured_headless",
+      "argv": [
+        "oz",
+        "agent",
+        "run",
+        "--prompt",
+        "{task}"
+      ],
+      "protocol": "jsonl"
+    },
+    "adapter_id": "warp",
+    "certification_profile_id": "warp-v1",
+    "official_source": {
+      "documentation_source": "https://docs.warp.dev/reference/cli",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "warp-oz-homebrew-winget-v1"
+    }
+  },
+  {
+    "tier": "ide",
+    "open_source": false,
+    "executable_names": [],
+    "installation_options": [],
+    "authentication_methods": [
+      {
+        "id": "windsurf",
+        "kind": "ide_login",
+        "interactive": true
+      }
+    ],
+    "provider_modes": [],
+    "experimental": true,
+    "blocked_reason": null,
+    "revision": "2026-07-29.1",
+    "harness_id": "windsurf",
+    "display_name": "Windsurf",
+    "vendor": "Cognition",
+    "description": "Windsurf editor agent integration; independent remote CLI not verified.",
+    "homepage_domain": "windsurf.com",
+    "category": "ide",
+    "maturity": "discoverable",
+    "remote_execution_supported": false,
+    "interactive_execution_supported": true,
+    "non_interactive_execution_supported": false,
+    "structured_output_supported": false,
+    "streaming_output_supported": false,
+    "supported_platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ],
+    "prerequisites": [
+      {
+        "kind": "ide",
+        "name": "Windsurf"
+      }
+    ],
+    "execution": {
+      "mode": "ide_only",
+      "protocol": "none"
+    },
+    "ide_extension": {
+      "ecosystem": "windsurf",
+      "identifier": "builtin-agent",
+      "marketplace_url": "https://windsurf.com/editor"
+    },
+    "official_source": {
+      "documentation_source": "https://docs.windsurf.com/windsurf/getting-started",
+      "verified_at": "2026-07-29T00:00:00Z",
+      "installation_method_fingerprint": "windsurf-editor-integration-v1"
+    }
+  }
+]

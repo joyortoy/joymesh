@@ -6,7 +6,7 @@
 * Readiness: keys present, migrations complete, listener bound, reconciliation under threshold
 * Metrics: machine-readable export without private payloads
 
-## JoyCLI
+## JoyCTL
 
 ```bash
 joyctl runtime intake-status

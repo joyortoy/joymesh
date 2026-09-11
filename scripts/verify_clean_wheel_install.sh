@@ -3,7 +3,7 @@
 set -euo pipefail
 
 MESH_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-JOYCLI_ROOT="${JOYCLI_ROOT:-/Users/joytan/intexta-buildweek/joycli}"
+JOYCTL_ROOT="${JOYCTL_ROOT:-${HOME}/joycli}"
 WORKDIR="$(mktemp -d -t joymux-clean-XXXXXX)"
 WORKDIR="$(cd "${WORKDIR}" && pwd -P)"
 cleanup() {
@@ -18,23 +18,23 @@ FAIL() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 STAGE 0 "workdir ${WORKDIR}"
 
 STAGE 1 "rebuild wheels"
-rm -rf "${MESH_ROOT}/dist" "${JOYCLI_ROOT}/dist"
-mkdir -p "${JOYCLI_ROOT}/dist"
+rm -rf "${MESH_ROOT}/dist" "${JOYCTL_ROOT}/dist"
+mkdir -p "${JOYCTL_ROOT}/dist"
 "${MESH_ROOT}/.venv/bin/python" -m build "${MESH_ROOT}" >/dev/null
 (
-  cd "${JOYCLI_ROOT}"
-  "${MESH_ROOT}/.venv/bin/python" -c "from joycli_build_backend import build_wheel; print(build_wheel('dist'))"
+  cd "${JOYCTL_ROOT}"
+  "${MESH_ROOT}/.venv/bin/python" -c "from joyctl_build_backend import build_wheel; print(build_wheel('dist'))"
 )
 
 MESH_WHEEL="$(ls -1 "${MESH_ROOT}/dist"/joymesh-*.whl | head -1)"
-JOYCLI_WHEEL="$(ls -1 "${JOYCLI_ROOT}/dist"/joycli-*.whl | head -1)"
+JOYCTL_WHEEL="$(ls -1 "${JOYCTL_ROOT}/dist"/joycli-*.whl | head -1)"
 [[ -f "${MESH_WHEEL}" ]] || FAIL "missing JoyMesh wheel"
-[[ -f "${JOYCLI_WHEEL}" ]] || FAIL "missing JoyCLI wheel"
+[[ -f "${JOYCTL_WHEEL}" ]] || FAIL "missing JoyCTL wheel"
 
 STAGE 2 "inspect Requires-Dist"
 python3 - <<PY
 import zipfile
-for label, wheel in (("joycli", "${JOYCLI_WHEEL}"), ("joymesh", "${MESH_WHEEL}")):
+for label, wheel in (("joycli", "${JOYCTL_WHEEL}"), ("joymesh", "${MESH_WHEEL}")):
     with zipfile.ZipFile(wheel) as zf:
         meta = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
         text = zf.read(meta).decode()
@@ -51,17 +51,17 @@ unset PYTHONPATH || true
 export PATH="${WORKDIR}/venv/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 hash -r
 python -m pip install --upgrade pip >/dev/null
-python -m pip install "${JOYCLI_WHEEL}" "${MESH_WHEEL}" >/dev/null
+python -m pip install "${JOYCTL_WHEEL}" "${MESH_WHEEL}" >/dev/null
 
 STAGE 4 "assert no source imports"
 python - <<PY
-import joycli, joymesh, pathlib, sys, cryptography
+import joyctl, joymesh, pathlib, sys, cryptography
 jc = pathlib.Path(joycli.__file__).resolve()
 jm = pathlib.Path(joymesh.__file__).resolve()
 print("joycli", jc)
 print("joymesh", jm)
 print("cryptography", cryptography.__version__)
-assert "${JOYCLI_ROOT}/src" not in sys.path
+assert "${JOYCTL_ROOT}/src" not in sys.path
 assert "${MESH_ROOT}/src" not in sys.path
 assert "site-packages" in str(jc)
 assert "site-packages" in str(jm)
@@ -69,8 +69,8 @@ PY
 
 SOCK="/tmp/jm-clean-$(python -c 'import uuid; print(uuid.uuid4().hex[:12])').sock"
 STATE="${WORKDIR}/state"
-JOYCLI_STATE="${WORKDIR}/joycli-state"
-mkdir -p "${STATE}" "${JOYCLI_STATE}" "${WORKDIR}/workspace" "${WORKDIR}/keys"
+JOYCTL_STATE="${WORKDIR}/joycli-state"
+mkdir -p "${STATE}" "${JOYCTL_STATE}" "${WORKDIR}/workspace" "${WORKDIR}/keys"
 printf 'clean install\n' > "${WORKDIR}/workspace/README.md"
 
 STAGE 5 "provision signing keys"
@@ -89,15 +89,15 @@ chmod 600 "${WORKDIR}/keys/private.key"
 
 export JOYMESH_RUNTIME_SIGNING_KEY="${PRIV}"
 export JOYMESH_RUNTIME_SIGNING_KEY_ID="${KEY_ID}"
-export JOYCLI_RUNTIME_PUBLISHER_PUBLIC_KEY="${PUB}"
-export JOYCLI_RUNTIME_PUBLISHER_KEY_ID="${KEY_ID}"
-export JOYCLI_RUNTIME_ALLOW_UNSIGNED=0
+export JOYCTL_RUNTIME_PUBLISHER_PUBLIC_KEY="${PUB}"
+export JOYCTL_RUNTIME_PUBLISHER_KEY_ID="${KEY_ID}"
+export JOYCTL_RUNTIME_ALLOW_UNSIGNED=0
 export JOYMESH_DELIVERY_TRANSPORT=unix_socket
 export JOYMESH_DELIVERY_SOCKET="${SOCK}"
 export JOYMESH_DATABASE_URL="sqlite+aiosqlite:///${STATE}/mesh.db"
 
-STAGE 6 "start JoyCLI intake"
-joyctl --repo "${WORKDIR}" --state "${JOYCLI_STATE}" --mode durable-local \
+STAGE 6 "start JoyCTL intake"
+joyctl --repo "${WORKDIR}" --state "${JOYCTL_STATE}" --mode durable-local \
   runtime intake-serve --socket "${SOCK}" >"${WORKDIR}/intake.log" 2>&1 &
 INTAKE_PID=$!
 for _ in $(seq 1 50); do
@@ -116,23 +116,23 @@ from joymesh.delivery import RuntimeDeliveryPublisher, DeliveryOutbox, build_del
 from joymesh.delivery.contracts import DeliveryKind
 from joymesh.delivery.worker import DeliveryWorker
 from joymesh.delivery.settings import DeliverySettings, DeliveryTransportMode
-from joycli.runtime.intake import (
+from joyctl.runtime.intake import (
     SqliteRuntimeIntakeStore, RuntimeStateIntakeService,
     PublisherKey, PublisherKeyRegistry, PublisherKeyStatus,
 )
-from joycli.runtime.intake.routing_bridge import RuntimeHarnessProjectionSnapshot
-from joycli.runtime.intake.directive import build_execution_directive
-from joycli.provider_routing import (
+from joyctl.runtime.intake.routing_bridge import RuntimeHarnessProjectionSnapshot
+from joyctl.runtime.intake.directive import build_execution_directive
+from joyctl.provider_routing import (
     ProviderRouteRequest, ProviderSessionRequirement, route_provider,
     PROVIDER_SELECTION_POLICY_REVISION,
 )
-from joycli.provider_capabilities import (
+from joyctl.provider_capabilities import (
     CertifiedProviderCapability, ProviderCapabilityCertificationRegistry,
     ProviderCapabilityCertificationState, ProviderCompatibilityConstraints,
     issue_capability_certification,
 )
-from joycli.provider_sessions import ProviderCliSessionSnapshot
-from joycli.providers import ProviderRegistry, GenericProvider
+from joyctl.provider_sessions import ProviderCliSessionSnapshot
+from joyctl.providers import ProviderRegistry, GenericProvider
 
 async def main():
     settings = DeliverySettings(
@@ -194,13 +194,13 @@ async def main():
     await worker.stop()
     outbox.close()
 
-    store_path = Path("${JOYCLI_STATE}") / "runtime_intake.sqlite3"
+    store_path = Path("${JOYCTL_STATE}") / "runtime_intake.sqlite3"
     assert store_path.exists(), store_path
     keys = PublisherKeyRegistry((
         PublisherKey(
-            os.environ["JOYCLI_RUNTIME_PUBLISHER_KEY_ID"],
+            os.environ["JOYCTL_RUNTIME_PUBLISHER_KEY_ID"],
             "ed25519",
-            os.environ["JOYCLI_RUNTIME_PUBLISHER_PUBLIC_KEY"],
+            os.environ["JOYCTL_RUNTIME_PUBLISHER_PUBLIC_KEY"],
             PublisherKeyStatus.ACTIVE,
             "joymesh",
             "local",
@@ -269,7 +269,7 @@ STAGE 8 "artifact hashes"
 python3 - <<PY
 import hashlib, pathlib
 from datetime import datetime, timezone
-for path in ["${JOYCLI_WHEEL}", "${MESH_WHEEL}"]:
+for path in ["${JOYCTL_WHEEL}", "${MESH_WHEEL}"]:
     p = pathlib.Path(path)
     digest = hashlib.sha256(p.read_bytes()).hexdigest()
     print(f"filename={p.name}")

@@ -8,10 +8,10 @@ Each incident: detect → contain → preserve evidence → recover → verify �
 Disable traffic if compromise suspected; inspect key registry; rotate keys; preserve rejected audit counters.
 
 ### Suspected key compromise
-Revoke compromised key on JoyCLI; generate replacement on JoyMesh; register new public key; resume; keep failed-attempt audit.
+Revoke compromised key on JoyCTL; generate replacement on JoyMesh; register new public key; resume; keep failed-attempt audit.
 
 ### Outbox not draining
-Check JoyCLI listener readiness, socket perms, signature/key ids, disk space; do not delete undelivered authoritative outbox rows.
+Check JoyCTL listener readiness, socket perms, signature/key ids, disk space; do not delete undelivered authoritative outbox rows.
 
 ### Database corruption
 Stop services; restore from last good backup; verify checksums; migration status; replay outbox.

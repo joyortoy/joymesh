@@ -1,0 +1,13 @@
+× joymesh-delivery.service - JoyMesh signed runtime delivery environment
+     Loaded: loaded (/etc/systemd/system/joymesh-delivery.service; disabled; preset: enabled)
+     Active: failed (Result: exit-code) since Tue 2026-08-04 03:13:23 +08; 49s ago
+       Docs: file:///usr/share/doc/joymesh/docs/release/OPERATIONS.md
+    Process: 2781 ExecStart=/opt/joymux/venv/bin/joymesh production validate-config (code=exited, status=226/NAMESPACE)
+   Main PID: 2781 (code=exited, status=226/NAMESPACE)
+        CPU: 27ms
+
+Aug 04 03:13:23 lima-prod-qual systemd[1]: Starting joymesh-delivery.service - JoyMesh signed runtime delivery environment...
+Aug 04 03:13:23 lima-prod-qual (joymesh)[2781]: joymesh-delivery.service: Failed to set up mount namespacing: /run/joymesh: No such file or directory
+Aug 04 03:13:23 lima-prod-qual systemd[1]: joymesh-delivery.service: Main process exited, code=exited, status=226/NAMESPACE
+Aug 04 03:13:23 lima-prod-qual systemd[1]: joymesh-delivery.service: Failed with result 'exit-code'.
+Aug 04 03:13:23 lima-prod-qual systemd[1]: Failed to start joymesh-delivery.service - JoyMesh signed runtime delivery environment.

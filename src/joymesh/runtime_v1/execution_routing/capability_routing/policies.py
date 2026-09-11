@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any
 
 
 class RoutingPolicyPreset(StrEnum):
@@ -67,8 +68,7 @@ class RoutingPolicy:
             or preset is RoutingPolicyPreset.PREFER_STRONGEST_REASONING
         )
         prefer_open = (
-            bool(data.get("prefer_open_models"))
-            or preset is RoutingPolicyPreset.PREFER_OPEN_MODELS
+            bool(data.get("prefer_open_models")) or preset is RoutingPolicyPreset.PREFER_OPEN_MODELS
         )
         avoid_paid = (
             bool(data.get("avoid_paid_apis")) or preset is RoutingPolicyPreset.AVOID_PAID_APIS

@@ -1,6 +1,6 @@
 # Production qualification
 
-Last updated: 2026-08-03T16:37:36Z
+Last updated: 2026-08-03T19:17:23Z
 
 Branch: `production/readiness-v0.1`
 
@@ -15,27 +15,41 @@ Branch: `production/readiness-v0.1`
 | elapsed_seconds | 3605.12 |
 | ticks | 714 |
 | failures | 0 |
-| gates | {'duration_met': True, 'min_ticks': True, 'zero_failures': True} |
+| gates | duration_met, min_ticks, zero_failures |
 | ok | **True** |
 
 ## 8-hour Linux soak
 
-**IN PROGRESS** on `prod-qual`.
+### Prior attempt (PID 10991) — DEAD / incomplete
+
+VM `prod-qual` was **Stopped** when qualification resumed (2026-08-04 ~03:04 +08). PID 10991 gone; `/tmp/qualification-8h.json` absent (tmpfs cleared). Approx. ~2.5h elapsed of 8h before stop. Evidence: `prior-8h-dead.json`.
+
+### Restart (in progress)
 
 | Field | Value |
 |-------|--------|
-| PID | 10991 (verify with `limactl shell prod-qual -- ps -p 10991`) |
-| output (VM) | `/tmp/qualification-8h.json` |
+| PID | **2915** |
+| started_at_utc | 2026-08-03T19:15:01Z |
 | QUAL_DURATION_SECONDS | 28800 |
-| started (approx.) | 2026-08-03T16:35:00Z (after 1h run completed) |
+| durable output (VM) | `/home/joytan.guest/prod-qual-evidence/qualification-8h/qualification-8h.json` |
+| also | copy to `/tmp/qualification-8h.json` on completion |
+| host poller | `.tmp/poll-qualification-8h.sh` |
 
-Copy when complete: `limactl cp prod-qual:/tmp/qualification-8h.json reports/data/production/qualification-8h.json`
+Copy when complete:
+
+`limactl cp prod-qual:/home/joytan.guest/prod-qual-evidence/qualification-8h/qualification-8h.json reports/data/production/qualification-8h.json`
 
 ## Systemd lifecycle (Linux)
 
-* **JoyCLI** `joycli-runtime-intake.service`: start/stop/restart **pass** (`/opt/joymux/venv`, state `/var/lib/joycli/state`)
-* **JoyMesh** `joymesh-delivery.service`: oneshot validate **active** after CLI lazy-import fix (`/opt/joymux/venv/bin/joymesh production validate-config`)
+* **JoyCLI** `joycli-runtime-intake.service`: start/stop/restart **pass**; FI-25 SIGKILL recovery **pass**
+* **JoyMesh** `joymesh-delivery.service`: oneshot validate **active** (requires `/run/joymesh` present for ProtectSystem namespacing)
 
-Evidence: `service-lifecycle-live.json`, `service-lifecycle-live-validation.md`.
+## Reboot simulation
 
-Verdict: **production candidate** until 8h completes with all gates green.
+**Partial / cold-start pass** without full VM reboot (deferred to protect 8h soak): stop units → wipe `/run` sockets → recreate `/run/joymux`+`/run/joymesh` → start intake+delivery → both **active**, socket bound. Units remain **disabled** (not enabled for boot). Evidence: `reboot-sim-result.json`.
+
+## FI-25
+
+**PASS** (brief): SIGKILL MainPID 2702 → respawn 2739; sqlite integrity ok. Evidence: `fi25-result.json`.
+
+Verdict: **production candidate** until restarted 8h completes with all gates green.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup/restore E2E for JoyCLI intake + JoyMesh outbox.
+# Backup/restore E2E for JoyCTL intake + JoyMesh outbox.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKDIR="$(mktemp -d -t jm-backup-XXXXXX)"
@@ -7,27 +7,27 @@ WORKDIR="$(cd "${WORKDIR}" && pwd -P)"
 cleanup() { rm -rf "${WORKDIR}"; }
 trap cleanup EXIT
 
-PYTHON="${PYTHON:-/Users/joytan/Documents/joymesh-rc1-verify/venv-joymesh-src/bin/python}"
-JOYCLI_ROOT="${JOYCLI_ROOT:-/Users/joytan/intexta-buildweek/joycli}"
-export JOYCLI_STATE="${WORKDIR}/joycli-state"
-mkdir -p "${JOYCLI_STATE}" "${WORKDIR}/outbox" "${WORKDIR}/backup-cli" "${WORKDIR}/backup-mesh"
+PYTHON="${PYTHON:-python3}"
+JOYCTL_ROOT="${JOYCTL_ROOT:-${HOME}/joycli}"
+export JOYCTL_STATE="${WORKDIR}/joycli-state"
+mkdir -p "${JOYCTL_STATE}" "${WORKDIR}/outbox" "${WORKDIR}/backup-cli" "${WORKDIR}/backup-mesh"
 
 # Create intake DB
 (
-  cd "${JOYCLI_ROOT}"
+  cd "${JOYCTL_ROOT}"
   "${PYTHON}" - <<PY
 from pathlib import Path
-from joycli.runtime.intake.store import SqliteRuntimeIntakeStore
-from joycli.runtime.intake.key_store import DurablePublisherKeyStore
-state = Path("${JOYCLI_STATE}")
+from joyctl.runtime.intake.store import SqliteRuntimeIntakeStore
+from joyctl.runtime.intake.key_store import DurablePublisherKeyStore
+state = Path("${JOYCTL_STATE}")
 SqliteRuntimeIntakeStore(state / "runtime_intake.sqlite3").close()
 DurablePublisherKeyStore(state / "publisher_keys.json").add(
     key_id="bk", public_key="pub", publisher_id="joymesh", organisation_id="local"
 )
 PY
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime backup --destination "${WORKDIR}/backup-cli"
-  rm -f "${JOYCLI_STATE}/runtime_intake.sqlite3" "${JOYCLI_STATE}/publisher_keys.json"
-  "${PYTHON}" -m joycli.cli --state "${JOYCLI_STATE}" runtime restore --source "${WORKDIR}/backup-cli" --force
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime backup --destination "${WORKDIR}/backup-cli"
+  rm -f "${JOYCTL_STATE}/runtime_intake.sqlite3" "${JOYCTL_STATE}/publisher_keys.json"
+  "${PYTHON}" -m joycli.cli --state "${JOYCTL_STATE}" runtime restore --source "${WORKDIR}/backup-cli" --force
 )
 
 # Create outbox and backup

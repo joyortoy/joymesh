@@ -1,11 +1,15 @@
 # JoyMesh
 
+JoyMesh **acts** — harness registry/readiness, runtime execution, workers, and
+factual execution evidence. Canonical ownership:
+JoyLegal `docs/joyuniverse-component-ownership.md`.
+
 JoyMesh is a standalone open-source interoperability layer for coding-agent
 harnesses. It provides one stable SDK, CLI, and local API for discovering
 harnesses, inspecting capabilities, launching runs, normalizing events,
 tracking subscriptions and quota, and selecting deterministic routes.
 
-JoyMesh is independent of JoyCLI and contains no application-specific planning,
+JoyMesh is independent of JoyCTL and contains no application-specific planning,
 mission decomposition, private workflows, or proprietary data.
 
 The browser-first platform adds a cloud control plane and outbound-only JoyMesh

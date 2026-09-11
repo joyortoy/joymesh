@@ -361,8 +361,7 @@ def test_cli_status_and_json_output() -> None:
     key = _snap("gemini-cli", HarnessAvailability.CONFIGURATION_REQUIRED)
     grok = _snap("grok", HarnessAvailability.READY)
     providers = {
-        item.harness_id: StaticQuotaProvider(item)
-        for item in (ready, login, credits, key, grok)
+        item.harness_id: StaticQuotaProvider(item) for item in (ready, login, credits, key, grok)
     }
 
     class _Mesh:

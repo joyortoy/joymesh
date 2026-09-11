@@ -1,0 +1,13 @@
+{
+  "test": "reboot-simulation-cold-start",
+  "note": "Stopped units, wiped /run sockets, recreated /run/joymux+/run/joymesh, restarted intake+delivery. Full VM reboot deferred to preserve upcoming 8h soak. Units remain disabled.",
+  "joycli_active": "active",
+  "joymesh_delivery_active": "active",
+  "listening": false,
+  "intake_ready_reasons": [
+    "listener_not_bound",
+    "publisher_keys_missing"
+  ],
+  "status": "partial",
+  "at": "2026-08-03T19:14:59.347909+00:00"
+}

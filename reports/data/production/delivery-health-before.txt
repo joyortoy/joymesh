@@ -1,0 +1,15 @@
+{
+  "connected": false,
+  "last_error": null,
+  "negotiated_version": 1,
+  "outbox_size": 0,
+  "socket_path": "/run/joymux/joymesh-delivery.sock",
+  "stats": {
+    "acked": 0,
+    "failed": 0,
+    "published": 0,
+    "replays": 0,
+    "unavailable": 0
+  },
+  "transport": "unix_socket"
+}

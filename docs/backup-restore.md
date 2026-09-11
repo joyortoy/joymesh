@@ -1,6 +1,6 @@
 # Backup and Restore
 
-## JoyCLI
+## JoyCTL
 
 ```bash
 joyctl --state /var/lib/joycli runtime backup --destination /var/backups/joycli/$(date -u +%Y%m%dT%H%M%SZ)

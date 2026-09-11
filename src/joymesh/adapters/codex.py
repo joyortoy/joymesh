@@ -43,16 +43,24 @@ class CodexAdapter(HarnessAdapter):
         )
 
     def build_launch_spec(self, request: RunRequest) -> LaunchSpec:
+        import os
+
+        sandbox = (
+            os.environ.get("JOYMESH_CODEX_SANDBOX", "workspace-write").strip() or "workspace-write"
+        )
         argv = [
             self.executable_name,
             "exec",
             "--json",
             "--skip-git-repo-check",
             "--sandbox",
-            "workspace-write",
+            sandbox,
             "--cd",
             request.workspace,
         ]
+        reasoning = (os.environ.get("JOYMESH_CODEX_REASONING") or "").strip()
+        if reasoning:
+            argv.extend(["-c", f'model_reasoning_effort="{reasoning}"'])
         if request.model:
             argv.extend(["--model", request.model])
         for directory in request.additional_writable_directories:

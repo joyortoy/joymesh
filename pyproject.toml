@@ -58,6 +58,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["ASYNC220", "ASYNC221", "ASYNC240", "E501"]
+"scripts/**/*.py" = ["ASYNC220", "ASYNC221", "ASYNC240", "E501"]
+"tests/*.py" = ["E501"]
+"tests/**/*.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

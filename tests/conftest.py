@@ -12,6 +12,9 @@ import pytest
 # delivery. Production composition (no JOYMESH_DELIVERY_TRANSPORT) uses Unix
 # sockets on macOS/Linux — covered by dedicated production-transport tests.
 os.environ.setdefault("JOYMESH_DELIVERY_TRANSPORT", "memory")
+# Explicit test-only bypass for legacy suites that predate mandatory JoyMux
+# placement. Production must unset this. Sunset: phase3.5-placement-required-v1.
+os.environ.setdefault("JOYMESH_ALLOW_TEST_WITHOUT_PLACEMENT", "1")
 
 
 @pytest.fixture

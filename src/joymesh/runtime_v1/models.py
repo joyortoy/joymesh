@@ -241,3 +241,8 @@ class CreateRuntimeTaskBody(BaseModel):
     required_node: str | None = None
     timeout_seconds: int = Field(default=300, ge=1, le=86_400)
     max_attempts: int = Field(default=2, ge=1, le=10)
+    # Phase 3.5: JoyMux ContextPlacementDecision required in production before route/execute.
+    # Optional typing is temporary compatibility (sunset: phase3.5-placement-required-v1).
+    context_placement: dict[str, Any] | None = None
+    strategic_requirements: dict[str, Any] | None = None
+    runtime_snapshot_revision: str | None = None

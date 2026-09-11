@@ -4,7 +4,7 @@
 Gated by JOYMESH_LIVE_OPENCODE_CRASH=1.
 
 Flow:
-  JoyCLI intake (parent)
+  JoyCTL intake (parent)
   → JoyMesh child (unix socket mode) starts real OpenCode
   → parent SIGKILLs JoyMesh child
   → parent restarts JoyMesh on same durable dirs
@@ -29,6 +29,17 @@ from pathlib import Path
 from uuid import uuid4
 
 GATE = "JOYMESH_LIVE_OPENCODE_CRASH"
+
+
+def _joycli_src() -> Path | None:
+    for candidate in (
+        Path.home() / "joycli" / "src",
+        Path.home() / "joyuniverse-rc" / "joycli" / "src",
+        Path.home() / "Documents" / "joycli" / "src",
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def log(stage: str, **fields: object) -> None:
@@ -312,8 +323,8 @@ async def async_main(exe: str) -> int:
     if os.environ.get(GATE) != "1":
         print(f"SKIP: set {GATE}=1 to run")
         return 2
-    joycli_src = Path("/Users/joytan/intexta-buildweek/joycli/src")
-    if joycli_src.is_dir():
+    joycli_src = _joycli_src()
+    if joycli_src is not None:
         sys.path.insert(0, str(joycli_src))
     from shutil import which
 
@@ -342,7 +353,7 @@ async def async_main(exe: str) -> int:
         encoding="utf-8",
     )
 
-    from joycli.runtime.intake import (
+    from joyctl.runtime.intake import (
         PublisherKey,
         PublisherKeyRegistry,
         PublisherKeyStatus,
@@ -350,6 +361,7 @@ async def async_main(exe: str) -> int:
         SqliteRuntimeIntakeStore,
         UnixSocketRuntimeListener,
     )
+
     from joymesh.control_plane.security import generate_node_keypair
 
     private_key, public_key = generate_node_keypair()
@@ -372,7 +384,7 @@ async def async_main(exe: str) -> int:
     server.start_background()
     log("intake_started", socket=str(sock), root=str(root), owner="joycli")
 
-    # Parent recovery mesh must reuse the same signing key JoyCLI trusts.
+    # Parent recovery mesh must reuse the same signing key JoyCTL trusts.
     os.environ["JOYMESH_RUNTIME_SIGNING_KEY"] = private_key
     os.environ["JOYMESH_RUNTIME_SIGNING_KEY_ID"] = key_id
 
@@ -431,7 +443,7 @@ async def async_main(exe: str) -> int:
     intake_after = int(server.health().get("accepted_count") or 0)
     log("post_recovery_intake_size", before=intake_before, after=intake_after)
     if intake_after < 1:
-        fail("JoyCLI intake received no runtime updates")
+        fail("JoyCTL intake received no runtime updates")
     server.stop_background()
     intake.close()
     log("complete", **result, root=str(root))

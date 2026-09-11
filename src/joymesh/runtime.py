@@ -43,14 +43,33 @@ class HarnessRuntime:
         )
         async with self._lock:
             self._processes[run_id] = process
-        if on_started is not None:
-            await on_started(process.pid)
 
         async def consume(stream: asyncio.StreamReader | None, name: str) -> None:
             if stream is None:
                 return
-            while line := await stream.readline():
-                await on_line(name, line.decode(errors="replace").rstrip("\r\n"))
+            # JSON harness events can exceed asyncio's 64 KiB readline limit.
+            # Drain in chunks and bound retained bytes without killing the run.
+            pending = bytearray()
+            truncated = False
+            limit = 1024 * 1024
+            while chunk := await stream.read(16384):
+                pieces = chunk.split(b"\n")
+                for index, piece in enumerate(pieces):
+                    room = limit - len(pending)
+                    pending.extend(piece[:room])
+                    truncated = truncated or len(piece) > room
+                    if index < len(pieces) - 1:
+                        line = pending.decode(errors="replace").rstrip("\r")
+                        if truncated:
+                            line += " [harness line truncated at 1 MiB]"
+                        await on_line(name, line)
+                        pending.clear()
+                        truncated = False
+            if pending or truncated:
+                line = pending.decode(errors="replace").rstrip("\r")
+                if truncated:
+                    line += " [harness line truncated at 1 MiB]"
+                await on_line(name, line)
 
         async def supervise() -> int:
             async with asyncio.TaskGroup() as group:
@@ -59,6 +78,8 @@ class HarnessRuntime:
             return await process.wait()
 
         try:
+            if on_started is not None:
+                await on_started(process.pid)
             if launch.timeout_seconds is None:
                 return await supervise()
             try:
@@ -69,6 +90,9 @@ class HarnessRuntime:
                 raise HarnessTimeoutError(
                     f"Harness timed out after {launch.timeout_seconds:g} seconds"
                 ) from exc
+        except BaseException:
+            await self._terminate_process_tree(process, grace_period=0.2)
+            raise
         finally:
             async with self._lock:
                 self._processes.pop(run_id, None)

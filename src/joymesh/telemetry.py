@@ -32,10 +32,10 @@ from joymesh.config import (
     set_telemetry_mode,
 )
 
-# Extensible schema version for internal tracking; not part of JoyCLI metrics allowlist.
+# Extensible schema version for internal tracking; not part of JoyCTL metrics allowlist.
 REPORT_SCHEMA_VERSION = 1
 
-# JoyCLI anonymous execution metrics — only these top-level keys may be transmitted.
+# JoyCTL anonymous execution metrics — only these top-level keys may be transmitted.
 METRICS_PAYLOAD_ALLOWLIST: frozenset[str] = frozenset(
     {
         "task_type",
@@ -44,9 +44,7 @@ METRICS_PAYLOAD_ALLOWLIST: frozenset[str] = frozenset(
         "quality",
     }
 )
-USAGE_ALLOWLIST: frozenset[str] = frozenset(
-    {"input_tokens", "output_tokens", "total_tokens"}
-)
+USAGE_ALLOWLIST: frozenset[str] = frozenset({"input_tokens", "output_tokens", "total_tokens"})
 QUALITY_ALLOWLIST: frozenset[str] = frozenset({"good", "bad", "unknown"})
 
 # Legacy telemetry allowlist retained for AnonymousExecutionReport compatibility.
@@ -71,7 +69,7 @@ TOKENS_ALLOWLIST: frozenset[str] = frozenset({"input", "output"})
 CONSENT_TITLE = "Help improve JoyMesh?"
 
 CONSENT_BODY = """\
-JoyMesh can optionally send anonymous execution statistics to JoyCLI.
+JoyMesh can optionally send anonymous execution statistics to JoyCTL.
 
 These reports help improve routing, performance, and future model evaluation.
 
@@ -107,7 +105,7 @@ _CHOICE_LABELS = {
 
 @dataclass(frozen=True)
 class AnonymousExecutionMetrics:
-    """Allowlisted anonymous execution metrics for JoyCLI — safe to transmit."""
+    """Allowlisted anonymous execution metrics for JoyCTL — safe to transmit."""
 
     task_type: str | None = None
     duration_ms: int | None = None
@@ -117,11 +115,7 @@ class AnonymousExecutionMetrics:
     def as_dict(self) -> dict[str, Any]:
         usage: dict[str, int] | None = None
         if self.usage:
-            usage = {
-                key: int(value)
-                for key, value in self.usage.items()
-                if key in USAGE_ALLOWLIST
-            }
+            usage = {key: int(value) for key, value in self.usage.items() if key in USAGE_ALLOWLIST}
             if not usage:
                 usage = None
         quality = self.quality if self.quality in QUALITY_ALLOWLIST else "unknown"
@@ -153,14 +147,12 @@ class AnonymousExecutionReport:
     extras: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        """Serialize legacy fields with an explicit allowlist (not for JoyCLI send)."""
+        """Serialize legacy fields with an explicit allowlist (not for JoyCTL send)."""
 
         tokens: dict[str, int] | None = None
         if self.tokens:
             tokens = {
-                key: int(value)
-                for key, value in self.tokens.items()
-                if key in TOKENS_ALLOWLIST
+                key: int(value) for key, value in self.tokens.items() if key in TOKENS_ALLOWLIST
             }
             if not tokens:
                 tokens = None
@@ -223,7 +215,7 @@ def preview_metrics_placeholder() -> dict[str, Any]:
 
 
 def preview_report_placeholder() -> dict[str, Any]:
-    """Legacy placeholder; prefer preview_metrics_placeholder for JoyCLI metrics."""
+    """Legacy placeholder; prefer preview_metrics_placeholder for JoyCTL metrics."""
 
     return preview_metrics_placeholder()
 
@@ -232,8 +224,7 @@ def render_preview_yaml(payload: dict[str, Any] | None = None) -> str:
     data = payload if payload is not None else preview_metrics_placeholder()
     allowlist = (
         METRICS_PAYLOAD_ALLOWLIST
-        if set(data.keys()) <= METRICS_PAYLOAD_ALLOWLIST | {"usage"}
-        or "task_type" in data
+        if set(data.keys()) <= METRICS_PAYLOAD_ALLOWLIST | {"usage"} or "task_type" in data
         else PAYLOAD_ALLOWLIST
     )
     lines: list[str] = []
@@ -309,9 +300,7 @@ def classify_error_category(*, status: str | None, exit_code: int | None) -> str
     return None
 
 
-def duration_ms_from_times(
-    started_at: datetime | None, finished_at: datetime | None
-) -> int | None:
+def duration_ms_from_times(started_at: datetime | None, finished_at: datetime | None) -> int | None:
     if started_at is None or finished_at is None:
         return None
     delta = finished_at - started_at
@@ -372,7 +361,7 @@ def build_metrics_from_run(
     usage: Mapping[str, Any] | None = None,
     task_type: str | None = None,
 ) -> AnonymousExecutionMetrics:
-    """Build JoyCLI metrics from a Run without reading prompts or paths."""
+    """Build JoyCTL metrics from a Run without reading prompts or paths."""
 
     status = getattr(run, "status", None)
     if status is None:
@@ -646,9 +635,7 @@ class TelemetryService:
                 if not prompt_ask_send(input_fn=input_fn, output_fn=output_fn):
                     return None
             metrics = (
-                report
-                if isinstance(report, AnonymousExecutionMetrics)
-                else report.to_metrics()
+                report if isinstance(report, AnonymousExecutionMetrics) else report.to_metrics()
             )
             return self._submit(metrics)
         except Exception:

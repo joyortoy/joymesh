@@ -1,0 +1,11 @@
+{
+  "id": "FI-25",
+  "title": "SIGKILL mid-commit on live Linux intake",
+  "status": "pass",
+  "old_pid": "2702",
+  "new_pid": "2739",
+  "active_after": "active",
+  "sqlite_integrity": "ok",
+  "note": "SIGKILL MainPID 2702; systemd Restart=on-failure respawned PID 2739 active. Mid-commit in-flight write not forced (brief). intake-status queries must omit JOYCLI_RUNTIME_SOCKET while serve is bound.",
+  "at": "2026-08-03T19:14:15.707023+00:00"
+}

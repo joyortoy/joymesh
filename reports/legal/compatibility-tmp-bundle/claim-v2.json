@@ -1,0 +1,38 @@
+{
+  "applicable_rule_ids": [],
+  "applicable_version": "0.1.0",
+  "claim_id": "claim_5cc120275f5ad8f04cef6255",
+  "claim_type": "release_candidate",
+  "claimant": "joymesh-producer",
+  "correlation_id": "corr_860b85afbcaef9084e49ab61",
+  "environment": "local",
+  "integration_refs": [],
+  "integrity_hash": "a6e21785743c9a3bc22881a505de61a352a5e70fd7133df53ddab50dc93c6d4c",
+  "jurisdiction": "unspecified",
+  "producer_system": "joymesh",
+  "requested_valid_from": "2026-08-25T13:27:40.538423Z",
+  "requested_valid_until": null,
+  "scope": {
+    "branch": "unknown",
+    "commit": "unknown",
+    "dirty_worktree": true,
+    "limitations": [
+      "compatibility_check_fixture"
+    ],
+    "note": "This claim does not constitute a JoyLegal legitimacy verdict.",
+    "package_version": "0.1.0",
+    "producer_result": "claim_submitted",
+    "qualification_observation": "awaiting_joylegal_decision",
+    "requested_profile": "joymesh-production-readiness-v1",
+    "subject_system": "joymesh",
+    "tag": null
+  },
+  "status": "submitted",
+  "subject": "joymesh",
+  "supporting_evidence": [
+    "evidence:soak-qualification",
+    "evidence:connector-catalogue"
+  ],
+  "version": "joylegal.claim/v2",
+  "workspace_id": "ws-joymesh"
+}

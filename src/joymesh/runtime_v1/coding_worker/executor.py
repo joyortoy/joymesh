@@ -89,9 +89,7 @@ def extract_tests_from_codex_output(stdout: str) -> tuple[CodingWorkerTestResult
         exit_match = re.search(r'"exit_code"\s*:\s*(\d+|null)', line)
         exit_code = exit_match.group(1) if exit_match else "null"
         status = "passed" if exit_code == "0" else "failed"
-        output_match = re.search(
-            r'"aggregated_output"\s*:\s*"((?:\\.|[^"\\])*)"', line
-        )
+        output_match = re.search(r'"aggregated_output"\s*:\s*"((?:\\.|[^"\\])*)"', line)
         summary = ""
         if output_match:
             summary = bytes(output_match.group(1), "utf-8").decode("unicode_escape")[:400]
@@ -111,8 +109,13 @@ def _looks_like_test(command: str) -> bool:
     if any(marker in lowered for marker in markers):
         return True
     return bool(_TEST_COMMAND_RE.search(command)) and (
-        "verify" in lowered or "check" in lowered or "status" in lowered or "cat " in lowered
-        or "od " in lowered or "ls " in lowered or "test -" in lowered
+        "verify" in lowered
+        or "check" in lowered
+        or "status" in lowered
+        or "cat " in lowered
+        or "od " in lowered
+        or "ls " in lowered
+        or "test -" in lowered
     )
 
 
@@ -185,9 +188,7 @@ class CodingWorker:
             handle.heartbeat()
 
             if not task.allowed_actions.edit_files and not task.allowed_actions.run_tests:
-                raise RepositorySafetyError(
-                    "no_actions", "coding worker has no allowed actions"
-                )
+                raise RepositorySafetyError("no_actions", "coding worker has no allowed actions")
 
             prompt = build_codex_prompt(task)
             await emit(PUBLIC_PROGRESS_EVENTS[2])

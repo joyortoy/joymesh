@@ -1,11 +1,23 @@
-"""ExecutionRouter — selects backend/harness and drives deterministic fallback."""
+"""ExecutionRouter — validates JoyMux placement and drives execution.
+
+Phase 3.5: production paths must not rank/select harnesses or backends.
+`select` resolves already-placed IDs. Legacy ranking remains only under
+JOYMESH_ALLOW_TEST_WITHOUT_PLACEMENT=1 (sunset: phase3.5-placement-required-v1).
+"""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 from uuid import uuid4
 
 from joymesh.models import utc_now
+from joymesh.placement_validation import (
+    decision_from_placement,
+    enforce_placement,
+    extract_placement_payloads,
+    test_without_placement_allowed,
+)
 from joymesh.runtime_v1.execution_routing.cancellation import CancellationRegistry
 from joymesh.runtime_v1.execution_routing.capabilities import (
     KNOWN_HARNESSES,
@@ -44,7 +56,10 @@ class ExecutionRouterError(RuntimeError):
 
 
 class ExecutionRouter:
-    """Chooses Route = harness + backend (+ connector/model); planner never does."""
+    """Validates JoyMux placement and resolves adapter IDs for execution.
+
+    Deprecated: ranking/selection. Removal milestone: phase3.5-placement-required-v1.
+    """
 
     def __init__(
         self,
@@ -71,7 +86,112 @@ class ExecutionRouter:
         self._task_analyzer = TaskAnalyzer()
 
     def select(self, intent: ExecutionIntent) -> ExecutionDecision:
+        """Validate JoyMux placement and resolve selected adapter IDs.
+
+        Does not rank candidates in production. Without placement, returns
+        placement_required unless the explicit test bypass is enabled.
+        """
+
         self._enforce_entitlements(intent)
+        placement, requirements = extract_placement_payloads(metadata=dict(intent.metadata or {}))
+        validation = enforce_placement(
+            placement=placement,
+            requirements=requirements,
+            runtime_facts={
+                "worker_alive": True,
+                "runtime_alive": True,
+                "available_harnesses": set(self.available_harnesses),
+                "available_capabilities": {c.value for c in intent.required_capabilities},
+                "quota_available": True,
+                "authentication_valid": True,
+                "compatible_runtimes": (
+                    [placement.get("selected_runtime")]
+                    if placement and placement.get("selected_runtime")
+                    else []
+                ),
+                "runtime_snapshot_revision": (placement or {}).get("runtime_snapshot_revision"),
+                "fallback_authorized": True,
+            },
+        )
+        if validation is not None and not validation.valid:
+            raise ExecutionRouterError(
+                validation.reason_codes[0] if validation.reason_codes else "placement_required",
+                ",".join(validation.reason_codes) or "placement_required",
+            )
+        if placement is not None:
+            return self._decision_from_validated_placement(intent, placement)
+        # Compatibility-only legacy ranking for tests.
+        if not test_without_placement_allowed():
+            raise ExecutionRouterError("placement_required", "JoyMux placement is required")
+        return self._select_legacy_for_tests(intent)
+
+    def _decision_from_validated_placement(
+        self, intent: ExecutionIntent, placement: Mapping[str, Any]
+    ) -> ExecutionDecision:
+        resolved = decision_from_placement(
+            execution_id=intent.execution_id,
+            placement=placement,
+            default_backend_id=self.registry.priority_order()[0]
+            if self.registry.priority_order()
+            else "local",
+        )
+        harness_id = str(resolved["selected_harness_id"] or intent.preferred_harness or "")
+        if not harness_id:
+            raise ExecutionRouterError("harness_unavailable", "placement missing selected_harness")
+        if harness_id not in self.available_harnesses and self.available_harnesses:
+            # Resolve by casefold match before rejecting.
+            match = next(
+                (h for h in self.available_harnesses if h.casefold() == harness_id.casefold()),
+                None,
+            )
+            if match is None:
+                raise ExecutionRouterError(
+                    "harness_unavailable",
+                    f"placed harness not available: {harness_id}",
+                )
+            harness_id = match
+        backend_id = str(resolved["selected_backend_id"])
+        # Resolve adapter by ID only — never rank.
+        try:
+            backend = self.registry.get(backend_id)
+        except BackendRegistryError:
+            # Fall back to first registered backend that supports the harness, by ID lookup order
+            # (deterministic registry order), not by score.
+            ordered = self.registry.priority_order()
+            backend_id = ordered[0] if ordered else backend_id
+            try:
+                backend = self.registry.get(backend_id)
+            except BackendRegistryError as exc:
+                raise ExecutionRouterError("no_compatible_backend", str(exc)) from exc
+        _ = backend
+        analysis = self._task_analysis(intent)
+        return ExecutionDecision(
+            execution_id=intent.execution_id,
+            selected_backend_id=backend_id,
+            selected_harness_id=harness_id,
+            reason="validated_joymux_placement",
+            fallback_order=(),
+            provider_routing_required=bool(intent.requires_provider_route),
+            retry_policy={"max_fallback": 0, "on_failure": "reselect_via_joymux"},
+            scores={},
+            capability_match={
+                "required": sorted(c.value for c in intent.required_capabilities),
+                "harness_id": harness_id,
+                "placement_id": placement.get("placement_id"),
+            },
+            policy_result={"placement_validated": True},
+            quota_snapshot=dict(self.quota_allows),
+            registry_revision=self.registry.revision,
+            selected_connector_id=resolved.get("selected_connector_id"),
+            selected_model_id=resolved.get("selected_model_id") or intent.preferred_model,
+            route_score=None,
+            route_candidates=(),
+            task_analysis=analysis.as_dict() if hasattr(analysis, "as_dict") else {},
+        )
+
+    def _select_legacy_for_tests(self, intent: ExecutionIntent) -> ExecutionDecision:
+        """Deprecated ranking path — test/compat only. Do not use in production."""
+
         analysis = self._task_analysis(intent)
         policy = self._routing_policy(intent)
         harness_order = self.route_selector.order_harnesses(
@@ -137,9 +257,10 @@ class ExecutionRouter:
             select_backends = candidates
         else:
             select_harnesses = list(harness_order)
-            select_backends = self._backends_for_harnesses(
-                intent, harness_order, provider_needed=provider_needed
-            ) or candidates
+            select_backends = (
+                self._backends_for_harnesses(intent, harness_order, provider_needed=provider_needed)
+                or candidates
+            )
 
         selection = self.route_selector.select(
             analysis=analysis,
@@ -179,9 +300,7 @@ class ExecutionRouter:
                     (
                         c
                         for c in selection.candidates
-                        if c.eligible
-                        and c.backend_id == selected_id
-                        and c.harness_id == harness_id
+                        if c.eligible and c.backend_id == selected_id and c.harness_id == harness_id
                     ),
                     None,
                 )
@@ -194,9 +313,7 @@ class ExecutionRouter:
                 (
                     c
                     for c in selection.candidates
-                    if c.eligible
-                    and c.backend_id == selected_id
-                    and c.harness_id == harness_id
+                    if c.eligible and c.backend_id == selected_id and c.harness_id == harness_id
                 ),
                 None,
             )
@@ -259,9 +376,7 @@ class ExecutionRouter:
             selected_connector_id=selected_connector,
             selected_model_id=selected_model,
             route_score=route.score if route else score,
-            route_candidates=tuple(
-                c.as_dict() for c in selection.candidates[:10] if c.eligible
-            ),
+            route_candidates=tuple(c.as_dict() for c in selection.candidates[:10] if c.eligible),
             task_analysis=analysis.as_dict(),
         )
 
@@ -336,6 +451,29 @@ class ExecutionRouter:
         *,
         decision: ExecutionDecision | None = None,
     ) -> ExecutionResult:
+        # Production: placement required before any attempt. No JoyMesh reselection.
+        placement, requirements = extract_placement_payloads(metadata=dict(intent.metadata or {}))
+        precheck = enforce_placement(placement=placement, requirements=requirements)
+        if precheck is not None and not precheck.valid:
+            return ExecutionResult(
+                ok=False,
+                execution_id=intent.execution_id,
+                backend_id="",
+                harness_id=str((placement or {}).get("selected_harness") or ""),
+                status=ExecutionStatus.BLOCKED,
+                message=",".join(precheck.reason_codes),
+                attempted_backends=(),
+                decision=None,
+                audits=(
+                    {
+                        "event_type": "placement.rejected",
+                        "execution_id": intent.execution_id,
+                        "reason": ",".join(precheck.reason_codes),
+                    },
+                ),
+                attempts=(),
+                failure_class=ExecutionFailureClass.CAPABILITY_CHANGED.value,
+            )
         decision = decision or self.select(intent)
         audits: list[BackendAuditEvent] = [
             BackendAuditEvent(
@@ -347,7 +485,11 @@ class ExecutionRouter:
             )
         ]
         attempts: list[ExecutionAttemptRecord] = []
-        order = (decision.selected_backend_id, *decision.fallback_order)
+        # With JoyMux placement, never chain alternate backends (no silent reroute).
+        if placement is not None or decision.reason == "validated_joymux_placement":
+            order = (decision.selected_backend_id,)
+        else:
+            order = (decision.selected_backend_id, *decision.fallback_order)
         attempted: list[str] = []
         last_error = "no backend attempted"
         last_failure = ExecutionFailureClass.UNKNOWN
@@ -506,6 +648,76 @@ class ExecutionRouter:
                 last_error = "capability mismatch"
                 last_failure = failure
                 continue
+
+            # Phase 3: JoyMesh validates JoyMux placement; never silently reroutes.
+            placement_payload = None
+            requirements_payload = None
+            meta = dict(getattr(intent, "metadata", None) or {})
+            placement_payload = meta.get("context_placement") or meta.get("placement")
+            requirements_payload = meta.get("strategic_requirements") or meta.get("requirements")
+            if placement_payload is not None:
+                from joymesh.placement_validation import require_valid_placement
+
+                validation = require_valid_placement(
+                    requirements=requirements_payload
+                    or {"requirements_id": placement_payload.get("requirements_id")},
+                    placement=placement_payload,
+                    runtime_facts={
+                        "worker_alive": health.healthy,
+                        "runtime_alive": health.healthy,
+                        "available_harnesses": {decision.selected_harness_id, backend_id},
+                        "available_capabilities": set(
+                            getattr(intent, "required_capabilities", ()) or ()
+                        ),
+                        "quota_available": True,
+                        "authentication_valid": True,
+                        "compatible_runtimes": (
+                            [placement_payload["selected_runtime"]]
+                            if placement_payload.get("selected_runtime")
+                            else []
+                        ),
+                        "runtime_snapshot_revision": placement_payload.get(
+                            "runtime_snapshot_revision"
+                        ),
+                        "is_fallback": len(attempted) > 1,
+                        "fallback_authorized": True,
+                    },
+                    require_placement=True,
+                )
+                if validation is not None and not validation.valid:
+                    failure = ExecutionFailureClass.CAPABILITY_CHANGED
+                    attempts.append(
+                        _complete_attempt(
+                            attempt,
+                            status="failed",
+                            failure_class=failure.value,
+                            fallback_reason=",".join(validation.reason_codes),
+                        )
+                    )
+                    audits.append(
+                        BackendAuditEvent(
+                            event_type="placement.rejected",
+                            execution_id=intent.execution_id,
+                            backend_id=backend_id,
+                            harness_id=decision.selected_harness_id,
+                            reason=",".join(validation.reason_codes),
+                        )
+                    )
+                    last_error = ",".join(validation.reason_codes)
+                    last_failure = failure
+                    # Do not silently pick another runtime — stop this attempt chain
+                    # when rejection is runtime_changed / placement_expired.
+                    if any(
+                        code in validation.reason_codes
+                        for code in (
+                            "runtime_changed",
+                            "placement_expired",
+                            "session_unavailable",
+                            "checkpoint_unavailable",
+                        )
+                    ):
+                        break
+                    continue
 
             try:
                 audits.append(

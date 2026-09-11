@@ -8,9 +8,8 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = Path(os.environ.get("RC1_ARTIFACTS", Path.home() / "Documents/joymesh-rc1-verify/artifacts"))
@@ -141,7 +140,7 @@ def main() -> int:
         "ok": ok,
         "primary_path": "RC1 baseline import -> candidate production import",
         "rollback_policy": "Code rollback to RC1 verified via baseline import only; schema downgrade unsafe and refused operationally",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "artifacts_dir": str(ARTIFACTS),
         "rc1_wheel": str(rc1) if rc1 else None,
         "candidate_wheel": str(candidate) if candidate else None,

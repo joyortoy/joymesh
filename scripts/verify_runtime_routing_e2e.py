@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
-"""Signed JoyMesh publish through JoyCLI projection, route, and directive."""
+"""Signed JoyMesh publish through JoyCTL projection, route, and directive."""
 
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import sys
 import tempfile
+from dataclasses import replace
+from pathlib import Path
+
+
+def _joycli_src() -> Path | None:
+    for candidate in (
+        Path.home() / "joycli" / "src",
+        Path.home() / "joyuniverse-rc" / "joycli" / "src",
+        Path.home() / "Documents" / "joycli" / "src",
+    ):
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def main() -> int:
-    joycli_src = Path("/Users/joytan/intexta-buildweek/joycli/src")
+    joycli_src = _joycli_src()
+    if joycli_src is None:
+        print("SKIP: joycli src not found")
+        return 2
     sys.path.insert(0, str(joycli_src))
 
-    from joycli.provider_capabilities import ProviderCapabilityCertificationRegistry
-    from joycli.provider_routing import route_provider, route_request_from_dict
-    from joycli.provider_sessions import ProviderCliSessionSnapshot
-    from joycli.providers import GenericProvider, ProviderRegistry
-    from joycli.runtime.intake import (
+    from joyctl.provider_capabilities import ProviderCapabilityCertificationRegistry
+    from joyctl.provider_routing import route_provider, route_request_from_dict
+    from joyctl.provider_sessions import ProviderCliSessionSnapshot
+    from joyctl.providers import GenericProvider, ProviderRegistry
+    from joyctl.runtime.intake import (
         PublisherKey,
         PublisherKeyRegistry,
         PublisherKeyStatus,
@@ -27,6 +41,7 @@ def main() -> int:
         build_execution_directive,
         envelope_from_dict,
     )
+
     from joymesh.control_plane.security import generate_node_keypair
     from joymesh.delivery import DeliveryOutbox, RuntimeDeliveryPublisher
 

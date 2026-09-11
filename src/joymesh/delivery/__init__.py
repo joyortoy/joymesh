@@ -1,4 +1,4 @@
-"""Durable JoyMesh → JoyCLI runtime update delivery."""
+"""Durable JoyMesh → JoyCTL runtime update delivery."""
 
 from joymesh.delivery.contracts import (
     SCHEMA_VERSION,

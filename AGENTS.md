@@ -11,7 +11,7 @@
 
 JoyMesh is a standalone interoperability layer for coding-agent harnesses. It owns discovery, capability inspection, run lifecycle, event normalization, subscription/quota tracking, deterministic routing, delivery/outbox, and connector catalogue maturity observations.
 
-JoyMesh is independent of JoyCLI application planning. It emits producer-side certification and soak evidence; it does not emit JoyLegal ALLOW/DENY legitimacy verdicts.
+JoyMesh is independent of JoyCTL application planning. It emits producer-side certification and soak evidence; it does not emit JoyLegal ALLOW/DENY legitimacy verdicts.
 
 ## Subsystem boundaries
 

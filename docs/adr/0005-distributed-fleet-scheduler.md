@@ -8,14 +8,14 @@ Accepted (supersedes the earlier JoyMesh-owned fleet scheduler experiment)
 
 A JoyMesh-local `distributed_scheduler` package briefly owned fleet placement,
 queues, fairness, worker leases, and scheduler HA. That control-plane work now
-lives in JoyCLI.
+lives in JoyCTL.
 
 JoyMesh must remain an open-source, reusable harness execution and worker
-runtime layer usable without JoyCLI.
+runtime layer usable without JoyCTL.
 
 ## Decision
 
-JoyCLI owns distributed fleet scheduling and mission orchestration.
+JoyCTL owns distributed fleet scheduling and mission orchestration.
 
 JoyMesh provides a neutral worker runtime and harness execution fabric.
 
@@ -23,7 +23,7 @@ JoyMesh does not select workers, schedule missions, apply organisation fairness,
 grant fleet leases, or determine mission completion.
 
 ```text
-External control plane (JoyCLI)
+External control plane (JoyCTL)
         │
         │ explicit execution request + externally issued lease
         ▼
@@ -49,8 +49,8 @@ Fleet SQL tables (`fleet_*`) are dropped by migration `f6a7b8c9d0e1`.
 ## Consequences
 
 * Third parties can use JoyMesh standalone for harness execution and remote
-  workers without installing JoyCLI.
-* JoyCLI (or another control plane) supplies placement, fairness, queues, and
+  workers without installing JoyCTL.
+* JoyCTL (or another control plane) supplies placement, fairness, queues, and
   lease granting.
 * JoyMesh may validate an externally issued lease and emit worker/heartbeat
   facts, but must not classify fleet eligibility or grant capacity.

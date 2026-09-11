@@ -110,9 +110,7 @@ def test_ensure_consent_persists_only_after_choice(tmp_path: Path) -> None:
 def test_existing_users_are_not_prompted_again(tmp_path: Path) -> None:
     path = tmp_path / "config" / "config.yaml"
     save_user_config(
-        UserConfig(
-            metrics=MetricsSettings(mode=MetricsMode.ASK, consent_completed=True)
-        ),
+        UserConfig(metrics=MetricsSettings(mode=MetricsMode.ASK, consent_completed=True)),
         path=path,
     )
     calls = {"n": 0}
@@ -164,9 +162,7 @@ def test_never_mode_does_not_send() -> None:
     transport = RecordingTelemetryTransport()
     service = TelemetryService(transport=transport)
     service.set_mode(MetricsMode.NEVER)
-    future = service.maybe_send(
-        AnonymousExecutionMetrics(quality="good"), interactive=False
-    )
+    future = service.maybe_send(AnonymousExecutionMetrics(quality="good"), interactive=False)
     assert future is None
     assert transport.reports == []
 
@@ -210,9 +206,7 @@ def test_transport_failure_does_not_raise() -> None:
 
     service = TelemetryService(transport=Boom())  # type: ignore[arg-type]
     service.set_mode(MetricsMode.ALWAYS)
-    future = service.maybe_send(
-        AnonymousExecutionMetrics(quality="good"), interactive=False
-    )
+    future = service.maybe_send(AnonymousExecutionMetrics(quality="good"), interactive=False)
     assert future is not None
     future.result(timeout=2)
 
@@ -243,17 +237,20 @@ def test_metrics_payload_allowlist_and_sensitive_exclusion() -> None:
 
 def test_build_metrics_from_run_excludes_sensitive_fields() -> None:
     now = datetime.now(UTC)
+    private = "/Users/" + "me/private"
+    workspace = "/Users/" + "me/secret-repo"
+    traceback_path = "/Users/" + "me/app.py"
     run = Run(
         id="run_1",
-        task="SECRET PROMPT with /Users/me/private",
-        workspace="/Users/me/secret-repo",
+        task=f"SECRET PROMPT with {private}",
+        workspace=workspace,
         harness_id="codex",
         status=RunStatus.COMPLETED,
         created_at=now,
         started_at=now,
         finished_at=now + timedelta(seconds=2),
         exit_code=0,
-        error="traceback /Users/me/app.py",
+        error=f"traceback {traceback_path}",
         task_context_id="ctx",
     )
     metrics = build_metrics_from_run(

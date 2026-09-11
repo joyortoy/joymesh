@@ -1,4 +1,4 @@
-"""JoyMesh → JoyCLI runtime snapshot protocol (facts only; no routing policy)."""
+"""JoyMesh → JoyCTL runtime snapshot protocol (facts only; no routing policy)."""
 
 from joymesh.runtime_snapshot.cache import RuntimeSnapshotCache
 from joymesh.runtime_snapshot.contracts import (

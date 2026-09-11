@@ -6,7 +6,7 @@
 Production candidate with remaining gates
 ```
 
-Last updated: 2026-08-03T16:37:36Z
+Last updated: 2026-08-03T19:17:23Z
 
 Branch: `production/readiness-v0.1`
 
@@ -15,24 +15,25 @@ Branch: `production/readiness-v0.1`
 | Gate | Status |
 |------|--------|
 | 1h Linux (prod-qual) | **PASS** — duration_met, zero_failures, min_ticks (`qualification-1h.json`) |
-| 8h Linux (prod-qual) | **IN PROGRESS** — PID **10991**, `/tmp/qualification-8h.json` on VM |
+| 8h Linux (prod-qual) | **IN PROGRESS (restart)** — PID **2915** after prior PID 10991 died when VM stopped; durable path under `~/prod-qual-evidence/qualification-8h/` |
 | macOS verify_* scripts | PASS (prior commits on this branch) |
-| Fault injection (25 cases) | 24 pass, 1 skip (FI-25) |
+| Fault injection (25 cases) | **25 pass** (FI-25 executed on prod-qual) |
 | Upgrade RC1→candidate | PASS |
+| Reboot simulation | **Partial** — systemd cold-start after `/run` wipe pass; full VM reboot deferred; units not enabled-on-boot |
 
 ## Systemd (Linux x86-64)
 
 | Unit | Status |
 |------|--------|
-| joycli-runtime-intake | **Pass** lifecycle |
-| joymesh-delivery (validate oneshot) | **Active** with packaged venv + lazy CLI import |
+| joycli-runtime-intake | **Pass** lifecycle + FI-25 SIGKILL respawn |
+| joymesh-delivery (validate oneshot) | **Active** when `/run/joymesh` exists |
 
 ## Remaining before production-ready
 
-1. Complete **8h** soak; copy JSON and confirm gates
-2. FI-25 live fault on Linux intake
-3. Reboot simulation under systemd
-4. Include CLI lazy-import in next candidate **wheel** (validated on VM via patch/editable)
+1. Complete restarted **8h** soak; copy JSON and confirm gates
+2. Optional: full VM reboot with units **enabled** (not done — would interrupt soak)
+3. Include CLI lazy-import in next candidate **wheel** (validated on VM via patch/editable)
+4. Document/fix JoyCLI double-bind when `JOYCLI_RUNTIME_SOCKET` is set and `intake-serve --socket` is used
 
 ## Note on branches
 

@@ -1,5 +1,6 @@
 """Delivery transport package exports."""
 
+from joymesh.delivery.transports.http import HttpDeliveryTransport
 from joymesh.delivery.transports.memory import MemoryDeliveryTransport
 from joymesh.delivery.transports.protocol import TransportVersionError
 from joymesh.delivery.transports.unix_socket import (
@@ -11,6 +12,7 @@ from joymesh.delivery.transports.unix_socket import (
 )
 
 __all__ = [
+    "HttpDeliveryTransport",
     "MemoryDeliveryTransport",
     "TransportVersionError",
     "UnixSocketDeliveryServer",

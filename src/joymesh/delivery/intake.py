@@ -1,9 +1,9 @@
 """DEPRECATED reference/test runtime-state intake.
 
-Canonical production ownership lives in JoyCLI:
+Canonical production ownership lives in JoyCTL:
 
-    joycli.runtime.intake.RuntimeStateIntakeService
-    joycli.runtime.intake.UnixSocketRuntimeListener
+    joyctl.runtime.intake.RuntimeStateIntakeService
+    joyctl.runtime.intake.UnixSocketRuntimeListener
 
 This module remains only as a protocol-compatible reference for JoyMesh unit
 tests. Production composition must not select it.
@@ -32,7 +32,7 @@ from joymesh.runtime_snapshot.validators import assert_privacy
 
 _DEPRECATION = (
     "joymesh.delivery.intake.RuntimeStateIntakeService is a deprecated "
-    "reference/test intake. Use JoyCLI joycli.runtime.intake as the canonical "
+    "reference/test intake. Use JoyCTL joyctl.runtime.intake as the canonical "
     "production receiver (joyctl runtime intake-serve)."
 )
 
@@ -67,7 +67,7 @@ class IntakeRecord:
 
 
 class RuntimeStateIntakeService:
-    """Deprecated reference intake — not the production JoyCLI owner."""
+    """Deprecated reference intake — not the production JoyCTL owner."""
 
     def __init__(
         self,

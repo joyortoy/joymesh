@@ -79,7 +79,21 @@ class TaskAnalysis:
         return sorted(item.value for item in self.required_semantic)
 
 
-_RULES: tuple[tuple[re.Pattern[str], TaskClass, frozenset[SemanticCapability], frozenset[ExecutionCapability], str], ...] = (
+_Rule = tuple[
+    re.Pattern[str],
+    TaskClass,
+    frozenset[SemanticCapability],
+    frozenset[ExecutionCapability],
+    str,
+]
+_Match = tuple[
+    TaskClass,
+    frozenset[SemanticCapability],
+    frozenset[ExecutionCapability],
+    str,
+    str,
+]
+_RULES: tuple[_Rule, ...] = (
     (
         re.compile(r"\b(refactor|large.?repo|repository.?wide|migrate codebase)\b", re.I),
         TaskClass.REPOSITORY_REFACTOR,
@@ -210,7 +224,7 @@ class TaskAnalyzer:
     def analyse(self, prompt: str, *, metadata: dict[str, object] | None = None) -> TaskAnalysis:
         text = prompt or ""
         meta = dict(metadata or {})
-        matches: list[tuple[TaskClass, frozenset[SemanticCapability], frozenset[ExecutionCapability], str, str]] = []
+        matches: list[_Match] = []
         for pattern, task_class, semantic, exec_caps, complexity in _RULES:
             if pattern.search(text):
                 matches.append((task_class, semantic, exec_caps, complexity, pattern.pattern))
@@ -232,7 +246,7 @@ class TaskAnalyzer:
         derived = set(primary[2])
         optional: set[SemanticCapability] = set()
         reasons: list[str] = [f"matched:{primary[0].value}:{primary[4]}"]
-        for task_class, semantic, exec_caps, complexity, pattern in matches[1:]:
+        for task_class, semantic, exec_caps, _complexity, pattern in matches[1:]:
             # Secondary matches contribute optional capabilities and soft execution hints.
             optional |= set(semantic) - required
             derived |= set(exec_caps)

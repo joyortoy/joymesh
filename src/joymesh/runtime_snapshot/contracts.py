@@ -1,6 +1,6 @@
-"""Canonical runtime snapshot contracts for JoyCLI consumption.
+"""Canonical runtime snapshot contracts for JoyCTL consumption.
 
-JoyMesh observes and reports facts only. JoyCLI owns all routing policy.
+JoyMesh observes and reports facts only. JoyCTL owns all routing policy.
 """
 
 from __future__ import annotations
@@ -43,9 +43,7 @@ class UsageSnapshot:
             "output_tokens": self.output_tokens,
             "total_tokens": self.total_tokens,
             "execution_count": self.execution_count,
-            "last_execution": (
-                self.last_execution.isoformat() if self.last_execution else None
-            ),
+            "last_execution": (self.last_execution.isoformat() if self.last_execution else None),
             "average_duration_ms": self.average_duration_ms,
         }
 
@@ -138,7 +136,7 @@ class RuntimeSnapshot:
         return None
 
 
-# Structured launch-time rejection codes (JoyMesh validates; JoyCLI decides next steps).
+# Structured launch-time rejection codes (JoyMesh validates; JoyCTL decides next steps).
 class RuntimeValidationCode(StrEnum):
     QUOTA_EXHAUSTED = "quota_exhausted"
     AUTHENTICATION_REQUIRED = "authentication_required"

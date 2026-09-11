@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-
 CodingWorkerStatus = Literal["completed", "failed", "cancelled"]
 TestStatus = Literal["passed", "failed"]
 
@@ -35,9 +34,7 @@ class CodingWorkerTask:
     objective: str
     constraints: tuple[str, ...] = ()
     context_package: Any = None
-    allowed_actions: CodingWorkerAllowedActions = field(
-        default_factory=CodingWorkerAllowedActions
-    )
+    allowed_actions: CodingWorkerAllowedActions = field(default_factory=CodingWorkerAllowedActions)
     worker_id: str = "local-codex-worker"
     lease_ttl_seconds: int = 60
     timeout_seconds: int = 300

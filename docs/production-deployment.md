@@ -5,7 +5,7 @@
 ```text
 Single organisation / controlled multi-tenant
 Linux x86-64 (qualification also exercised on macOS arm64 host for packaging)
-Unix-socket JoyMesh → JoyCLI runtime-state delivery
+Unix-socket JoyMesh → JoyCTL runtime-state delivery
 Packaged wheels
 Ed25519 publisher authentication
 SQLite durable runtime intake
@@ -29,7 +29,7 @@ joymesh runtime key generate --destination /etc/joymesh/keys/runtime.key --key-i
 chmod 600 /etc/joymesh/keys/runtime.key
 ```
 
-3. Register public key on JoyCLI:
+3. Register public key on JoyCTL:
 
 ```bash
 joyctl --state /var/lib/joycli runtime publisher-key add \
@@ -41,11 +41,11 @@ joyctl --state /var/lib/joycli runtime publisher-key add \
 `/etc/joycli/runtime.env`:
 
 ```bash
-JOYCLI_ENV=production
-JOYCLI_RUNTIME_ALLOW_UNSIGNED=0
-JOYCLI_RUNTIME_SOCKET=/run/joycli/joymesh-delivery.sock
-JOYCLI_RUNTIME_INTAKE_DB=/var/lib/joycli/runtime_intake.sqlite3
-JOYCLI_PUBLISHER_KEY_REGISTRY=/var/lib/joycli/publisher_keys.json
+JOYCTL_ENV=production
+JOYCTL_RUNTIME_ALLOW_UNSIGNED=0
+JOYCTL_RUNTIME_SOCKET=/run/joycli/joymesh-delivery.sock
+JOYCTL_RUNTIME_INTAKE_DB=/var/lib/joycli/runtime_intake.sqlite3
+JOYCTL_PUBLISHER_KEY_REGISTRY=/var/lib/joycli/publisher_keys.json
 ```
 
 `/etc/joymesh/runtime.env`:
@@ -65,7 +65,7 @@ joyctl --state /var/lib/joycli production validate-config
 joymesh production validate-config
 ```
 
-6. Enable systemd units from `deploy/systemd/` and start JoyCLI intake before JoyMesh publishers.
+6. Enable systemd units from `deploy/systemd/` and start JoyCTL intake before JoyMesh publishers.
 
 7. Verify:
 

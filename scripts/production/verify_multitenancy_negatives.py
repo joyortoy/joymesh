@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run JoyCLI multitenancy negative checks (via sibling repo) and write report."""
+"""Run JoyCTL multitenancy negative checks (via sibling repo) and write report."""
 
 from __future__ import annotations
 
@@ -7,12 +7,11 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
-JOYCLI = Path(os.environ.get("JOYCLI_REPO", Path.home() / "intexta-buildweek/joycli"))
+JOYCLI = Path(os.environ.get("JOYCTL_REPO", Path.home() / "intexta-buildweek/joycli"))
 OUT = Path(os.environ.get("QUAL_OUTPUT_DIR", ROOT / "reports/data/production"))
 
 
@@ -41,7 +40,7 @@ def main() -> int:
 
     report = {
         "ok": ok,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "detail": detail,
     }
     path = OUT / "multitenancy-negative.json"

@@ -1,4 +1,4 @@
-"""Tests for JoyMesh → JoyCLI runtime snapshot protocol."""
+"""Tests for JoyMesh → JoyCTL runtime snapshot protocol."""
 
 from __future__ import annotations
 
@@ -253,9 +253,7 @@ async def test_launch_time_revalidation_and_runtime_changed() -> None:
 
 @pytest.mark.asyncio
 async def test_launch_rejects_authentication_required() -> None:
-    service = _service(
-        _quota("claude-code", HarnessAvailability.AUTHENTICATION_REQUIRED)
-    )
+    service = _service(_quota("claude-code", HarnessAvailability.AUTHENTICATION_REQUIRED))
     with pytest.raises(RuntimeLaunchError) as excinfo:
         await service.revalidate_for_launch("claude-code")
     assert excinfo.value.code is RuntimeValidationCode.AUTHENTICATION_REQUIRED
@@ -271,9 +269,7 @@ async def test_start_run_revalidation_surfaces_structured_error(tmp_path: Path) 
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'launch.db'}",
         registry=registry,
     )
-    providers = {
-        "fake": StaticQuotaProvider(_quota("fake", HarnessAvailability.QUOTA_EXHAUSTED))
-    }
+    providers = {"fake": StaticQuotaProvider(_quota("fake", HarnessAvailability.QUOTA_EXHAUSTED))}
     mesh.quota = QuotaService(providers=providers, harness_ids=("fake",))
     mesh.router.quota = mesh.quota
     mesh.runtime_snapshots = RuntimeSnapshotService(

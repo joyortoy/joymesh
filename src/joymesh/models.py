@@ -252,9 +252,16 @@ class RunRequest(BaseModel):
     mission_id: str | None = None
     trace_id: str | None = None
     execution_id: str | None = None
-    # Optional JoyCLI execution directive (canonical JSON object). When present,
+    # Optional JoyCTL execution directive (canonical JSON object). When present,
     # JoyMesh validates it authoritatively and never recalculates routing.
     directive: dict[str, Any] | None = None
+    # Phase 3.5: JoyMux ContextPlacementDecision (dict form). Production requires
+    # this (or directive.context_placement) before execution. Optional typing is
+    # temporary compatibility; sunset: phase3.5-placement-required-v1.
+    context_placement: dict[str, Any] | None = None
+    strategic_requirements: dict[str, Any] | None = None
+    strategic_requirements_id: str | None = None
+    runtime_snapshot_revision: str | None = None
 
 
 class SubscriptionCreate(BaseModel):

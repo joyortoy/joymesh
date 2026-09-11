@@ -12,7 +12,7 @@ import json
 import os
 import resource
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -33,7 +33,7 @@ def main() -> int:
         Path(out_file).parent.mkdir(parents=True, exist_ok=True)
     else:
         out_dir.mkdir(parents=True, exist_ok=True)
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     samples: list[dict] = []
     ops = {"ticks": 0, "failures": 0}
     deadline = time.time() + duration
@@ -41,13 +41,13 @@ def main() -> int:
         ops["ticks"] += 1
         samples.append(
             {
-                "at": datetime.now(timezone.utc).isoformat(),
+                "at": datetime.now(UTC).isoformat(),
                 "rss_bytes": rss_bytes(),
                 "open_fds": len(os.listdir("/dev/fd")) if Path("/dev/fd").exists() else -1,
             }
         )
         time.sleep(min(5.0, max(0.5, duration / 120)))
-    ended = datetime.now(timezone.utc)
+    ended = datetime.now(UTC)
     elapsed = (ended - started).total_seconds()
     min_ticks = max(1, int(duration / 10))
     gates = {

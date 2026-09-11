@@ -1,0 +1,33 @@
+{
+  "intake": {
+    "accepted_count": 0,
+    "active_publisher_key_count": 0,
+    "allow_unsigned": false,
+    "enabled": true,
+    "insecure_unsigned_mode": false,
+    "last_envelope_at": null,
+    "last_error_code": null,
+    "listening": false,
+    "live": true,
+    "migration_version": 1,
+    "migrations_complete": true,
+    "path": "/var/lib/joycli/state/runtime_intake.sqlite3",
+    "projection_count": 0,
+    "protocol_version": 1,
+    "ready": false,
+    "reasons": [
+      "listener_not_bound",
+      "publisher_keys_missing"
+    ],
+    "reconciliation_required_count": 0,
+    "rejected_count": 0,
+    "store": "sqlite"
+  },
+  "runtime": {
+    "actor_id": "local-cli-user",
+    "database_path": null,
+    "mode": "ephemeral",
+    "project_id": "local-project",
+    "state_directory": "/var/lib/joycli/state"
+  }
+}

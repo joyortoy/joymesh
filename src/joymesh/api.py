@@ -210,7 +210,11 @@ def _onboarding_actions(
         actions.extend(["start_authentication", "verify_authentication"])
     if state is OnboardingState.CERTIFICATION_REQUIRED:
         actions.append("start_certification")
-    if state in {OnboardingState.FINAL_CHECK, OnboardingState.ROUTING_SETUP, OnboardingState.FIRECONNECT_SETUP}:
+    if state in {
+        OnboardingState.FINAL_CHECK,
+        OnboardingState.ROUTING_SETUP,
+        OnboardingState.FIRECONNECT_SETUP,
+    }:
         actions.append("complete")
         if not all(
             item.routing_eligible
@@ -255,6 +259,10 @@ def create_app(
             await service.close()
 
     app = FastAPI(title="JoyMesh API", version="0.1.0", lifespan=lifespan)
+
+    from joymesh.sdk.http_runtime import build_runtime_router
+
+    app.include_router(build_runtime_router(service))
 
     @app.exception_handler(InvalidWorkspaceError)
     async def invalid_workspace(_request: Request, exc: InvalidWorkspaceError) -> JSONResponse:
@@ -852,9 +860,7 @@ def create_app(
         if progress.node_id:
             readiness = list(await service.list_connector_readiness(node_id=progress.node_id))
             active_tasks = list(await service.active_connector_tasks(node_id=progress.node_id))
-        derived = derive_wizard_state(
-            progress, readiness=readiness, active_tasks=active_tasks
-        )
+        derived = derive_wizard_state(progress, readiness=readiness, active_tasks=active_tasks)
         pairing = None
         if progress.pairing_id:
             try:
@@ -868,7 +874,11 @@ def create_app(
                     node_id=progress.node_id
                 )
             except (KeyError, PermissionError) as exc:
-                environment = {"node_id": progress.node_id, "node_online": False, "detail": str(exc)}
+                environment = {
+                    "node_id": progress.node_id,
+                    "node_online": False,
+                    "detail": str(exc),
+                }
         return {
             "revision": progress.revision,
             "state": derived.value,

@@ -24,6 +24,8 @@ from joymesh.control_plane.security import (
 from joymesh.models import utc_now
 from joymesh.service import JoyMesh
 
+_CURSOR_AGENT = str(Path.home() / ".local" / "bin" / "cursor-agent")
+
 
 def test_challenge_signature_roundtrip() -> None:
     private_key, public_key = generate_node_keypair()
@@ -140,7 +142,7 @@ async def test_mocked_cursor_production_path_with_inline_disabled_for_ci(
                 task_id=str(uuid4()),
                 evidence_type=ConnectorEvidenceType.DISCOVERY,
                 status="discovered",
-                executable_path="/Users/joytan/.local/bin/cursor-agent",
+                executable_path=_CURSOR_AGENT,
                 executable_fingerprint="fp",
                 harness_version="2025.09.18-7ae6800",
                 provider_mode=None,
@@ -158,7 +160,7 @@ async def test_mocked_cursor_production_path_with_inline_disabled_for_ci(
                 task_id=str(uuid4()),
                 evidence_type=ConnectorEvidenceType.AUTHENTICATION,
                 status="authenticated",
-                executable_path="/Users/joytan/.local/bin/cursor-agent",
+                executable_path=_CURSOR_AGENT,
                 executable_fingerprint="fp",
                 harness_version=None,
                 provider_mode=None,
@@ -176,7 +178,7 @@ async def test_mocked_cursor_production_path_with_inline_disabled_for_ci(
                 task_id=str(uuid4()),
                 evidence_type=ConnectorEvidenceType.ADAPTER_CONFORMANCE,
                 status="passed",
-                executable_path="/Users/joytan/.local/bin/cursor-agent",
+                executable_path=_CURSOR_AGENT,
                 executable_fingerprint="fp",
                 harness_version=None,
                 provider_mode=None,
@@ -194,7 +196,7 @@ async def test_mocked_cursor_production_path_with_inline_disabled_for_ci(
                 task_id=str(uuid4()),
                 evidence_type=ConnectorEvidenceType.CERTIFICATION,
                 status="certified",
-                executable_path="/Users/joytan/.local/bin/cursor-agent",
+                executable_path=_CURSOR_AGENT,
                 executable_fingerprint="fp",
                 harness_version="2025.09.18-7ae6800",
                 provider_mode=None,

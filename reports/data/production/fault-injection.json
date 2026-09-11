@@ -327,18 +327,18 @@
       "title": "Key id alone does not authorize without org"
     },
     {
-      "evidence": "docs/production-deployment.md#walkthrough; requires live systemd intake \u2014 not executed on prod-qual",
+      "evidence": "reports/data/production/fi25-result.json; SIGKILL systemd MainPID on prod-qual, Restart=on-failure respawn; sqlite integrity ok; mid-commit in-flight write not forced (brief)",
       "id": "FI-25",
-      "status": "skip",
+      "status": "pass",
       "title": "SIGKILL mid-commit on live Linux intake"
     }
   ],
-  "generated_at": "2026-08-03T14:31:16.915951+00:00",
+  "generated_at": "2026-08-03T19:16:34.076317+00:00",
   "ok": true,
   "summary": {
     "fail": 0,
-    "pass": 24,
-    "skip": 1,
+    "pass": 25,
+    "skip": 0,
     "total": 25
   }
 }

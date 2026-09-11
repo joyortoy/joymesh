@@ -1,0 +1,13 @@
+{
+  "qualification_observation": "awaiting_joylegal_decision",
+  "schema": "joymesh.source-identity/v1",
+  "source_identity": {
+    "branch": "unknown",
+    "commit": "unknown",
+    "dirty": true,
+    "package_version": "0.1.0",
+    "producer_system": "joymesh",
+    "repository_root": "/home/sam/joymesh",
+    "tag": null
+  }
+}

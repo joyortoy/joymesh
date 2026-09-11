@@ -1,8 +1,8 @@
-# JoyCLI Operations
+# JoyCTL Operations
 
 ## Processes
 
-1. **JoyCLI intake** — `joyctl runtime intake-serve`
+1. **JoyCTL intake** — `joyctl runtime intake-serve`
 2. **JoyMesh runtime** — publisher + execution
 
 ## Health vs readiness
@@ -20,8 +20,8 @@ joyctl runtime intake-status
 |---------|--------------|
 | NACK `missing_signature` | JoyMesh not signing / unsigned mode disabled |
 | NACK `invalid_signature` / `unknown_key_id` | Key ID or public key mismatch |
-| Ready=false `publisher_keys_missing` | `JOYCLI_RUNTIME_PUBLISHER_*` unset |
-| Outbox grows on JoyMesh | JoyCLI intake down or rejecting |
+| Ready=false `publisher_keys_missing` | `JOYCTL_RUNTIME_PUBLISHER_*` unset |
+| Outbox grows on JoyMesh | JoyCTL intake down or rejecting |
 
 ## Socket permissions
 

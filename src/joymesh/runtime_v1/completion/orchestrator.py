@@ -2,7 +2,7 @@
 
 DEPRECATED FOR JOYCLI MISSION AUTHORITY
 --------------------------------------
-JoyCLI owns authoritative mission completion, evidence acceptance, and
+JoyCTL owns authoritative mission completion, evidence acceptance, and
 verification. JoyMesh retains this module only for neutral worker/runtime
 lifecycle bookkeeping. Do not treat JoyMesh CompletionOutcome as mission
 terminal authority. Migration stage: joycli-completion-authority-v1.
@@ -42,8 +42,8 @@ class ExecutionCompletionOrchestrator:
     """Converts backend execution facts into runtime lifecycle records.
 
     .. deprecated::
-        Not authoritative for JoyCLI missions. Use
-        ``joycli.runtime.completion.ExecutionCompletionOrchestrator``.
+        Not authoritative for JoyCTL missions. Use
+        ``joyctl.runtime.completion.ExecutionCompletionOrchestrator``.
     """
 
     def __init__(
@@ -57,7 +57,7 @@ class ExecutionCompletionOrchestrator:
     ) -> None:
         warnings.warn(
             "joymesh.runtime_v1.completion.ExecutionCompletionOrchestrator is not "
-            "authoritative for JoyCLI missions; use joycli.runtime.completion "
+            "authoritative for JoyCTL missions; use joyctl.runtime.completion "
             "(migration stage: joycli-completion-authority-v1).",
             DeprecationWarning,
             stacklevel=2,

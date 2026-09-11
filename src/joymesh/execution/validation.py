@@ -1,4 +1,4 @@
-"""Launch-time validation of JoyCLI execution directives."""
+"""Launch-time validation of JoyCTL execution directives."""
 
 from __future__ import annotations
 
@@ -35,13 +35,13 @@ async def validate_directive(
     harness_enabled: bool | None = None,
     is_fallback: bool = False,
 ) -> None:
-    """Validate a JoyCLI directive. Never recalculates routing policy."""
+    """Validate a JoyCTL directive. Never recalculates routing policy."""
 
     if directive.expires_at <= utc_now():
         raise DirectiveValidationError(
             "execution directive has expired",
             code=ProviderDiagnosticCode.DIRECTIVE_EXPIRED,
-            remediation="Request a fresh routing decision from JoyCLI.",
+            remediation="Request a fresh routing decision from JoyCTL.",
             details={"expires_at": directive.expires_at.isoformat()},
         )
 
@@ -66,8 +66,7 @@ async def validate_directive(
             )
         if (
             directive.fallback_authorization_references
-            and directive.authorization_reference
-            not in directive.fallback_authorization_references
+            and directive.authorization_reference not in directive.fallback_authorization_references
         ):
             raise DirectiveValidationError(
                 "fallback authorization reference is not approved",
@@ -113,9 +112,7 @@ async def validate_directive(
             RuntimeValidationCode.CONFIGURATION_REQUIRED: (
                 ProviderDiagnosticCode.CONFIGURATION_REQUIRED
             ),
-            RuntimeValidationCode.CAPABILITY_MISMATCH: (
-                ProviderDiagnosticCode.CAPABILITY_MISMATCH
-            ),
+            RuntimeValidationCode.CAPABILITY_MISMATCH: (ProviderDiagnosticCode.CAPABILITY_MISMATCH),
             RuntimeValidationCode.PROVIDER_UNAVAILABLE: (
                 ProviderDiagnosticCode.PROVIDER_UNAVAILABLE
             ),
@@ -130,9 +127,7 @@ async def validate_directive(
             details=exc.details,
         ) from exc
 
-    entry = await runtime_snapshots.harness_snapshot(
-        directive.selected_harness, refresh=False
-    )
+    entry = await runtime_snapshots.harness_snapshot(directive.selected_harness, refresh=False)
     if entry.availability in AUTO_BLOCKED_AVAILABILITIES:
         raise DirectiveValidationError(
             f"harness unavailable: {entry.availability.value}",
@@ -140,5 +135,5 @@ async def validate_directive(
             details={"availability": entry.availability.value},
         )
     if entry.availability is HarnessAvailability.UNKNOWN:
-        # Unknown is allowed only when JoyCLI explicitly authorized the harness.
+        # Unknown is allowed only when JoyCTL explicitly authorized the harness.
         return

@@ -9,9 +9,9 @@ STAGE() { printf 'STAGE %s: %s\n' "$1" "$2"; }
 FAIL() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 WHEEL_ARG="${1:-}"
-JOYCLI_ROOT="${JOYCLI_ROOT:-/Users/joytan/intexta-buildweek/joycli}"
-JOYCLI_WHEEL_ARG="${JOYCLI_WHEEL:-}"
-# Resolve to a physical path so JoyCLI state validation does not reject macOS
+JOYCTL_ROOT="${JOYCTL_ROOT:-${HOME}/joycli}"
+JOYCTL_WHEEL_ARG="${JOYCTL_WHEEL:-}"
+# Resolve to a physical path so JoyCTL state validation does not reject macOS
 # /var -> /private/var (and /tmp -> /private/tmp) symlink hops.
 WORKDIR="$(mktemp -d -t joymesh-fresh-XXXXXX)"
 WORKDIR="$(cd "${WORKDIR}" && pwd -P)"
@@ -36,24 +36,24 @@ else
   [[ -n "${WHEEL}" ]] || FAIL "no wheel produced"
 fi
 
-if [[ -n "${JOYCLI_WHEEL_ARG}" ]]; then
-  JOYCLI_WHEEL="$(cd "$(dirname "${JOYCLI_WHEEL_ARG}")" && pwd)/$(basename "${JOYCLI_WHEEL_ARG}")"
+if [[ -n "${JOYCTL_WHEEL_ARG}" ]]; then
+  JOYCTL_WHEEL="$(cd "$(dirname "${JOYCTL_WHEEL_ARG}")" && pwd)/$(basename "${JOYCTL_WHEEL_ARG}")"
 else
-  STAGE 1b "build JoyCLI package"
-  [[ -d "${JOYCLI_ROOT}" ]] || FAIL "JOYCLI_ROOT missing: ${JOYCLI_ROOT}"
-  rm -rf "${JOYCLI_ROOT}/dist"
-  "${ROOT}/.venv/bin/python" -m build "${JOYCLI_ROOT}" >/dev/null
-  JOYCLI_WHEEL="$(ls -1 "${JOYCLI_ROOT}/dist"/joycli-*.whl | head -1)"
-  [[ -n "${JOYCLI_WHEEL}" ]] || FAIL "no JoyCLI wheel produced"
+  STAGE 1b "build JoyCTL package"
+  [[ -d "${JOYCTL_ROOT}" ]] || FAIL "JOYCTL_ROOT missing: ${JOYCTL_ROOT}"
+  rm -rf "${JOYCTL_ROOT}/dist"
+  "${ROOT}/.venv/bin/python" -m build "${JOYCTL_ROOT}" >/dev/null
+  JOYCTL_WHEEL="$(ls -1 "${JOYCTL_ROOT}/dist"/joycli-*.whl | head -1)"
+  [[ -n "${JOYCTL_WHEEL}" ]] || FAIL "no JoyCTL wheel produced"
 fi
 
 STAGE 2 "wheel ${WHEEL}"
 BYTES="$(wc -c < "${WHEEL}" | tr -d ' ')"
 SHA="$(shasum -a 256 "${WHEEL}" | awk '{print $1}')"
 STAGE 2 "bytes=${BYTES} sha256=${SHA}"
-JOYCLI_BYTES="$(wc -c < "${JOYCLI_WHEEL}" | tr -d ' ')"
-JOYCLI_SHA="$(shasum -a 256 "${JOYCLI_WHEEL}" | awk '{print $1}')"
-STAGE 2b "joycli_wheel=${JOYCLI_WHEEL} bytes=${JOYCLI_BYTES} sha256=${JOYCLI_SHA}"
+JOYCTL_BYTES="$(wc -c < "${JOYCTL_WHEEL}" | tr -d ' ')"
+JOYCTL_SHA="$(shasum -a 256 "${JOYCTL_WHEEL}" | awk '{print $1}')"
+STAGE 2b "joycli_wheel=${JOYCTL_WHEEL} bytes=${JOYCTL_BYTES} sha256=${JOYCTL_SHA}"
 
 # Wheel content inspection
 STAGE 3 "inspect wheel contents"
@@ -100,9 +100,9 @@ unset PYTHONPATH || true
 export PATH="${WORKDIR}/venv/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
 hash -r
 python -m pip install --upgrade pip >/dev/null
-python -m pip install "${WHEEL}" "${JOYCLI_WHEEL}" >/dev/null
+python -m pip install "${WHEEL}" "${JOYCTL_WHEEL}" >/dev/null
 python -c 'import sys; print("fresh_python", sys.version.split()[0], sys.executable)'
-command -v joyctl >/dev/null || FAIL "joyctl entrypoint missing after JoyCLI install"
+command -v joyctl >/dev/null || FAIL "joyctl entrypoint missing after JoyCTL install"
 command -v joymesh >/dev/null || FAIL "joymesh entrypoint missing after JoyMesh install"
 
 STAGE 5 "verify import root is the venv, not the checkout"
@@ -157,24 +157,24 @@ private_key, public_key = generate_node_keypair()
 print(private_key, public_key)
 PY
 )"
-read -r JOYMESH_RUNTIME_SIGNING_KEY JOYCLI_RUNTIME_PUBLISHER_PUBLIC_KEY <<<"${RUNTIME_KEY_MATERIAL}"
+read -r JOYMESH_RUNTIME_SIGNING_KEY JOYCTL_RUNTIME_PUBLISHER_PUBLIC_KEY <<<"${RUNTIME_KEY_MATERIAL}"
 export JOYMESH_RUNTIME_SIGNING_KEY
 export JOYMESH_RUNTIME_SIGNING_KEY_ID="fresh-install-ed25519"
-export JOYCLI_RUNTIME_PUBLISHER_PUBLIC_KEY
-export JOYCLI_RUNTIME_PUBLISHER_KEY_ID="${JOYMESH_RUNTIME_SIGNING_KEY_ID}"
+export JOYCTL_RUNTIME_PUBLISHER_PUBLIC_KEY
+export JOYCTL_RUNTIME_PUBLISHER_KEY_ID="${JOYMESH_RUNTIME_SIGNING_KEY_ID}"
 unset PYTHONPATH || true
 
-STAGE 7 "start JoyCLI unix intake (canonical)"
-JOYCLI_STATE="${WORKDIR}/joycli-state"
-mkdir -p "${JOYCLI_STATE}"
-joyctl --repo "${WORKDIR}" --state "${JOYCLI_STATE}" --mode durable-local \
+STAGE 7 "start JoyCTL unix intake (canonical)"
+JOYCTL_STATE="${WORKDIR}/joycli-state"
+mkdir -p "${JOYCTL_STATE}"
+joyctl --repo "${WORKDIR}" --state "${JOYCTL_STATE}" --mode durable-local \
   runtime intake-serve --socket "${SOCK}" >"${WORKDIR}/joycli-intake.log" 2>&1 &
 INTAKE_PID=$!
 for i in $(seq 1 50); do
   if [[ -S "${SOCK}" ]]; then break; fi
   sleep 0.1
 done
-[[ -S "${SOCK}" ]] || { cat "${WORKDIR}/joycli-intake.log" || true; FAIL "JoyCLI intake socket not created"; }
+[[ -S "${SOCK}" ]] || { cat "${WORKDIR}/joycli-intake.log" || true; FAIL "JoyCTL intake socket not created"; }
 
 STAGE 8 "doctor / detect OpenCode"
 python - <<'PY'
@@ -298,9 +298,9 @@ import platform, sys, importlib.metadata
 print("wheel_filename=$(basename "${WHEEL}")")
 print("wheel_bytes=${BYTES}")
 print("wheel_sha256=${SHA}")
-print("joycli_wheel_filename=$(basename "${JOYCLI_WHEEL}")")
-print("joycli_wheel_bytes=${JOYCLI_BYTES}")
-print("joycli_wheel_sha256=${JOYCLI_SHA}")
+print("joycli_wheel_filename=$(basename "${JOYCTL_WHEEL}")")
+print("joycli_wheel_bytes=${JOYCTL_BYTES}")
+print("joycli_wheel_sha256=${JOYCTL_SHA}")
 print("installed_version", importlib.metadata.version("joymesh"))
 print("joycli_installed_version", importlib.metadata.version("joycli"))
 print("python", sys.version.split()[0])
