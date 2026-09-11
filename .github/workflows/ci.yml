@@ -19,6 +19,9 @@ jobs:
     # Cursor host confinement and verification use the macOS kernel sandbox.
     runs-on: macos-latest
     timeout-minutes: 15
+    env:
+      # Use standalone CPython, matching the verifier bootstrap runtime.
+      UV_PYTHON_PREFERENCE: only-managed
 
     steps:
       - name: Check out repository

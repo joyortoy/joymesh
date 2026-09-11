@@ -1,0 +1,31 @@
+{
+  "canonical_content_hash": "b3567ee74dbcf816b9112090ab57ee6352dcdd220a11dc9488298a8e21a755ea",
+  "claim_id": "claim_68940174b92f0b2c6ac083c1",
+  "correlation_id": "corr_f59294972ce85e5c270be216",
+  "decision": "AWAITING_JOYLEGAL",
+  "decision_id": "decision_77b11e6b3eff10ea01bd0173",
+  "environment": "local",
+  "evaluator_version": "joymesh.producer-observation/v1",
+  "evidence_admitted": [],
+  "evidence_missing": [
+    "submitted_pending_admission:evidence:soak-qualification",
+    "submitted_pending_admission:evidence:connector-catalogue",
+    "compatibility_check_fixture_gap"
+  ],
+  "evidence_rejected": [],
+  "generated_at": "2026-09-11T08:43:01.061138Z",
+  "producer_system": "joymesh",
+  "profile_id": "joymesh-production-readiness-v1",
+  "profile_version": "v1",
+  "reason_codes": [
+    "PRODUCER_OBSERVATION_ONLY"
+  ],
+  "report_id": "report_289f3a5706dddb70a91b9ab0",
+  "report_status": "PRODUCER_OBSERVATION",
+  "source_repository_ids": [
+    "repo_2fc4b5c71662de7bbc49255f"
+  ],
+  "subject": "joymesh",
+  "version": "joylegal.certification/v2",
+  "workspace_id": "ws-joymesh"
+}

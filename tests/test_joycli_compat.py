@@ -438,11 +438,15 @@ async def test_create_execution_env_opt_in_defaults_preferred_connector_to_curso
     tmp_path: Path, monkeypatch
 ) -> None:
     """JOYMESH_JOYCLI_COMPAT_ROUTE alone must default preferred connector to cursor."""
+    from unittest.mock import AsyncMock
+
     monkeypatch.setenv("JOYMESH_JOYCLI_COMPAT_ROUTE", "1")
     mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'joycli.db'}")
     app = create_app(mesh)
 
     async with app.router.lifespan_context(app):
+        route = AsyncMock(side_effect=mesh.runtime_service.store.get_task)
+        monkeypatch.setattr(mesh.runtime_service, "route_task", route)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
@@ -460,6 +464,7 @@ async def test_create_execution_env_opt_in_defaults_preferred_connector_to_curso
             execution_id = response.json()["execution_id"]
             task = await mesh.runtime_service.store.get_task(execution_id)
             assert task.preferred_connectors == ("cursor",)
+            route.assert_awaited_once_with(execution_id)
             # Without a node, routing may reject/queue — but skip_routing queue detail
             # must not be the path taken when env opt-in is set.
             assert task.detail != "Queued for routing when workers available"

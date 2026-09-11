@@ -1,0 +1,46 @@
+{
+  "bundle_id": "bundle_6f045d880cb714b780046c10",
+  "bundle_type": "producer_evidence",
+  "canonical_content_hash": "1e7f1767b880e7ab05bb5adfe810364c6a5250888a349fed4a7b3415db22baa5",
+  "export_policy": "producer_evidence_only",
+  "file_hashes": [
+    {
+      "path": "certification-v2.json",
+      "sha256": "93070b2b73596f1635d33ef36150287351f1822d3f9aa5d8849ec269d0856f4b"
+    },
+    {
+      "path": "claim-v2.json",
+      "sha256": "2610b9ff08db5f54f8ee4df5e908f084a3844d07fb2c141ff6f3f64bd8622425"
+    },
+    {
+      "path": "source-identity.json",
+      "sha256": "a424dd80fb2d52a276c82c32dd90eac7ca94fee8c0ba1c17e21ff6500be45952"
+    }
+  ],
+  "generated_at": "2026-09-11T08:43:01.061707Z",
+  "generator_version": "joymesh.legal/0.1.0",
+  "graph_ids": [],
+  "included_evidence": [
+    "certification-v2.json",
+    "claim-v2.json",
+    "source-identity.json"
+  ],
+  "included_records": [
+    "commit:97ae83059737c3bc3d1d5483399432d58f1e80eb",
+    "branch:codex/repair-pr-3",
+    "producer:joymesh"
+  ],
+  "included_schemas": [
+    "joylegal.bundle/v2",
+    "joylegal.claim/v2",
+    "joylegal.certification/v2"
+  ],
+  "integration_targets": [
+    "joymesh"
+  ],
+  "manifest_hash": "1e7f1767b880e7ab05bb5adfe810364c6a5250888a349fed4a7b3415db22baa5",
+  "subject": "joymesh",
+  "timeline_ids": [],
+  "version": "joylegal.bundle/v2",
+  "workspace": "ws-joymesh"
+}
