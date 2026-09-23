@@ -1,0 +1,10 @@
+[verify]
+commands = [
+  "uv run pytest",
+  "uv run ruff check .",
+  "uv run mypy src",
+]
+timeout_seconds = 1800
+
+[joybug]
+listen = "127.0.0.1:18773"

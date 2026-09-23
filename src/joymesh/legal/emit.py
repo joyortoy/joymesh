@@ -171,7 +171,10 @@ def build_certification_observation_v2(
 def _load_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"expected a JSON object in {path}")
+    return value
 
 
 def _soak_8h_status(repo_root: Path) -> dict[str, Any]:

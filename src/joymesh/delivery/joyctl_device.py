@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import hashlib
 import json
 import os
 import random
 import shlex
 import socket
+import ssl
+import stat
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from joymesh.adapters.base import HarnessAdapter
 from joymesh.harnesses.registry import HarnessRegistry
@@ -29,10 +34,39 @@ from joymesh.security import filter_environment, redact_secrets
 PROTOCOL_VERSION = "1"
 MAX_OUTPUT_EVENTS = 100
 MAX_OUTPUT_CHARACTERS = 8_000
+MAX_HTTP_RESPONSE_BYTES = 1_048_576
+MAX_WEBSOCKET_FRAME_BYTES = 1_048_576
+MAX_WEBSOCKET_HEADERS_BYTES = 16_384
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 class DeviceAgentError(RuntimeError):
     """A bounded device-agent failure safe to report to JoyCTL."""
+
+
+def _hosted_endpoint(url: str) -> tuple[str, str, int]:
+    """Accept verified TLS endpoints or explicit IP loopback for local HTTP."""
+    parsed = urlsplit(url)
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise DeviceAgentError("invalid JoyCTL endpoint")
+    if parsed.path not in {"", "/"} or not parsed.hostname:
+        raise DeviceAgentError("JoyCTL endpoint must be an origin URL")
+    if parsed.scheme not in {"http", "https"}:
+        raise DeviceAgentError("JoyCTL endpoint requires HTTP or HTTPS")
+    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "::1"}:
+        raise DeviceAgentError("JoyCTL HTTP requires IP loopback; use HTTPS remotely")
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError as exc:
+        raise DeviceAgentError("invalid JoyCTL endpoint port") from exc
+    return parsed.scheme, parsed.hostname, port
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, request: Any, fp: Any, code: Any, msg: Any, headers: Any, newurl: Any
+    ) -> None:
+        raise DeviceAgentError("JoyCTL credential request redirected")
 
 
 def _job_harness_id(job: Mapping[str, Any]) -> str:
@@ -103,13 +137,23 @@ def http_json(
     body: dict[str, Any] | None = None,
     token: str | None = None,
 ) -> dict[str, Any]:
+    parsed = urlsplit(url)
+    if parsed.path not in {"/api/device-pairings/claim", "/api/agent/authenticate"}:
+        raise DeviceAgentError("unexpected JoyCTL credential endpoint")
+    if parsed.query or parsed.fragment or parsed.username or parsed.password:
+        raise DeviceAgentError("invalid JoyCTL credential endpoint")
+    _hosted_endpoint(f"{parsed.scheme}://{parsed.netloc}")
     data = None if body is None else json.dumps(body).encode()
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=30) as response:
-        value = json.loads(response.read().decode())
+    opener = urllib.request.build_opener(_NoRedirect(), urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=30) as response:
+        raw = response.read(MAX_HTTP_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_HTTP_RESPONSE_BYTES:
+        raise DeviceAgentError("JoyCTL response exceeds size limit")
+    value = json.loads(raw.decode())
     if not isinstance(value, dict):
         raise DeviceAgentError("JoyCTL returned a non-object response")
     return value
@@ -163,9 +207,8 @@ def _ws_mask(payload: bytes) -> bytes:
     return mask + bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
 
 
-def _ws_send(connection: socket.socket, payload: Mapping[str, Any]) -> None:
-    data = json.dumps(payload, separators=(",", ":")).encode()
-    header = bytearray([0x81])
+def _ws_send_frame(connection: socket.socket, data: bytes, opcode: int) -> None:
+    header = bytearray([0x80 | opcode])
     length = len(data)
     if length < 126:
         header.append(0x80 | length)
@@ -176,6 +219,13 @@ def _ws_send(connection: socket.socket, payload: Mapping[str, Any]) -> None:
         header.append(0x80 | 127)
         header.extend(struct.pack("!Q", length))
     connection.sendall(bytes(header) + _ws_mask(data))
+
+
+def _ws_send(connection: socket.socket, payload: Mapping[str, Any]) -> None:
+    data = json.dumps(payload, separators=(",", ":")).encode()
+    if len(data) > MAX_WEBSOCKET_FRAME_BYTES:
+        raise DeviceAgentError("JoyCTL request exceeds frame size limit")
+    _ws_send_frame(connection, data, 1)
 
 
 def _recv_exact(connection: socket.socket, length: int) -> bytes:
@@ -189,21 +239,36 @@ def _recv_exact(connection: socket.socket, length: int) -> bytes:
 
 
 def _ws_recv(connection: socket.socket) -> dict[str, Any]:
-    header = _recv_exact(connection, 2)
-    length = header[1] & 0x7F
-    masked = bool(header[1] & 0x80)
-    if length == 126:
-        length = struct.unpack("!H", _recv_exact(connection, 2))[0]
-    elif length == 127:
-        length = struct.unpack("!Q", _recv_exact(connection, 8))[0]
-    mask = _recv_exact(connection, 4) if masked else b""
-    data = _recv_exact(connection, length)
-    if masked:
-        data = bytes(byte ^ mask[index % 4] for index, byte in enumerate(data))
-    value = json.loads(data.decode())
-    if not isinstance(value, dict):
-        raise DeviceAgentError("JoyCTL WebSocket returned a non-object message")
-    return value
+    while True:
+        header = _recv_exact(connection, 2)
+        opcode = header[0] & 0x0F
+        if header[0] & 0x70 or not header[0] & 0x80:
+            raise DeviceAgentError("unsupported JoyCTL WebSocket frame")
+        if header[1] & 0x80:
+            raise DeviceAgentError("JoyCTL server sent a masked frame")
+        length = header[1] & 0x7F
+        if length == 126:
+            length = struct.unpack("!H", _recv_exact(connection, 2))[0]
+        elif length == 127:
+            length = struct.unpack("!Q", _recv_exact(connection, 8))[0]
+        if length > MAX_WEBSOCKET_FRAME_BYTES:
+            raise DeviceAgentError("JoyCTL WebSocket frame exceeds size limit")
+        if opcode >= 8 and length > 125:
+            raise DeviceAgentError("invalid JoyCTL WebSocket control frame")
+        data = _recv_exact(connection, length)
+        if opcode == 9:
+            _ws_send_frame(connection, data, 10)
+            continue
+        if opcode == 10:
+            continue
+        if opcode == 8:
+            raise ConnectionError("JoyCTL WebSocket closed")
+        if opcode != 1:
+            raise DeviceAgentError("unexpected JoyCTL WebSocket frame type")
+        value = json.loads(data.decode())
+        if not isinstance(value, dict):
+            raise DeviceAgentError("JoyCTL WebSocket returned a non-object message")
+        return value
 
 
 class WebSocketProtocolClient:
@@ -525,36 +590,63 @@ async def execute_claimed_job(
 
 
 def connect_protocol(base: str, access_token: str, timeout: float) -> WebSocketProtocolClient:
-    from urllib.parse import urlparse
-
-    parsed = urlparse(base)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    if parsed.scheme == "https":
-        raise DeviceAgentError("TLS WebSocket transport is not configured in this device client")
+    scheme, host, port = _hosted_endpoint(base)
     connection = socket.create_connection((host, port), timeout=30)
-    connection.settimeout(timeout)
-    key = "dGhlIHNhbXBsZSBub25jZQ=="
-    connection.sendall(
-        (
-            "GET /api/agent/connect HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n"
-            f"Authorization: Bearer {access_token}\r\n\r\n"
-        ).encode()
-    )
-    buffer = bytearray()
-    while b"\r\n\r\n" not in buffer:
-        buffer.extend(connection.recv(1))
-    if b"101" not in buffer.split(b"\r\n", 1)[0]:
-        raise DeviceAgentError("JoyCTL WebSocket upgrade failed")
-    hello = _ws_recv(connection)
-    if hello.get("type") != "connected":
-        raise DeviceAgentError("JoyCTL did not confirm the device connection")
-    return WebSocketProtocolClient(connection)
+    try:
+        if scheme == "https":
+            connection = ssl.create_default_context().wrap_socket(connection, server_hostname=host)
+        connection.settimeout(timeout)
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        authority = f"[{host}]" if ":" in host else host
+        connection.sendall(
+            (
+                "GET /api/agent/connect HTTP/1.1\r\n"
+                f"Host: {authority}:{port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                f"Authorization: Bearer {access_token}\r\n\r\n"
+            ).encode()
+        )
+        buffer = bytearray()
+        while not buffer.endswith(b"\r\n\r\n"):
+            if len(buffer) >= MAX_WEBSOCKET_HEADERS_BYTES:
+                raise DeviceAgentError("JoyCTL WebSocket headers exceed size limit")
+            chunk = connection.recv(1)
+            if not chunk:
+                raise ConnectionError("JoyCTL WebSocket closed during upgrade")
+            buffer.extend(chunk)
+        lines = buffer.decode("ascii").split("\r\n")
+        if len(lines[0].split()) < 2 or lines[0].split()[1] != "101":
+            raise DeviceAgentError("JoyCTL WebSocket upgrade failed")
+        headers = {}
+        for line in lines[1:]:
+            if not line:
+                break
+            name, separator, value = line.partition(":")
+            if not separator:
+                raise DeviceAgentError("malformed JoyCTL WebSocket upgrade")
+            headers[name.lower()] = value.strip()
+        expected = base64.b64encode(
+            hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()
+        ).decode("ascii")
+        connection_tokens = {
+            part.strip().lower() for part in headers.get("connection", "").split(",")
+        }
+        if (
+            headers.get("upgrade", "").lower() != "websocket"
+            or "upgrade" not in connection_tokens
+            or headers.get("sec-websocket-accept") != expected
+        ):
+            raise DeviceAgentError("JoyCTL WebSocket handshake verification failed")
+        hello = _ws_recv(connection)
+        if hello.get("type") != "connected":
+            raise DeviceAgentError("JoyCTL did not confirm the device connection")
+        return WebSocketProtocolClient(connection)
+    except Exception:
+        connection.close()
+        raise
 
 
 def run_loop(
@@ -603,13 +695,64 @@ def run_loop(
         time.sleep(interval + random.uniform(0, 1.0))
 
 
+def _private_directory(path: Path) -> None:
+    path.mkdir(parents=True, mode=0o700, exist_ok=True)
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise DeviceAgentError("JoyMesh credential directory must be owner-only")
+
+
+def _read_private_json(path: Path) -> dict[str, Any]:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(descriptor, "rb") as source:
+        info = os.fstat(source.fileno())
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_mode & 0o077
+            or info.st_size > MAX_HTTP_RESPONSE_BYTES
+        ):
+            raise DeviceAgentError("JoyMesh credential file must be owner-only")
+        raw = source.read(MAX_HTTP_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_HTTP_RESPONSE_BYTES:
+        raise DeviceAgentError("JoyMesh credential file exceeds size limit")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise DeviceAgentError("JoyMesh credential file must contain an object")
+    return value
+
+
+def _write_private_json(path: Path, value: Mapping[str, Any]) -> None:
+    _private_directory(path.parent)
+    data = (json.dumps(value, indent=2) + "\n").encode()
+    if len(data) > MAX_HTTP_RESPONSE_BYTES:
+        raise DeviceAgentError("JoyMesh credential file exceeds size limit")
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as target:
+            os.fchmod(target.fileno(), 0o600)
+            target.write(data)
+            target.flush()
+            os.fsync(target.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def load_or_pair(bootstrap: dict[str, Any], device_name: str, state_path: Path) -> dict[str, Any]:
-    pairing = next(item for item in bootstrap["pairings"] if item["device_name"] == device_name)
     base = bootstrap["hosted_base_url"]
+    _hosted_endpoint(base)
     if state_path.exists():
-        stored = json.loads(state_path.read_text(encoding="utf-8"))
-        if isinstance(stored, dict) and "device_credential" in stored:
+        stored = _read_private_json(state_path)
+        if "device_credential" in stored:
             return {str(key): value for key, value in stored.items()}
+    pairing = next(item for item in bootstrap["pairings"] if item["device_name"] == device_name)
     session = claim_and_auth(
         base,
         pairing["pairing_code"],
@@ -617,8 +760,7 @@ def load_or_pair(bootstrap: dict[str, Any], device_name: str, state_path: Path) 
         pairing["capabilities"],
         pairing["routes"],
     )
-    state_path.write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
-    os.chmod(state_path, 0o600)
+    _write_private_json(state_path, session)
     print(
         json.dumps(
             {"event": "paired", "device_id": session["device_id"], "device_name": device_name}
@@ -647,7 +789,7 @@ def main() -> None:
         metavar="REF=/ABSOLUTE/PATH",
     )
     arguments = parser.parse_args()
-    bootstrap = json.loads(Path(arguments.bootstrap).read_text(encoding="utf-8"))
+    bootstrap = _read_private_json(Path(arguments.bootstrap))
     base = bootstrap["hosted_base_url"]
     state_path = Path(arguments.state_dir) / f"{arguments.device_name}.json"
     resolver = WorkspaceResolver(parse_workspace_mappings(arguments.workspace_map))
@@ -656,8 +798,7 @@ def main() -> None:
     while True:
         try:
             session = refresh_access_token(base, session)
-            state_path.write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
-            os.chmod(state_path, 0o600)
+            _write_private_json(state_path, session)
             run_loop(
                 base,
                 session["access_token"],

@@ -1774,7 +1774,10 @@ def create_app(
         body: dict[str, object],
         _service_auth: Annotated[None, Depends(require_service_token)],
     ) -> dict[str, object]:
-        fencing_token = int(body.get("fencing_token") or 0)
+        raw_fencing_token = body.get("fencing_token")
+        if not isinstance(raw_fencing_token, int) or isinstance(raw_fencing_token, bool):
+            raise HTTPException(status_code=422, detail="fencing_token must be an integer")
+        fencing_token = raw_fencing_token
         try:
             lease = service.runtime_service.leases.heartbeat(task_id, fencing_token)
         except PermissionError as exc:

@@ -487,7 +487,7 @@ class ExecutionRouter:
         attempts: list[ExecutionAttemptRecord] = []
         # With JoyMux placement, never chain alternate backends (no silent reroute).
         if placement is not None or decision.reason == "validated_joymux_placement":
-            order = (decision.selected_backend_id,)
+            order: tuple[str, ...] = (decision.selected_backend_id,)
         else:
             order = (decision.selected_backend_id, *decision.fallback_order)
         attempted: list[str] = []

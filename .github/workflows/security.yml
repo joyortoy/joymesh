@@ -1,0 +1,34 @@
+name: JoyMesh security verification
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex/joy-host-updates-20260911
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install locked dependencies
+        run: uv sync --locked --python 3.12 --extra dev
+      - name: Test
+        run: uv run --no-sync pytest
+      - name: Lint
+        run: uv run --no-sync ruff check .
+      - name: Type check
+        run: uv run --no-sync mypy src
+      - name: Dependency audit
+        run: uvx pip-audit --path .venv/lib/python3.12/site-packages

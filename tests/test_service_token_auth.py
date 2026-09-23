@@ -77,3 +77,21 @@ async def test_service_token_alias_is_accepted(tmp_path: Path, monkeypatch) -> N
             )
 
     assert response.status_code == 200
+
+
+async def test_runtime_heartbeat_rejects_noninteger_fencing_tokens(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("JOYMESH_TOKEN", "service-secret")
+    mesh = JoyMesh(database_url=f"sqlite+aiosqlite:///{tmp_path / 'fencing.db'}")
+    app = create_app(mesh)
+
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            for value in (True, "1", 1.5, None):
+                response = await client.post(
+                    "/runtime/tasks/unknown/heartbeat",
+                    json={"fencing_token": value},
+                    headers={"Authorization": "Bearer service-secret"},
+                )
+                assert response.status_code == 422
