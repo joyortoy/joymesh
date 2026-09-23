@@ -17,6 +17,15 @@ machine, so the device bootstrap should use
 `0.0.0.0:8766` listener private; that listener requires its own access
 policy and TLS if remote clients use it.
 
+The live `joy` host uses the root-owned `joyctl-hosted-guard.service` to
+restrict TCP port 8766 to loopback and three named Tailscale Mac peers. Keep
+the allowed peer addresses current when devices are added or removed. This
+host firewall is an exposure control; it does not turn the local-development
+JoyCTL mode into a production deployment. The hosted service still needs a
+non-default signing key, managed identity, TLS at the application boundary,
+and the production database and configuration gates before it can be called
+production ready.
+
 Transport hardening does not attest the task content or isolate a harness
 from all files available to the `sam` account. Those are separate execution
 authority and OS containment boundaries.

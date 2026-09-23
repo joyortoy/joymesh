@@ -1,0 +1,7 @@
+[verify]
+commands = [
+  "uv run pytest",
+  "uv run ruff check .",
+  "uv run mypy src",
+]
+timeout_seconds = 1800

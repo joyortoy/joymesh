@@ -17,6 +17,7 @@ from joymesh.control_plane.node import JoyMeshNode
 from joymesh.control_plane.security import generate_node_keypair, store_private_key
 from joymesh.harnesses.contracts import ApprovalToken, LifecycleAction
 from joymesh.joymux_placement import JoyMuxPlacementError, fetch_context_placement
+from joymesh.legal.identity import SourceIdentity
 from joymesh.models import BillingRoute, Run, RunRequest, SubscriptionCreate
 from joymesh.service import JoyMesh, NoRouteError
 from joymesh.telemetry import (
@@ -593,7 +594,7 @@ def _legal_repo_root(repo: str | None) -> Path:
     return Path(repo).resolve() if repo else repo_root_from_module()
 
 
-def _legal_identity(repo: str | None):
+def _legal_identity(repo: str | None) -> SourceIdentity:
     from joymesh.legal.identity import collect_source_identity
 
     root = _legal_repo_root(repo)

@@ -108,7 +108,6 @@ def test_private_native_reasoning_is_not_telemetry():
 
 def test_grok_hook_profile_keeps_explicit_sandbox(tmp_path, monkeypatch):
     import subprocess
-
     from pathlib import Path
 
     class FakeProtocol:

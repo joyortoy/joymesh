@@ -246,11 +246,11 @@ class TaskAnalyzer:
         derived = set(primary[2])
         optional: set[SemanticCapability] = set()
         reasons: list[str] = [f"matched:{primary[0].value}:{primary[4]}"]
-        for task_class, semantic, exec_caps, _complexity, pattern in matches[1:]:
+        for task_class, semantic, exec_caps, _complexity, pattern_text in matches[1:]:
             # Secondary matches contribute optional capabilities and soft execution hints.
             optional |= set(semantic) - required
             derived |= set(exec_caps)
-            reasons.append(f"matched_optional:{task_class.value}:{pattern}")
+            reasons.append(f"matched_optional:{task_class.value}:{pattern_text}")
 
         privacy = primary[0] is TaskClass.PRIVATE_CODEBASE or bool(
             re.search(r"\b(private|on.?prem|air.?gap|local.?only|no.?cloud)\b", text, re.I)
