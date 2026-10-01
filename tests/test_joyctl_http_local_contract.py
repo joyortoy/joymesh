@@ -28,12 +28,19 @@ def test_local_draft_roundtrip_and_viewer_denial(tmp_path):
     server.start()
     try:
         endpoint = f"http://127.0.0.1:{server.port}"
-        adapter = JoyCtlHTTPBinding(endpoint, lambda _: VerifiedSession(ctx, token),
-                                   allow_loopback_http=True)
+        adapter = JoyCtlHTTPBinding(
+            endpoint, lambda _: VerifiedSession(ctx, token), allow_loopback_http=True
+        )
         bridge = Bridge(adapter)
-        mission = bridge.call(ctx, "intent_submit", {
-            "workspace_id": workspace["id"], "project_id": project["id"],
-            "title": "Disposable safe draft"})
+        mission = bridge.call(
+            ctx,
+            "intent_submit",
+            {
+                "workspace_id": workspace["id"],
+                "project_id": project["id"],
+                "title": "Disposable safe draft",
+            },
+        )
         assert mission["status"] == "draft"
         assert mission["created_by_user_id"] == user["id"]
         assert bridge.call(ctx, "mission_fetch", {"mission_id": mission["id"]}) == mission
@@ -43,11 +50,23 @@ def test_local_draft_roundtrip_and_viewer_denial(tmp_path):
         viewer = plane.principal(viewer_user["id"], org["id"])
         viewer_ctx = TransportContext(org["id"], viewer_user["id"])
         viewer_token = plane.issue_human_access_token(viewer)
-        denied = Bridge(JoyCtlHTTPBinding(endpoint,
-            lambda _: VerifiedSession(viewer_ctx, viewer_token), allow_loopback_http=True))
+        denied = Bridge(
+            JoyCtlHTTPBinding(
+                endpoint,
+                lambda _: VerifiedSession(viewer_ctx, viewer_token),
+                allow_loopback_http=True,
+            )
+        )
         with pytest.raises(PermissionError, match="denied"):
-            denied.call(viewer_ctx, "intent_submit", {"workspace_id": workspace["id"],
-                "project_id": project["id"], "title": "Forbidden draft"})
+            denied.call(
+                viewer_ctx,
+                "intent_submit",
+                {
+                    "workspace_id": workspace["id"],
+                    "project_id": project["id"],
+                    "title": "Forbidden draft",
+                },
+            )
         assert len(plane.list_missions(owner)) == 1
     finally:
         server.stop()

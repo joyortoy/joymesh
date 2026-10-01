@@ -31,13 +31,15 @@ class JoyCtlBinding(Protocol):
     and result methods are harness seams, NOT newly claimed public endpoints.
     """
 
-    def request(self, ctx: TransportContext, method: str, path: str,
-                body: dict[str, Any] | None = None) -> dict[str, Any]: ...
+    def request(
+        self, ctx: TransportContext, method: str, path: str, body: dict[str, Any] | None = None
+    ) -> dict[str, Any]: ...
 
     def assignment(self, ctx: TransportContext, offer_id: str) -> ExecutionOffer: ...
 
-    def record_result(self, ctx: TransportContext, offer: ExecutionOffer,
-                      result: FactualExecutionResult) -> dict[str, Any]: ...
+    def record_result(
+        self, ctx: TransportContext, offer: ExecutionOffer, result: FactualExecutionResult
+    ) -> dict[str, Any]: ...
 
 
 def canonical(value: Any) -> str:
@@ -64,8 +66,7 @@ class Bridge:
     def __init__(self, binding: JoyCtlBinding):
         self.binding = binding
 
-    def call(self, ctx: TransportContext, name: str,
-             args: dict[str, Any]) -> dict[str, Any]:
+    def call(self, ctx: TransportContext, name: str, args: dict[str, Any]) -> dict[str, Any]:
         # Context is trusted transport state; no identity/role fields in tool inputs.
         if not ctx.organisation_id or not ctx.subject:
             raise PermissionError("verified authentication required")
@@ -81,10 +82,16 @@ class Bridge:
             current = self.binding.request(ctx, "GET", path + "/graph")
             if graph.get("version") is None or graph != current:
                 return blocked("mission graph changed; refetch required")
-            return {"mission_id": args["mission_id"], "projection_version": graph["version"],
-                    "kind": "read_projection", "canonical_report": False,
-                    "graph": graph, "evidence": evidence, "verification": verification,
-                    "snapshot_atomic": False}
+            return {
+                "mission_id": args["mission_id"],
+                "projection_version": graph["version"],
+                "kind": "read_projection",
+                "canonical_report": False,
+                "graph": graph,
+                "evidence": evidence,
+                "verification": verification,
+                "snapshot_atomic": False,
+            }
         if name in {"report_fetch", "report_acknowledge"}:
             return blocked("supported JoyCtl report application-service binding required")
         if name == "intent_submit":
@@ -98,16 +105,21 @@ class Bridge:
         else:
             path = "/api/missions/" + quote(args["mission_id"], safe="")
             path += {"evidence_fetch": "/evidence", "verification_fetch": "/verification"}.get(
-                name, "")
+                name, ""
+            )
         return self.binding.request(ctx, "GET", path)
 
-    def receive_result(self, ctx: TransportContext, offer_id: str,
-                       result: FactualExecutionResult) -> dict[str, Any]:
+    def receive_result(
+        self, ctx: TransportContext, offer_id: str, result: FactualExecutionResult
+    ) -> dict[str, Any]:
         # Authoritative binding rechecks tenant, enrollment/session, subscription,
         # assignment, grant and current lease on EVERY return, including duplicates.
         offer = self.binding.assignment(ctx, offer_id)
         if (result.execution_id, result.attempt_id, result.worker_id, result.harness) != (
-            offer.execution_id, offer.attempt_id, offer.worker_id, offer.harness_id
+            offer.execution_id,
+            offer.attempt_id,
+            offer.worker_id,
+            offer.harness_id,
         ):
             raise PermissionError("wrong assignment return")
         return self.binding.record_result(ctx, offer, result)
@@ -116,21 +128,36 @@ class Bridge:
         """In-process MCP protocol harness; no transport or webhook claim."""
         method = request["method"]
         if method == "server/discover":
-            result = {"resultType": "complete", "supportedVersions": ["2026-07-28"],
-                      "capabilities": {"tools": {}}}
+            result = {
+                "resultType": "complete",
+                "supportedVersions": ["2026-07-28"],
+                "capabilities": {"tools": {}},
+            }
         elif method == "tools/list":
-            result = {"tools": [
-                {"name": name, "description": "Forward through existing JoyCtl authority: "
-                 + name, "inputSchema": {
-                     "type": "object", "additionalProperties": False,
-                     "required": sorted(fields), "properties": {
-                         field: {"type": "string", "minLength": 1} for field in sorted(fields)
-                     }}, "annotations": {
-                         "readOnlyHint": name.endswith("fetch"),
-                         "destructiveHint": False, "openWorldHint": False}}
-                for name, fields in self.SHAPES.items()
-                if name not in {"report_fetch", "report_acknowledge"}
-            ]}
+            result = {
+                "tools": [
+                    {
+                        "name": name,
+                        "description": "Forward through existing JoyCtl authority: " + name,
+                        "inputSchema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": sorted(fields),
+                            "properties": {
+                                field: {"type": "string", "minLength": 1}
+                                for field in sorted(fields)
+                            },
+                        },
+                        "annotations": {
+                            "readOnlyHint": name.endswith("fetch"),
+                            "destructiveHint": False,
+                            "openWorldHint": False,
+                        },
+                    }
+                    for name, fields in self.SHAPES.items()
+                    if name not in {"report_fetch", "report_acknowledge"}
+                ]
+            }
         elif method == "events/list":
             result = {"events": []}  # Do not advertise incomplete live event support.
         elif method in {"events/subscribe", "events/unsubscribe"}:
@@ -138,8 +165,10 @@ class Bridge:
         elif method == "tools/call":
             params = request["params"]
             value = self.call(ctx, params["name"], params["arguments"])
-            result = {"structuredContent": value,
-                      "content": [{"type": "text", "text": canonical(value)}]}
+            result = {
+                "structuredContent": value,
+                "content": [{"type": "text", "text": canonical(value)}],
+            }
         else:
             raise ValueError("unsupported MCP method")
         return {"jsonrpc": "2.0", "id": request.get("id"), "result": result}
@@ -159,33 +188,42 @@ class ReportInbox:
             tenant TEXT, mission TEXT, version INTEGER, digest TEXT, payload TEXT,
             acknowledged INTEGER DEFAULT 0, PRIMARY KEY(tenant, mission, version))""")
 
-    def observe(self, tenant: str, mission: str, version: int,
-                projection: dict[str, Any]) -> str:
+    def observe(self, tenant: str, mission: str, version: int, projection: dict[str, Any]) -> str:
         if version < 1 or projection.get("mission_id") != mission:
             raise ValueError("invalid report projection")
         payload = canonical(projection)
         digest = hashlib.sha256(payload.encode()).hexdigest()
         with self.db:
-            row = self.db.execute("SELECT digest FROM receipts WHERE tenant=? AND mission=? "
-                                  "AND version=?", (tenant, mission, version)).fetchone()
+            row = self.db.execute(
+                "SELECT digest FROM receipts WHERE tenant=? AND mission=? AND version=?",
+                (tenant, mission, version),
+            ).fetchone()
             if row:
                 if row[0] != digest:
                     raise ValueError("conflicting report version")
                 return "duplicate"
-            latest = self.db.execute("SELECT max(version) FROM receipts WHERE tenant=? "
-                                     "AND mission=?", (tenant, mission)).fetchone()[0]
-            self.db.execute("INSERT INTO receipts(tenant,mission,version,digest,payload) "
-                            "VALUES(?,?,?,?,?)", (tenant, mission, version, digest, payload))
+            latest = self.db.execute(
+                "SELECT max(version) FROM receipts WHERE tenant=? AND mission=?", (tenant, mission)
+            ).fetchone()[0]
+            self.db.execute(
+                "INSERT INTO receipts(tenant,mission,version,digest,payload) VALUES(?,?,?,?,?)",
+                (tenant, mission, version, digest, payload),
+            )
         return "out_of_order" if latest and version < latest else "new"
 
     def latest(self, tenant: str, mission: str) -> dict[str, Any] | None:
-        row = self.db.execute("SELECT payload FROM receipts WHERE tenant=? AND mission=? "
-                              "ORDER BY version DESC LIMIT 1", (tenant, mission)).fetchone()
+        row = self.db.execute(
+            "SELECT payload FROM receipts WHERE tenant=? AND mission=? "
+            "ORDER BY version DESC LIMIT 1",
+            (tenant, mission),
+        ).fetchone()
         return json.loads(row[0]) if row else None
 
     def acknowledge_receipt(self, tenant: str, mission: str, version: int) -> None:
         with self.db:
-            cursor = self.db.execute("UPDATE receipts SET acknowledged=1 WHERE tenant=? "
-                                     "AND mission=? AND version=?", (tenant, mission, version))
+            cursor = self.db.execute(
+                "UPDATE receipts SET acknowledged=1 WHERE tenant=? AND mission=? AND version=?",
+                (tenant, mission, version),
+            )
             if cursor.rowcount != 1:
                 raise ValueError("unknown report version")

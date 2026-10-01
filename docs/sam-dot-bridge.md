@@ -43,8 +43,12 @@ semantic satisfaction or successful execution.
 
 Focused tests: **35 passed**, against JoyMesh base
 `90e5ce39799fb78c0db157722d5913e14b67c9cb` and the isolated JoyCtl signing candidate
-based on `89e55e5bd9a2b0adb960d0e04ac10265701546c4`. Ruff passed for the five example
-and test files. Existing installed test dependencies were used; the declared
+based on `89e55e5bd9a2b0adb960d0e04ac10265701546c4`. Earlier Ruff 0.16.5 checks
+covered lint only; CI subsequently found formatting failures in the five added
+Python files. Those files were formatted with lockfile-pinned Ruff 0.16.0;
+repository-wide formatting and lint checks passed. All 35 focused checks passed
+again after formatting. Existing installed test
+dependencies were used; the declared
 PyJWT test dependency was pinned at 2.10.1 in a disposable directory.
 
 `test_joyctl_http_local_contract.py` uses actual local HTTP and SQLite with

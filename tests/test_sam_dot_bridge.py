@@ -1,4 +1,5 @@
 """Simulated contract checks, never evidence of hosted dot execution."""
+
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -13,8 +14,9 @@ from joymesh.runtime_v1.contracts.workers import (
     FactualExecutionResult,
 )
 
-spec = spec_from_file_location("sam_dot_bridge", Path(__file__).parents[1] /
-                              "examples/sam_dot_bridge.py")
+spec = spec_from_file_location(
+    "sam_dot_bridge", Path(__file__).parents[1] / "examples/sam_dot_bridge.py"
+)
 bridge_module = module_from_spec(spec)
 sys.modules[spec.name] = bridge_module
 spec.loader.exec_module(bridge_module)
@@ -38,10 +40,23 @@ class MockJoyCtl:
         self.results = {}
         self.now = datetime.now(UTC)
         self.offer = ExecutionOffer(
-            "exec-1", "attempt-1", "worker-server-issued", "mock-dot", "safe fixture",
-            "/fixture", ExecutionLeaseToken(
-                "lease-1", "worker-server-issued", "exec-1", "attempt-1", 2, 9,
-                self.now + timedelta(minutes=1)), offer_id="offer-1")
+            "exec-1",
+            "attempt-1",
+            "worker-server-issued",
+            "mock-dot",
+            "safe fixture",
+            "/fixture",
+            ExecutionLeaseToken(
+                "lease-1",
+                "worker-server-issued",
+                "exec-1",
+                "attempt-1",
+                2,
+                9,
+                self.now + timedelta(minutes=1),
+            ),
+            offer_id="offer-1",
+        )
 
     def request(self, ctx, method, path, body=None):
         if ctx.organisation_id != "tenant-1" or ctx.subject != "owner-1":
@@ -63,13 +78,19 @@ class MockJoyCtl:
 
     def assignment(self, ctx, offer_id):
         if (ctx.organisation_id, ctx.subject, ctx.session, offer_id) != (
-            "tenant-1", "owner-1", "enrolled-session", "offer-1"
+            "tenant-1",
+            "owner-1",
+            "enrolled-session",
+            "offer-1",
         ) or self.revoked:
             raise PermissionError("assignment or enrollment")
-        if (not self.grant_consumed or self.expired
-                or self.offer.lease.expires_at <= datetime.now(UTC)
-                or self.offer.lease.generation != self.current_generation
-                or self.offer.lease.fencing_token != self.current_fence):
+        if (
+            not self.grant_consumed
+            or self.expired
+            or self.offer.lease.expires_at <= datetime.now(UTC)
+            or self.offer.lease.generation != self.current_generation
+            or self.offer.lease.fencing_token != self.current_fence
+        ):
             raise PermissionError("current authority or lease required")
         return self.offer
 
@@ -82,8 +103,11 @@ class MockJoyCtl:
                 raise ValueError("divergent replay")
             return {"state": "duplicate", "mission_completed": None}
         self.results[key] = result
-        return {"state": "result_recorded", "mission_completed": None,
-                "evidence": list(result.artifact_references)}
+        return {
+            "state": "result_recorded",
+            "mission_completed": None,
+            "evidence": list(result.artifact_references),
+        }
 
 
 @pytest.fixture
@@ -94,21 +118,42 @@ def setup():
 
 
 def submit(bridge, ctx):
-    return bridge.call(ctx, "execution_submit", {
-        "mission_id": "mission-1", "step_id": "step-1",
-        "authorization_id": "ctl-grant", "prompt_id": "ctl-prompt"})
+    return bridge.call(
+        ctx,
+        "execution_submit",
+        {
+            "mission_id": "mission-1",
+            "step_id": "step-1",
+            "authorization_id": "ctl-grant",
+            "prompt_id": "ctl-prompt",
+        },
+    )
 
 
 def result(ctl):
     return FactualExecutionResult(
-        "exec-1", "attempt-1", "worker-server-issued", "mock-dot", ctl.now, ctl.now,
-        0, "exited", artifact_references=("fixture://evidence/test-output",))
+        "exec-1",
+        "attempt-1",
+        "worker-server-issued",
+        "mock-dot",
+        ctl.now,
+        ctl.now,
+        0,
+        "exited",
+        artifact_references=("fixture://evidence/test-output",),
+    )
 
 
 def test_simulated_round_trip_keeps_acceptance_distinct_from_completion(setup):
     ctl, bridge, ctx = setup
-    assert bridge.call(ctx, "intent_submit", {
-        "workspace_id": "ws", "project_id": "project", "title": "safe fixture"})["state"] == "draft"
+    assert (
+        bridge.call(
+            ctx,
+            "intent_submit",
+            {"workspace_id": "ws", "project_id": "project", "title": "safe fixture"},
+        )["state"]
+        == "draft"
+    )
     assert submit(bridge, ctx)["state"] == "queued"
     returned = bridge.receive_result(ctx, "offer-1", result(ctl))
     assert returned["state"] == "result_recorded"
@@ -132,14 +177,28 @@ def test_missing_grant_is_rejected_without_upstream_call(setup):
 
 def test_approval_required_is_preserved(setup):
     _, bridge, ctx = setup
-    value = bridge.call(ctx, "execution_submit", {
-        "mission_id": "mission-1", "step_id": "step-1",
-        "authorization_id": "unapproved", "prompt_id": "ctl-prompt"})
+    value = bridge.call(
+        ctx,
+        "execution_submit",
+        {
+            "mission_id": "mission-1",
+            "step_id": "step-1",
+            "authorization_id": "unapproved",
+            "prompt_id": "ctl-prompt",
+        },
+    )
     assert value == {"state": "approval_required", "execution_performed": False}
 
 
-@pytest.mark.parametrize("field,value", [("worker_id", "CoS"), ("attempt_id", "other"),
-                                       ("execution_id", "other"), ("harness", "real-dot")])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("worker_id", "CoS"),
+        ("attempt_id", "other"),
+        ("execution_id", "other"),
+        ("harness", "real-dot"),
+    ],
+)
 def test_wrong_assignment_return(setup, field, value):
     ctl, bridge, ctx = setup
     submit(bridge, ctx)
@@ -148,9 +207,14 @@ def test_wrong_assignment_return(setup, field, value):
     assert not ctl.results
 
 
-@pytest.mark.parametrize("ctx", [TransportContext("foreign", "owner-1", "enrolled-session"),
-                                 TransportContext("tenant-1", "CoS", "enrolled-session"),
-                                 TransportContext("tenant-1", "owner-1", "other-session")])
+@pytest.mark.parametrize(
+    "ctx",
+    [
+        TransportContext("foreign", "owner-1", "enrolled-session"),
+        TransportContext("tenant-1", "CoS", "enrolled-session"),
+        TransportContext("tenant-1", "owner-1", "other-session"),
+    ],
+)
 def test_identity_and_tenant_bound_returns(setup, ctx):
     ctl, bridge, owner = setup
     submit(bridge, owner)
@@ -190,8 +254,9 @@ def test_superseded_assignment_fencing_rejects_return(setup, field):
 def test_expired_lease_timestamp(setup):
     ctl, bridge, ctx = setup
     submit(bridge, ctx)
-    ctl.offer = replace(ctl.offer, lease=replace(
-        ctl.offer.lease, expires_at=ctl.now - timedelta(seconds=1)))
+    ctl.offer = replace(
+        ctl.offer, lease=replace(ctl.offer.lease, expires_at=ctl.now - timedelta(seconds=1))
+    )
     with pytest.raises(PermissionError):
         bridge.receive_result(ctx, "offer-1", result(ctl))
 
@@ -205,8 +270,11 @@ def test_input_does_not_override_transport_identity_or_inject_policy(setup):
 
 def test_supported_routes_and_path_encoding(setup):
     ctl, bridge, ctx = setup
-    for name, suffix in [("mission_fetch", ""), ("evidence_fetch", "/evidence"),
-                         ("verification_fetch", "/verification")]:
+    for name, suffix in [
+        ("mission_fetch", ""),
+        ("evidence_fetch", "/evidence"),
+        ("verification_fetch", "/verification"),
+    ]:
         bridge.call(ctx, name, {"mission_id": "a/b"})
         assert ctl.calls[-1][1] == "/api/missions/a%2Fb" + suffix
     bridge.call(ctx, "status_fetch", {"execution_id": "exec-1"})
@@ -216,11 +284,17 @@ def test_supported_routes_and_path_encoding(setup):
 def test_mcp_unavailable_surfaces_fail_closed(setup):
     ctl, bridge, ctx = setup
     assert bridge.rpc(ctx, {"id": 1, "method": "events/list"})["result"] == {"events": []}
-    assert "events" not in bridge.rpc(ctx, {
-        "id": 2, "method": "server/discover"})["result"]["capabilities"]
+    assert (
+        "events"
+        not in bridge.rpc(ctx, {"id": 2, "method": "server/discover"})["result"]["capabilities"]
+    )
     assert bridge.rpc(ctx, {"id": 3, "method": "events/subscribe"})["result"]["state"] == "blocked"
-    assert bridge.call(ctx, "report_acknowledge", {
-        "mission_id": "m", "report_version": "1", "event_id": "e"})["state"] == "blocked"
+    assert (
+        bridge.call(
+            ctx, "report_acknowledge", {"mission_id": "m", "report_version": "1", "event_id": "e"}
+        )["state"]
+        == "blocked"
+    )
     assert not ctl.calls
 
 
@@ -228,10 +302,22 @@ def test_mcp_tools_discovery_and_call(setup):
     _, bridge, ctx = setup
     tools = bridge.rpc(ctx, {"id": 1, "method": "tools/list"})["result"]["tools"]
     assert {t["name"] for t in tools} == {
-        "intent_submit", "execution_submit", "mission_fetch", "status_fetch",
-        "evidence_fetch", "verification_fetch", "report_projection_fetch"}
-    response = bridge.rpc(ctx, {"id": 2, "method": "tools/call", "params": {
-        "name": "mission_fetch", "arguments": {"mission_id": "mission-1"}}})
+        "intent_submit",
+        "execution_submit",
+        "mission_fetch",
+        "status_fetch",
+        "evidence_fetch",
+        "verification_fetch",
+        "report_projection_fetch",
+    }
+    response = bridge.rpc(
+        ctx,
+        {
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "mission_fetch", "arguments": {"mission_id": "mission-1"}},
+        },
+    )
     assert response["result"]["structuredContent"]["mission_id"] == "mission-1"
 
 
@@ -246,15 +332,20 @@ def test_supported_report_projection_preserves_provenance(setup):
 def test_report_projection_detects_graph_change(setup):
     ctl, bridge, ctx = setup
     ctl.graph_race = True
-    assert bridge.call(ctx, "report_projection_fetch", {
-        "mission_id": "mission-1"})["state"] == "blocked"
+    assert (
+        bridge.call(ctx, "report_projection_fetch", {"mission_id": "mission-1"})["state"]
+        == "blocked"
+    )
 
 
 def test_report_projection_cannot_fetch_foreign_tenant(setup):
     _, bridge, _ = setup
     with pytest.raises(PermissionError):
-        bridge.call(TransportContext("foreign", "owner-1"), "report_projection_fetch", {
-            "mission_id": "mission-1"})
+        bridge.call(
+            TransportContext("foreign", "owner-1"),
+            "report_projection_fetch",
+            {"mission_id": "mission-1"},
+        )
 
 
 def test_report_versions_duplicates_order_and_restart(tmp_path):

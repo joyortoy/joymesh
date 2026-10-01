@@ -30,15 +30,30 @@ class NoRedirects(HTTPRedirectHandler):
 
 
 class JoyCtlHTTPBinding:
-    def __init__(self, endpoint: str,
-                 session_for: Callable[[TransportContext], VerifiedSession], *,
-                 allow_loopback_http: bool = False, opener=None):
+    def __init__(
+        self,
+        endpoint: str,
+        session_for: Callable[[TransportContext], VerifiedSession],
+        *,
+        allow_loopback_http: bool = False,
+        opener=None,
+    ):
         url = urlsplit(endpoint)
-        local_http = (allow_loopback_http and url.scheme == "http"
-                      and url.hostname in {"127.0.0.1", "::1", "localhost"})
-        if (url.scheme != "https" and not local_http) or not url.hostname or (
-            url.username or url.password or url.query or url.fragment
-            or url.path not in {"", "/"}
+        local_http = (
+            allow_loopback_http
+            and url.scheme == "http"
+            and url.hostname in {"127.0.0.1", "::1", "localhost"}
+        )
+        if (
+            (url.scheme != "https" and not local_http)
+            or not url.hostname
+            or (
+                url.username
+                or url.password
+                or url.query
+                or url.fragment
+                or url.path not in {"", "/"}
+            )
         ):
             raise ValueError("fixed HTTPS JoyCtl origin required")
         self.endpoint = endpoint.rstrip("/")
@@ -46,20 +61,27 @@ class JoyCtlHTTPBinding:
         self.opener = opener if opener is not None else build_opener(NoRedirects())
 
     def request(self, ctx, method, path, body=None):
-        allowed = (
-            (method == "POST" and path in {"/api/missions", "/api/executions"})
-            or (method == "GET" and re.fullmatch(
+        allowed = (method == "POST" and path in {"/api/missions", "/api/executions"}) or (
+            method == "GET"
+            and re.fullmatch(
                 r"/api/(?:missions|executions)/[A-Za-z0-9_.%~-]+"
-                r"(?:/(?:graph|evidence|verification))?", path))
+                r"(?:/(?:graph|evidence|verification))?",
+                path,
+            )
         )
         if not allowed or (method == "GET" and body is not None):
             raise ValueError("unsupported JoyCtl route")
         if method == "POST":
-            fields = ({"workspace_id", "project_id", "title"} if path == "/api/missions"
-                      else {"mission_id", "step_id", "authorization_id", "prompt_id"})
-            if (not isinstance(body, dict) or set(body) != fields or not all(
-                isinstance(value, str) and value.strip() for value in body.values()
-            )):
+            fields = (
+                {"workspace_id", "project_id", "title"}
+                if path == "/api/missions"
+                else {"mission_id", "step_id", "authorization_id", "prompt_id"}
+            )
+            if (
+                not isinstance(body, dict)
+                or set(body) != fields
+                or not all(isinstance(value, str) and value.strip() for value in body.values())
+            ):
                 raise ValueError("supported canonical intake fields required")
         session = self.session_for(ctx)  # existing verified authentication only
         if session.context != ctx or not ctx.subject or not ctx.organisation_id:
@@ -67,10 +89,16 @@ class JoyCtlHTTPBinding:
         if not session.bearer or any(c.isspace() for c in session.bearer):
             raise PermissionError("valid existing bearer required")
         data = None if body is None else json.dumps(body, allow_nan=False).encode()
-        req = Request(self.endpoint + path, data=data, method=method, headers={
-            "Authorization": "Bearer " + session.bearer,
-            "Content-Type": "application/json", "Accept": "application/json",
-        })
+        req = Request(
+            self.endpoint + path,
+            data=data,
+            method=method,
+            headers={
+                "Authorization": "Bearer " + session.bearer,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
         try:
             with self.opener.open(req, timeout=10) as response:
                 content = response.read(1024 * 1024 + 1)
